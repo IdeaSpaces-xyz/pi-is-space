@@ -78,6 +78,26 @@ async function run(args: string[], stdin?: string) {
 export default function (pi: ExtensionAPI) {
   let cachedAwareness: string | null = null;
 
+  async function resolveSpaceDisplay(repoId?: string): Promise<string> {
+    if (!repoId) return "connected";
+
+    const repos = await cli(["--json", "power", "repos"]);
+    if (repos.code !== 0) return repoId;
+
+    const parsed = parseJson<any>(repos.out);
+    const match = parsed?.repos?.find((r: any) => r.repo_id === repoId);
+    if (!match) return repoId;
+
+    const name = typeof match.name === "string" ? match.name.trim() : "";
+    const slug = typeof match.slug === "string" ? match.slug.trim() : "";
+
+    if (name && slug && name.toLowerCase() !== slug.toLowerCase()) {
+      return `${name}/${slug}`;
+    }
+
+    return name || slug || repoId;
+  }
+
   pi.on("session_start", async (_event, ctx) => {
     const status = await cli(["--json", "power", "status"]);
     if (status.code !== 0) {
@@ -93,7 +113,7 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    const display = parsed.repo || "connected";
+    const display = await resolveSpaceDisplay(parsed.repo);
     ctx.ui.setStatus("is", `📚 ${display}`);
 
     const awareness = await cli(["--json", "awareness"]);
