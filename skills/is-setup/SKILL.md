@@ -3,8 +3,9 @@ name: is-setup
 description: >
   Set up a knowledge space — connect, set purpose and focus, and enable
   automatic orientation. Use when: user says "set up my space", "connect to
-  IdeaSpaces", asks about persistent memory or cross-session context, or
-  is_auth shows no connection. One-time flow, ~5 minutes.
+  IdeaSpaces", asks about persistent memory or cross-session context, is_auth
+  shows no connection, OR the connected space is effectively empty (blank
+  Purpose/Now and little or no structure). One-time flow, ~5 minutes.
 ---
 
 # IdeaSpaces Setup
@@ -12,6 +13,15 @@ description: >
 **Goal:** Connect → Purpose → Now → automatic session orientation.
 
 Do not offer unprompted. Wait for a signal.
+
+## Trigger Note
+
+Treat an effectively empty space as a setup signal:
+- `_agent/purpose.md` blank template
+- `_agent/now.md` blank template
+- little or no meaningful directory structure yet
+
+When those are true, recommend this setup flow explicitly.
 
 ## Flow
 
