@@ -1,9 +1,10 @@
 ---
-name: is-vc
+name: is-vc (draft v2)
 description: Collaborative VC workspace kickoff. Use when a user asks to set up investor workflow, dealflow structure, or firm operating context. Do NOT use for one-off company analysis or routine note capture.
+status: draft
 ---
 
-# VC Workspace Kickoff
+# is-vc — Collaborative Kickoff Draft
 
 ## Intent
 
@@ -170,6 +171,22 @@ Entities (`attached_to`):
 - Don’t overwrite Purpose/Now without confirmation.
 
 ---
+
+## Testing Checklist (draft)
+
+### Triggering
+- Should trigger: "Set up my VC workspace", "Help structure our dealflow process"
+- Should not trigger: "Analyze this startup", "Update this one note"
+
+### Functional
+- After 2–3 questions, produces a usable first draft (story + structure)
+- No writes happen before explicit confirmation
+- Scaffold creates only approved directories/files
+
+### Performance
+- Kickoff feels collaborative, not interrogative
+- User reaches a first useful structure in one short interaction
+- Minimal back-and-forth before first draft
 
 ## Success Test
 
