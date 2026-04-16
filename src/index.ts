@@ -174,7 +174,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "is_auth",
     label: "IS Auth",
-    description: "Connect to a space, create a new space, inspect repo sync state, and manage credentials.",
+    description: "Connect to a space, create a new space, inspect repo sync state, and manage credentials. Spaces are either personal (no hostname) or belong to an organization (hostname like 'ideaspaces.xyz'). Use repos to see both scopes. Use hostname/slug to login to org spaces.",
     promptSnippet: "Connect and manage IdeaSpaces authentication",
     parameters: Type.Object({
       action: Type.Optional(
@@ -191,9 +191,10 @@ export default function (pi: ExtensionAPI) {
           Type.Literal("repo_credential_clear"),
         ])
       ),
-      repo: Type.Optional(Type.String({ description: "Space slug to connect to" })),
+      repo: Type.Optional(Type.String({ description: "Space slug or hostname/slug to connect to (e.g. 'notes' or 'ideaspaces.xyz/notes')" })),
       name: Type.Optional(Type.String({ description: "Space name (for create)" })),
       purpose: Type.Optional(Type.String({ description: "Space purpose (for create)" })),
+      hostname: Type.Optional(Type.String({ description: "Organization hostname for team spaces (for create). Omit for personal space." })),
       value: Type.Optional(Type.String({ description: "Credential value (for repo_credential_set)" })),
     }),
     async execute(_id, params) {
@@ -216,6 +217,7 @@ export default function (pi: ExtensionAPI) {
           const args = ["power", "create", params.name];
           if (params.purpose) args.push("--purpose", params.purpose);
           if (params.repo) args.push("--slug", params.repo);
+          if (params.hostname) args.push("--hostname", params.hostname);
           const result = await run(args);
           if (!isErrorResult(result)) await refreshAwareness();
           return result;
