@@ -28,7 +28,7 @@ pi -e /path/to/pi-is-space
 
 | Tool | What |
 |---|---|
-| `is_auth` | Login, logout, list spaces, connection status |
+| `is_auth` | Login/logout, list spaces, connection status, repo sync status/pull/push, repo credential set/clear |
 | `is_explore` | See tree structure, branch context, and orientation |
 | `is_find` | Find by meaning (`search`), text (`grep`), or metadata (`list`) |
 | `is_read` | Read content + metadata, optional history |
@@ -42,6 +42,20 @@ You can also check status via:
 
 - `is_auth action="status"`
 - `is_auth action="repos"`
+- `is_auth action="repo_status"`
+
+And run repo sync operations:
+
+- `is_auth action="repo_pull"`
+- `is_auth action="repo_push"`
+
+And manage repo credentials for private remotes:
+
+- `is_auth action="repo_credential_set" value="<token-or-username:token>"`
+- `is_auth action="repo_credential_clear"`
+
+> Note: repo sync actions require a recent `@ideaspaces/cli` build that includes
+> `ideaspaces power repo ...` commands.
 
 See also: `MIGRATION.md` for mapping from `pi-sw-space`.
 

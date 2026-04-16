@@ -16,6 +16,14 @@ function fail(text: string) {
   return { content: [{ type: "text" as const, text }], isError: true };
 }
 
+function isErrorResult(result: any): boolean {
+  return result?.isError === true;
+}
+
+function resultText(result: any): string {
+  return result?.content?.[0]?.text ?? "";
+}
+
 function parseJson<T = any>(text: string): T | null {
   try {
     return JSON.parse(text) as T;
@@ -75,6 +83,20 @@ async function run(args: string[], stdin?: string) {
   return ok(out.trim() || err.trim() || "Done");
 }
 
+async function runRepo(args: string[]) {
+  const result = await run(["power", "repo", ...args]);
+  if (!isErrorResult(result)) return result;
+
+  const text = resultText(result);
+  if (text.includes("Unknown command: repo") || text.includes("cannot call sync")) {
+    return fail(
+      "This CLI build does not support repo sync commands yet. Update @ideaspaces/cli to a newer version.",
+    );
+  }
+
+  return result;
+}
+
 export default function (pi: ExtensionAPI) {
   let cachedAwareness: string | null = null;
 
@@ -98,6 +120,28 @@ export default function (pi: ExtensionAPI) {
     return name || slug || repoId;
   }
 
+  async function refreshAwareness(): Promise<void> {
+    const awareness = await cli(["--json", "awareness"]);
+    if (awareness.code !== 0) {
+      cachedAwareness = null;
+      return;
+    }
+    const aw = parseJson<any>(awareness.out);
+    cachedAwareness = aw?.awareness ? String(aw.awareness) : null;
+  }
+
+  async function ensureAwareness(): Promise<void> {
+    if (cachedAwareness !== null) return;
+
+    const status = await cli(["--json", "power", "status"]);
+    if (status.code !== 0) return;
+
+    const parsed = parseJson<any>(status.out);
+    if (!parsed?.connected) return;
+
+    await refreshAwareness();
+  }
+
   pi.on("session_start", async (_event, ctx) => {
     const status = await cli(["--json", "power", "status"]);
     if (status.code !== 0) {
@@ -116,12 +160,11 @@ export default function (pi: ExtensionAPI) {
     const display = await resolveSpaceDisplay(parsed.repo);
     ctx.ui.setStatus("is", `📚 ${display}`);
 
-    const awareness = await cli(["--json", "awareness"]);
-    const aw = parseJson<any>(awareness.out);
-    cachedAwareness = aw?.awareness ? String(aw.awareness) : null;
+    await refreshAwareness();
   });
 
   pi.on("before_agent_start", async (event) => {
+    await ensureAwareness();
     if (!cachedAwareness) return;
     return {
       systemPrompt: `${event.systemPrompt}\n\n[IdeaSpaces Awareness]\n${cachedAwareness}`,
@@ -131,7 +174,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "is_auth",
     label: "IS Auth",
-    description: "Connect to a space. Lists available spaces if multiple exist.",
+    description: "Connect to a space, create a new space, inspect repo sync state, and manage credentials.",
     promptSnippet: "Connect and manage IdeaSpaces authentication",
     parameters: Type.Object({
       action: Type.Optional(
@@ -140,15 +183,27 @@ export default function (pi: ExtensionAPI) {
           Type.Literal("logout"),
           Type.Literal("repos"),
           Type.Literal("status"),
+          Type.Literal("create"),
+          Type.Literal("repo_status"),
+          Type.Literal("repo_pull"),
+          Type.Literal("repo_push"),
+          Type.Literal("repo_credential_set"),
+          Type.Literal("repo_credential_clear"),
         ])
       ),
       repo: Type.Optional(Type.String({ description: "Space slug to connect to" })),
+      name: Type.Optional(Type.String({ description: "Space name (for create)" })),
+      purpose: Type.Optional(Type.String({ description: "Space purpose (for create)" })),
+      value: Type.Optional(Type.String({ description: "Credential value (for repo_credential_set)" })),
     }),
     async execute(_id, params) {
       const action = params.action ?? "login";
       switch (action) {
-        case "login":
-          return run(params.repo ? ["login", params.repo] : ["login"]);
+        case "login": {
+          const result = await run(params.repo ? ["login", params.repo] : ["login"]);
+          if (!isErrorResult(result)) await refreshAwareness();
+          return result;
+        }
         case "logout":
           cachedAwareness = null;
           return run(["power", "logout"]);
@@ -156,6 +211,33 @@ export default function (pi: ExtensionAPI) {
           return run(["power", "repos"]);
         case "status":
           return run(["power", "status"]);
+        case "create": {
+          if (!params.name) return fail("name required for create");
+          const args = ["power", "create", params.name];
+          if (params.purpose) args.push("--purpose", params.purpose);
+          if (params.repo) args.push("--slug", params.repo);
+          const result = await run(args);
+          if (!isErrorResult(result)) await refreshAwareness();
+          return result;
+        }
+        case "repo_status":
+          return runRepo(["status"]);
+        case "repo_pull": {
+          const result = await runRepo(["pull"]);
+          if (!isErrorResult(result)) await refreshAwareness();
+          return result;
+        }
+        case "repo_push": {
+          const result = await runRepo(["push"]);
+          if (!isErrorResult(result)) await refreshAwareness();
+          return result;
+        }
+        case "repo_credential_set": {
+          if (!params.value) return fail("value required for repo_credential_set");
+          return runRepo(["credential", "set", "--value", params.value]);
+        }
+        case "repo_credential_clear":
+          return runRepo(["credential", "clear"]);
       }
     },
   });
@@ -313,7 +395,9 @@ export default function (pi: ExtensionAPI) {
           if (params.tags?.length) args.push("--tags", params.tags.join(","));
           if (params.attached_to?.length) args.push("--attached-to", params.attached_to.join(","));
           if (params.if_match) args.push("--if-match", params.if_match);
-          return run(args, params.content);
+          const result = await run(args, params.content);
+          if (!isErrorResult(result)) cachedAwareness = null;
+          return result;
         }
 
         case "update_metadata": {
@@ -324,18 +408,24 @@ export default function (pi: ExtensionAPI) {
           if (params.accessibility?.length)
             args.push("--accessibility", params.accessibility.join(","));
           if (params.references?.length) args.push("--references", params.references.join(","));
-          return run(args);
+          const result = await run(args);
+          if (!isErrorResult(result)) cachedAwareness = null;
+          return result;
         }
 
         case "move": {
           if (!params.source || !params.destination)
             return fail("source and destination required");
-          return run(["power", "move", params.source, params.destination]);
+          const result = await run(["power", "move", params.source, params.destination]);
+          if (!isErrorResult(result)) cachedAwareness = null;
+          return result;
         }
 
         case "delete": {
           if (!params.path) return fail("path required");
-          return run(["power", "delete", params.path, "--yes"]);
+          const result = await run(["power", "delete", params.path, "--yes"]);
+          if (!isErrorResult(result)) cachedAwareness = null;
+          return result;
         }
       }
     },
