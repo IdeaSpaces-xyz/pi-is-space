@@ -63,6 +63,7 @@ Write fields: `name`, `summary`, `tags`, `attached_to`, `if_match` (conditional 
 - `is_auth repo="my-notes"` — select a specific space
 - `is_auth action="repos"` — list available spaces
 - `is_auth action="status"` — connection info
+- `is_auth action="create" name="My Space"` — create and connect to a new space
 - `is_auth action="logout"` — clear credentials
 
 ## The `_agent/` Convention
