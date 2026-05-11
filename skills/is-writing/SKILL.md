@@ -10,7 +10,7 @@ When writing Notes to IdeaSpaces, follow these principles. They're functional re
 
 ## Summary Is Everything
 
-The `summary` field is the most important thing you write. It's what search shows. It's what navigate shows. It's what loads in awareness context. Write it like the first thing someone reads — because it is.
+The `summary` field is the most important thing you write. It's what awareness and future search surfaces show. Write it like the first thing someone reads — because it is.
 
 Two sentences max. Dense. Immediate orientation. "What is this and why does it matter."
 
@@ -55,7 +55,7 @@ Optional but valuable:
 
 ## Placement
 
-Always `is_explore` the target area first. Understand what branches mean (READMEs). Place content where it compounds with related knowledge. Reuse existing locations before creating new ones.
+Always inspect the target area first (`bash` with `find`/`rg --files`, then `read`). Understand what branches mean (READMEs). Place content where it compounds with related knowledge. Reuse existing locations before creating new ones.
 
 ## Progressive Disclosure
 
