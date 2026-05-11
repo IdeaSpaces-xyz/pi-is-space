@@ -1,14 +1,19 @@
 {
   "name": "@ideaspaces/pi-is-space",
   "version": "0.1.0",
-  "description": "Pi extension for IdeaSpaces — thin CLI-backed wrapper with 5 is_* tools",
+  "type": "module",
+  "description": "Pi extension for IdeaSpaces — local-first CLI-backed tools and skills",
+  "keywords": ["pi-package", "ideaspaces", "agent-skills"],
   "pi": {
     "extensions": ["./src/index.ts"],
     "skills": ["./skills"]
   },
   "dependencies": {
-    "@mariozechner/pi-coding-agent": "*",
-    "@sinclair/typebox": "*",
-    "@ideaspaces/cli": "github:IdeaSpaces-xyz/cli"
+    "@ideaspaces/cli": "github:IdeaSpaces-xyz/cli",
+    "@ideaspaces/sdk": "github:IdeaSpaces-xyz/sdk"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
   }
 }
