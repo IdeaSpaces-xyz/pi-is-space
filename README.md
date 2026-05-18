@@ -1,20 +1,18 @@
 # pi-is-space
 
-Pi extension for [IdeaSpaces](https://ideaspaces.xyz) with the same 5-tool interface as the Claude Code plugin.
+Pi extension for [IdeaSpaces](https://ideaspaces.xyz). Local-first: an ideaspace is a markdown folder with an `_agent/` contract, optional remote sync, and frontmatter-aware capture.
 
 ## Why this exists
 
-`pi-is-space` is parity-mode:
-
-- same tool surface: `is_auth`, `is_explore`, `is_find`, `is_read`, `is_write`
-- same behavior model: thin wrapper that shells out to `ideaspaces --json`
-- same skills: setup, writing, capture, reflect, founder, vc
+`pi-is-space` is the Pi package counterpart to the Claude Code plugin.
 
 Architecture:
 
 ```txt
-Agent (Pi) → pi-is-space (thin extension) → IdeaSpaces CLI --json → SDK → API
+Agent (Pi) → pi-is-space → IdeaSpaces CLI --json → SDK → local files / optional remote sync
 ```
+
+The extension stays thin. Behavior lives in the IdeaSpaces CLI and SDK.
 
 ## Install
 
@@ -26,45 +24,37 @@ pi -e /path/to/pi-is-space
 
 ## Tools
 
+Pi's native `read`, `edit`, `write`, and `bash` cover local navigation and editing. `pi-is-space` adds two IdeaSpaces-aware tools:
+
 | Tool | What |
 |---|---|
-| `is_auth` | Login/logout, list spaces, connection status, repo sync status/pull/push, repo credential set/clear |
-| `is_explore` | See tree structure, branch context, and orientation |
-| `is_find` | Find by meaning (`search`), text (`grep`), or metadata (`list`) |
-| `is_read` | Read content + metadata, optional history |
-| `is_write` | Create, update, move, or delete notes |
+| `is_write` | Create/update a markdown Note with Layer 1 frontmatter (`name`, `summary`, optional `tags`, `attached_to`). |
+| `is_auth` | Log in / out for optional remote sync. |
 
-## Auth
+## Awareness
 
-Run `is_auth` (default action is login). Browser OAuth opens, credentials are stored by the CLI.
+On session start, the extension walks up from `cwd` looking for `_agent/`, formats the awareness block via `@ideaspaces/sdk`, and injects it before each agent turn. Missing `_agent/purpose.md` or `_agent/now.md` are surfaced as drift signals.
 
-You can also check status via:
+## CLI
 
-- `is_auth action="status"`
-- `is_auth action="repos"`
-- `is_auth action="repo_status"`
+The package depends on `@ideaspaces/cli`. The extension resolves the CLI for tool calls and exposes the path to skills as `$IS_CLI_PATH` when available. Skills use a small `is_cli` shell helper so local development, installed packages, and PATH installs all work.
 
-And run repo sync operations:
+## Auth and publish
 
-- `is_auth action="repo_pull"`
-- `is_auth action="repo_push"`
+Auth is optional:
 
-And manage repo credentials for private remotes:
+- `is_auth` — login (opens browser OAuth)
+- `is_auth action="logout"` — clear credentials
 
-- `is_auth action="repo_credential_set" value="<token-or-username:token>"`
-- `is_auth action="repo_credential_clear"`
-
-> Note: repo sync actions require a recent `@ideaspaces/cli` build that includes
-> `ideaspaces power repo ...` commands.
-
-See also: `MIGRATION.md` for mapping from `pi-sw-space`.
+To host a local space remotely, use `/is-publish` or run `ideaspaces publish` from inside the space.
 
 ## Skills
 
 - `is-setup`
+- `is-publish`
 - `is-space`
 - `is-writing`
 - `is-capture`
 - `is-reflect`
-- `is-founder`
-- `is-vc`
+
+See `MIGRATION.md` for mapping from legacy `pi-sw-space`.
