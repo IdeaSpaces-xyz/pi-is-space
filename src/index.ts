@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve as resolvePath, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -81,6 +81,36 @@ function buildFdPathQuery(query: string): string {
   return pattern;
 }
 
+function resolveScopedQuery(root: string, rawQuery: string): { baseDir: string; query: string; displayBase: string } | null {
+  const normalizedQuery = toPosixPath(rawQuery).replace(/^\.\//, "");
+  const slashIndex = normalizedQuery.lastIndexOf("/");
+  if (slashIndex === -1) return null;
+
+  const displayBase = normalizedQuery.slice(0, slashIndex + 1);
+  const query = normalizedQuery.slice(slashIndex + 1);
+  let baseDir: string;
+  if (displayBase.startsWith("~/")) {
+    baseDir = join(homedir(), displayBase.slice(2));
+  } else if (displayBase.startsWith("/")) {
+    baseDir = displayBase;
+  } else {
+    baseDir = join(root, displayBase);
+  }
+
+  try {
+    if (!statSync(baseDir).isDirectory()) return null;
+  } catch {
+    return null;
+  }
+
+  return { baseDir, query, displayBase };
+}
+
+function scopedPathForDisplay(displayBase: string, path: string): string {
+  if (displayBase === "/") return `/${path}`;
+  return `${displayBase}${path}`;
+}
+
 function scorePath(path: string, query: string, isDirectory: boolean): number {
   if (!query) return isDirectory ? 2 : 1;
 
@@ -118,9 +148,12 @@ async function collectFileSuggestions(
   signal: AbortSignal,
 ): Promise<FileSuggestion[] | undefined> {
   const normalizedQuery = toPosixPath(query).replace(/^\.\//, "");
+  const scopedQuery = resolveScopedQuery(root, normalizedQuery);
+  const fdBaseDir = scopedQuery?.baseDir ?? root;
+  const fdQuery = scopedQuery?.query ?? normalizedQuery;
   const args = [
     "--base-directory",
-    root,
+    fdBaseDir,
     "--max-results",
     String(AUTOCOMPLETE_FD_LIMIT),
     "--type",
@@ -138,8 +171,8 @@ async function collectFileSuggestions(
     args.push("--exclude", exclude, "--exclude", `${exclude}/*`, "--exclude", `${exclude}/**`);
   }
 
-  if (normalizedQuery.includes("/")) args.push("--full-path");
-  if (normalizedQuery) args.push(buildFdPathQuery(normalizedQuery));
+  if (fdQuery.includes("/")) args.push("--full-path");
+  if (fdQuery) args.push(buildFdPathQuery(fdQuery));
 
   const result = await pi.exec(fdCommand, args, { signal, timeout: 5_000 });
   if (result.code !== 0) return undefined;
@@ -153,10 +186,11 @@ async function collectFileSuggestions(
       const path = toPosixPath(line);
       const isDirectory = path.endsWith("/");
       const normalizedPath = isDirectory ? path.slice(0, -1) : path;
+      const displayPath = scopedQuery ? scopedPathForDisplay(scopedQuery.displayBase, normalizedPath) : normalizedPath;
       return {
-        path: normalizedPath,
+        path: displayPath,
         isDirectory,
-        score: scorePath(normalizedPath, normalizedQuery, isDirectory),
+        score: scorePath(normalizedPath, fdQuery, isDirectory),
       };
     })
     .filter((suggestion) => suggestion.score > 0)
@@ -308,8 +342,30 @@ export default function (pi: ExtensionAPI) {
           })),
         };
       },
-      applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
-        return current.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
+      applyCompletion(lines, cursorLine, cursorCol, item, _prefix) {
+        const currentLine = lines[cursorLine] ?? "";
+        const textBeforeCursor = currentLine.slice(0, cursorCol);
+        const mention = extractAtMention(textBeforeCursor);
+        if (!mention) return current.applyCompletion(lines, cursorLine, cursorCol, item, _prefix);
+
+        const beforeMention = currentLine.slice(0, cursorCol - mention.prefix.length);
+        const afterCursor = currentLine.slice(cursorCol);
+        const isDirectory = item.label.endsWith("/");
+        const suffix = isDirectory ? "" : " ";
+        const hasTrailingQuote = item.value.endsWith('"');
+        const adjustedAfterCursor = mention.quoted && hasTrailingQuote && afterCursor.startsWith('"')
+          ? afterCursor.slice(1)
+          : afterCursor;
+        const nextLine = `${beforeMention}${item.value}${suffix}${adjustedAfterCursor}`;
+        const nextLines = [...lines];
+        nextLines[cursorLine] = nextLine;
+
+        const cursorOffset = isDirectory && hasTrailingQuote ? item.value.length - 1 : item.value.length;
+        return {
+          lines: nextLines,
+          cursorLine,
+          cursorCol: beforeMention.length + cursorOffset + suffix.length,
+        };
       },
       shouldTriggerFileCompletion(lines, cursorLine, cursorCol) {
         return current.shouldTriggerFileCompletion?.(lines, cursorLine, cursorCol) ?? true;
