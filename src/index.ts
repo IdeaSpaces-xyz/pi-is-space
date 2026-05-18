@@ -1,9 +1,9 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { spawn } from "node:child_process";
-import { existsSync, type Dirent } from "node:fs";
-import { readdir, stat } from "node:fs/promises";
-import { basename, dirname, join, relative, resolve as resolvePath, sep } from "node:path";
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, dirname, join, resolve as resolvePath, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { findSpaceRoot, assembleAwareness } from "@ideaspaces/sdk";
 
@@ -26,9 +26,9 @@ type FileSuggestion = {
   score: number;
 };
 
-const AUTOCOMPLETE_LIMIT = 50;
-const AUTOCOMPLETE_SCAN_LIMIT = 20_000;
-const AUTOCOMPLETE_EXCLUDED_DIRS = new Set([".git", "node_modules"]);
+const AUTOCOMPLETE_LIMIT = 20;
+const AUTOCOMPLETE_FD_LIMIT = 1000;
+const AUTOCOMPLETE_EXCLUDES = [".git", "node_modules", "backups", ".pi", ".claude"];
 
 function ok(text: string): ToolResult {
   return { content: [{ type: "text", text }] };
@@ -60,6 +60,27 @@ function extractAtMention(textBeforeCursor: string): AtMention | null {
   return null;
 }
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function buildFdPathQuery(query: string): string {
+  const normalized = toPosixPath(query);
+  if (!normalized.includes("/")) return normalized;
+
+  const hasTrailingSeparator = normalized.endsWith("/");
+  const trimmed = normalized.replace(/^\/+|\/+$/g, "");
+  if (!trimmed) return normalized;
+
+  let pattern = trimmed
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => escapeRegex(segment))
+    .join("[\\\\/]");
+  if (hasTrailingSeparator) pattern += "[\\\\/]";
+  return pattern;
+}
+
 function scorePath(path: string, query: string, isDirectory: boolean): number {
   if (!query) return isDirectory ? 2 : 1;
 
@@ -70,20 +91,10 @@ function scorePath(path: string, query: string, isDirectory: boolean): number {
 
   if (lowerName === lowerQuery) score = 100;
   else if (lowerName.startsWith(lowerQuery)) score = 80;
-  else if (lowerPath.startsWith(lowerQuery)) score = 70;
   else if (lowerName.includes(lowerQuery)) score = 50;
   else if (lowerPath.includes(lowerQuery)) score = 30;
-  else {
-    let index = 0;
-    for (const char of lowerQuery) {
-      index = lowerPath.indexOf(char, index);
-      if (index === -1) return 0;
-      index += 1;
-    }
-    score = 10;
-  }
 
-  return isDirectory ? score + 5 : score;
+  return isDirectory && score > 0 ? score + 10 : score;
 }
 
 function formatAutocompleteValue(path: string, isDirectory: boolean, quoted: boolean): string {
@@ -92,50 +103,63 @@ function formatAutocompleteValue(path: string, isDirectory: boolean, quoted: boo
   return `@"${completionPath}"`;
 }
 
-async function collectFileSuggestions(root: string, query: string, signal: AbortSignal): Promise<FileSuggestion[]> {
-  const suggestions: FileSuggestion[] = [];
-  let scanned = 0;
+function resolveFdCommand(): string | null {
+  const agentDir = process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
+  const bundledFd = join(agentDir, "bin", process.platform === "win32" ? "fd.exe" : "fd");
+  if (existsSync(bundledFd)) return bundledFd;
+  return "fd";
+}
 
-  async function walk(dir: string): Promise<void> {
-    if (signal.aborted || scanned >= AUTOCOMPLETE_SCAN_LIMIT) return;
+async function collectFileSuggestions(
+  pi: ExtensionAPI,
+  fdCommand: string,
+  root: string,
+  query: string,
+  signal: AbortSignal,
+): Promise<FileSuggestion[] | undefined> {
+  const normalizedQuery = toPosixPath(query).replace(/^\.\//, "");
+  const args = [
+    "--base-directory",
+    root,
+    "--max-results",
+    String(AUTOCOMPLETE_FD_LIMIT),
+    "--type",
+    "f",
+    "--type",
+    "d",
+    "--follow",
+    "--hidden",
+    "--no-ignore",
+    "--no-ignore-vcs",
+    "--no-ignore-parent",
+  ];
 
-    let entries: Dirent[];
-    try {
-      entries = await readdir(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-
-    entries.sort((a, b) => a.name.localeCompare(b.name));
-
-    for (const entry of entries) {
-      if (signal.aborted || scanned >= AUTOCOMPLETE_SCAN_LIMIT) return;
-      if (entry.isDirectory() && AUTOCOMPLETE_EXCLUDED_DIRS.has(entry.name)) continue;
-
-      const absolutePath = join(dir, entry.name);
-      const isSymlink = entry.isSymbolicLink();
-      let isDirectory = entry.isDirectory();
-      if (isSymlink) {
-        try {
-          isDirectory = (await stat(absolutePath)).isDirectory();
-        } catch {
-          continue;
-        }
-      }
-
-      const relativePath = toPosixPath(relative(root, absolutePath));
-      if (!relativePath || relativePath.startsWith("..")) continue;
-
-      scanned += 1;
-      const score = scorePath(relativePath, query, isDirectory);
-      if (score > 0) suggestions.push({ path: relativePath, isDirectory, score });
-
-      if (isDirectory && !isSymlink) await walk(absolutePath);
-    }
+  for (const exclude of AUTOCOMPLETE_EXCLUDES) {
+    args.push("--exclude", exclude, "--exclude", `${exclude}/*`, "--exclude", `${exclude}/**`);
   }
 
-  await walk(root);
-  return suggestions
+  if (normalizedQuery.includes("/")) args.push("--full-path");
+  if (normalizedQuery) args.push(buildFdPathQuery(normalizedQuery));
+
+  const result = await pi.exec(fdCommand, args, { signal, timeout: 5_000 });
+  if (result.code !== 0) return undefined;
+  if (!result.stdout) return [];
+
+  return result.stdout
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const path = toPosixPath(line);
+      const isDirectory = path.endsWith("/");
+      const normalizedPath = isDirectory ? path.slice(0, -1) : path;
+      return {
+        path: normalizedPath,
+        isDirectory,
+        score: scorePath(normalizedPath, normalizedQuery, isDirectory),
+      };
+    })
+    .filter((suggestion) => suggestion.score > 0)
     .sort((a, b) => b.score - a.score || a.path.localeCompare(b.path))
     .slice(0, AUTOCOMPLETE_LIMIT);
 }
@@ -232,6 +256,8 @@ async function buildAwareness(cwd: string): Promise<{ root: string | null; text:
 export default function (pi: ExtensionAPI) {
   let cachedAwareness: string | null = null;
   let cachedRoot: string | null = null;
+  const fdCommand = resolveFdCommand();
+  let autocompleteFailureShown = false;
 
   async function refreshAwareness(cwd: string): Promise<void> {
     try {
@@ -261,7 +287,16 @@ export default function (pi: ExtensionAPI) {
         const mention = extractAtMention(textBeforeCursor);
         if (!mention) return current.getSuggestions(lines, cursorLine, cursorCol, options);
 
-        const suggestions = await collectFileSuggestions(ctx.cwd, mention.query, options.signal);
+        if (!fdCommand) return current.getSuggestions(lines, cursorLine, cursorCol, options);
+
+        const suggestions = await collectFileSuggestions(pi, fdCommand, ctx.cwd, mention.query, options.signal);
+        if (!suggestions) {
+          if (!autocompleteFailureShown) {
+            autocompleteFailureShown = true;
+            ctx.ui.notify("IdeaSpaces @mention expansion failed; check fd availability", "warning");
+          }
+          return null;
+        }
         if (suggestions.length === 0) return null;
 
         return {
