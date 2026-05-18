@@ -1,8 +1,9 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { dirname, resolve as resolvePath } from "node:path";
+import { existsSync, type Dirent } from "node:fs";
+import { readdir, stat } from "node:fs/promises";
+import { basename, dirname, join, relative, resolve as resolvePath, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { findSpaceRoot, assembleAwareness } from "@ideaspaces/sdk";
 
@@ -12,6 +13,22 @@ type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
   isError?: boolean;
 };
+
+type AtMention = {
+  prefix: string;
+  query: string;
+  quoted: boolean;
+};
+
+type FileSuggestion = {
+  path: string;
+  isDirectory: boolean;
+  score: number;
+};
+
+const AUTOCOMPLETE_LIMIT = 50;
+const AUTOCOMPLETE_SCAN_LIMIT = 20_000;
+const AUTOCOMPLETE_EXCLUDED_DIRS = new Set([".git", "node_modules"]);
 
 function ok(text: string): ToolResult {
   return { content: [{ type: "text", text }] };
@@ -23,6 +40,104 @@ function fail(text: string): ToolResult {
 
 function isErrorResult(result: ToolResult): boolean {
   return result.isError === true;
+}
+
+function toPosixPath(path: string): string {
+  return path.split(sep).join("/");
+}
+
+function extractAtMention(textBeforeCursor: string): AtMention | null {
+  const quoted = textBeforeCursor.match(/(?:^|\s)(@"[^"]*)$/);
+  if (quoted?.[1]) {
+    return { prefix: quoted[1], query: quoted[1].slice(2), quoted: true };
+  }
+
+  const unquoted = textBeforeCursor.match(/(?:^|\s)(@[^\s"]*)$/);
+  if (unquoted?.[1]) {
+    return { prefix: unquoted[1], query: unquoted[1].slice(1), quoted: false };
+  }
+
+  return null;
+}
+
+function scorePath(path: string, query: string, isDirectory: boolean): number {
+  if (!query) return isDirectory ? 2 : 1;
+
+  const lowerPath = path.toLowerCase();
+  const lowerName = basename(path).toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  let score = 0;
+
+  if (lowerName === lowerQuery) score = 100;
+  else if (lowerName.startsWith(lowerQuery)) score = 80;
+  else if (lowerPath.startsWith(lowerQuery)) score = 70;
+  else if (lowerName.includes(lowerQuery)) score = 50;
+  else if (lowerPath.includes(lowerQuery)) score = 30;
+  else {
+    let index = 0;
+    for (const char of lowerQuery) {
+      index = lowerPath.indexOf(char, index);
+      if (index === -1) return 0;
+      index += 1;
+    }
+    score = 10;
+  }
+
+  return isDirectory ? score + 5 : score;
+}
+
+function formatAutocompleteValue(path: string, isDirectory: boolean, quoted: boolean): string {
+  const completionPath = isDirectory ? `${path}/` : path;
+  if (!quoted && !completionPath.includes(" ")) return `@${completionPath}`;
+  return `@"${completionPath}"`;
+}
+
+async function collectFileSuggestions(root: string, query: string, signal: AbortSignal): Promise<FileSuggestion[]> {
+  const suggestions: FileSuggestion[] = [];
+  let scanned = 0;
+
+  async function walk(dir: string): Promise<void> {
+    if (signal.aborted || scanned >= AUTOCOMPLETE_SCAN_LIMIT) return;
+
+    let entries: Dirent[];
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+
+    for (const entry of entries) {
+      if (signal.aborted || scanned >= AUTOCOMPLETE_SCAN_LIMIT) return;
+      if (entry.isDirectory() && AUTOCOMPLETE_EXCLUDED_DIRS.has(entry.name)) continue;
+
+      const absolutePath = join(dir, entry.name);
+      const isSymlink = entry.isSymbolicLink();
+      let isDirectory = entry.isDirectory();
+      if (isSymlink) {
+        try {
+          isDirectory = (await stat(absolutePath)).isDirectory();
+        } catch {
+          continue;
+        }
+      }
+
+      const relativePath = toPosixPath(relative(root, absolutePath));
+      if (!relativePath || relativePath.startsWith("..")) continue;
+
+      scanned += 1;
+      const score = scorePath(relativePath, query, isDirectory);
+      if (score > 0) suggestions.push({ path: relativePath, isDirectory, score });
+
+      if (isDirectory && !isSymlink) await walk(absolutePath);
+    }
+  }
+
+  await walk(root);
+  return suggestions
+    .sort((a, b) => b.score - a.score || a.path.localeCompare(b.path))
+    .slice(0, AUTOCOMPLETE_LIMIT);
 }
 
 function resolveCli(): string {
@@ -136,6 +251,35 @@ export default function (pi: ExtensionAPI) {
     } else {
       ctx.ui.setStatus("is", "📚 local-first");
     }
+
+    // IdeaSpaces often uses .gitignore as a sharing boundary, not a local
+    // context boundary. Broaden @mention discovery to include gitignored local
+    // files while still excluding dependency and git metadata noise.
+    ctx.ui.addAutocompleteProvider((current) => ({
+      async getSuggestions(lines, cursorLine, cursorCol, options) {
+        const textBeforeCursor = (lines[cursorLine] ?? "").slice(0, cursorCol);
+        const mention = extractAtMention(textBeforeCursor);
+        if (!mention) return current.getSuggestions(lines, cursorLine, cursorCol, options);
+
+        const suggestions = await collectFileSuggestions(ctx.cwd, mention.query, options.signal);
+        if (suggestions.length === 0) return null;
+
+        return {
+          prefix: mention.prefix,
+          items: suggestions.map((suggestion) => ({
+            value: formatAutocompleteValue(suggestion.path, suggestion.isDirectory, mention.quoted),
+            label: `${basename(suggestion.path)}${suggestion.isDirectory ? "/" : ""}`,
+            description: suggestion.path,
+          })),
+        };
+      },
+      applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
+        return current.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
+      },
+      shouldTriggerFileCompletion(lines, cursorLine, cursorCol) {
+        return current.shouldTriggerFileCompletion?.(lines, cursorLine, cursorCol) ?? true;
+      },
+    }));
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
