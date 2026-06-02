@@ -7,7 +7,7 @@ description: >
   when working with `is_*` tools or when the user asks how to navigate
   their space. Native read/edit/write/bash cover most navigation;
   `is_*` adds frontmatter-aware capture and sync state.
-allowed-tools: "is_write is_auth read edit write bash"
+allowed-tools: "is_write is_status is_commit is_sync is_auth read edit write bash"
 ---
 
 # Working in an Ideaspace
@@ -17,7 +17,7 @@ An ideaspace is a markdown folder where knowledge accumulates. The Pi extension 
 You have two sets of tools:
 
 - **Native** — `read`, `edit`, `write`, `bash`. Default for navigation, search, and source-code work.
-- **`is_*` tools** — frontmatter-aware capture (`is_write`) and sync state (`is_auth`). Use when knowledge needs Layer 1 frontmatter or when you need to know whether sync is wired.
+- **`is_*` tools** — frontmatter-aware capture (`is_write`), capture state (`is_status`), explicit save (`is_commit`), sync (`is_sync`), and auth (`is_auth`). Use when knowledge needs Layer 1 frontmatter or when capture/sync state matters.
 
 ## Start here
 
@@ -79,17 +79,43 @@ Within user content, voices can coexist at different branches. Don't mix them in
 
 When capturing from a conversation, check the target folder's voice before writing. If the folder is someone's raw personal thinking, don't write co-produced notes there — create a subfolder. See [is-writing](../is-writing/SKILL.md) for voice guidance and [is-capture](../is-capture/SKILL.md) for when to propose capture.
 
-## `is_write` — create/update with Layer 1 frontmatter
+## Capture tools
+
+### `is_write` — create/update with Layer 1 frontmatter
 
 Use for capture. Carries the writing standard. Better than raw filesystem `write` when the file should compound as a Note.
 
-- `is_write path="analysis.md" content="..." name="Analysis" summary="Dense orientation"` — create or replace the Note's frontmatter and body
+- `is_write path="analysis.md" content="..." name="Analysis" summary="Dense orientation"` — create or update the Note's frontmatter and body, stage it, record it in IdeaSpaces session state, and return a content `sha`
 - Optional fields: `tags`, `attached_to`, `if_match`, `force`, `cwd`
 
 Replace-semantics: callers specify all Layer 1 + 2 fields they want set; existing frontmatter is replaced wholesale and the body is preserved. For local file moves, deletions, and metadata-only edits, use native `bash` (`git mv`, `rm`) and `edit`.
 
 Layer 1 (required): `name`, `summary`.
 Layer 2 (optional): `tags`, `attached_to`.
+
+Safe update flow:
+
+- First update to an existing file: call `is_status({ path })` to get `sha`, then `is_write({ path, content, if_match: sha })`.
+- Refinement of a file just written: use the `sha` returned by the previous `is_write` response as the next `if_match`.
+- `force: true` is the escape hatch after you've re-read and reconciled divergent content.
+
+### `is_status` — capture state and file sha
+
+- No path: shows git position plus IdeaSpaces session-tracked captures awaiting commit.
+- With `path`: returns single-file state, including `sha` for `is_write.if_match`.
+
+### `is_commit` — explicit save
+
+Commit only captured paths after user confirmation:
+
+- `is_commit message="Capture decision" tracked=true` — commit the session-tracked capture paths
+- `is_commit message="Capture decision" paths=["notes/decision.md"]` — commit explicit paths
+
+It never sweeps unrelated staged user work into the capture commit.
+
+### `is_sync` — push committed captures
+
+Sync integrates remote changes and pushes committed captures. It refuses while IdeaSpaces session-tracked captures remain uncommitted. Use `dry_run: true` to preview.
 
 **`cwd` matters when you've `cd`-ed inside `bash`.** A `cd subdir` in a `bash` invocation changes that subprocess's cwd; it doesn't propagate back to Pi's extension process. If you've worked in a subdir during the session and then call `is_write` with a relative `path`, `is_write` resolves it against the Pi session cwd — likely the wrong tree.
 

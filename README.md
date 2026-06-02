@@ -24,11 +24,14 @@ pi -e /path/to/pi-is-space
 
 ## Tools
 
-Pi's native `read`, `edit`, `write`, and `bash` cover local navigation and editing. `pi-is-space` adds two IdeaSpaces-aware tools:
+Pi's native `read`, `edit`, `write`, and `bash` cover local navigation and editing. `pi-is-space` adds IdeaSpaces-aware tools for capture and optional sync:
 
 | Tool | What |
 |---|---|
-| `is_write` | Create/update a markdown Note with Layer 1 frontmatter (`name`, `summary`, optional `tags`, `attached_to`). |
+| `is_write` | Create/update a markdown Note with Layer 1 frontmatter, stage it, track it in session state, and return a content `sha`. |
+| `is_status` | Show git/capture state, or return a file `sha` for safe `is_write.if_match` updates. |
+| `is_commit` | Commit only explicit or session-tracked capture paths after confirmation; never sweep unrelated staged work. |
+| `is_sync` | Integrate remote changes and push committed captures; refuses while tracked captures remain uncommitted. |
 | `is_auth` | Log in / out for optional remote sync. |
 
 ## Awareness
@@ -56,5 +59,7 @@ To host a local space remotely, use `/is-publish` or run `ideaspaces publish` fr
 - `is-writing`
 - `is-capture`
 - `is-reflect`
+
+Capture flow: `is_write` → refine with returned `sha` or `is_status({ path })` → user confirms → `is_commit` → optional `is_sync`.
 
 See `MIGRATION.md` for mapping from legacy `pi-sw-space`.
