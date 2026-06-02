@@ -1,0 +1,100 @@
+name: SLC Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+jobs:
+  slc-review:
+    if: |
+      !github.event.pull_request.draft &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-review') &&
+      !contains(github.event.pull_request.labels.*.name, 'tiny')
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run SLC Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Review this pull request using our SLC (Simple, Lovable, Complete) principles for the IdeaSpaces Pi extension.
+
+            ## Context
+            - This repo: `@ideaspaces/pi-is-space`, a Pi extension giving IdeaSpaces tools local-first parity with the Claude Code plugin. Entry point `src/index.ts`; skills shipped under `skills/`.
+            - **Thin wrapper only.** Behavior lives in the IdeaSpaces CLI and SDK — this package adapts them to Pi. The data flow is: `Agent (Pi) → pi-is-space → IdeaSpaces CLI --json → SDK → local files / optional remote sync`.
+            - Tool surface: `is_write`, `is_status`, `is_commit`, `is_sync`, `is_auth`. Pi's native `read`/`edit`/`write`/`bash` cover navigation, search, code/config edits, git, moves, and deletes — pi-is-space must not duplicate them.
+            - No `sw_*` tools (that's the legacy `pi-sw-space`, remote-first surface). New work lives here.
+            - Dependencies: `@ideaspaces/cli` and `@ideaspaces/sdk` pinned by git SHA; peer deps on `@earendil-works/pi-coding-agent` and `typebox`.
+            - Session awareness: on start, walk up from `cwd` for `_agent/`, assemble awareness via `@ideaspaces/sdk`, inject before agent turns. Missing `_agent/purpose.md` / `_agent/now.md` are drift signals, not gaps to silently fill.
+            - Reference: this repo's CLAUDE.md and the monorepo root CLAUDE.md (root principles).
+
+            ## SLC label context
+            - `slc:simple` / `slc:lovable` / `slc:complete`: quick validation for labeled dimensions, deeper review for unlabeled.
+            - `needs:slc-review`: do deeper analysis.
+            - No SLC labels: standard full review.
+
+            ## SLC Framework Review
+
+            ### Simple 🎯
+            - Is this the simplest adapter that bridges Pi to the CLI/SDK?
+            - Logic that belongs in the CLI or SDK should NOT leak into this wrapper. Push behavior down, keep the extension thin.
+            - Does it reuse Pi's native `read`/`edit`/`write`/`bash` instead of reimplementing navigation, search, git, or file ops?
+            - Any unnecessary new abstractions or tool surface?
+
+            ### Lovable ❤️
+            - Tool ergonomics: clear schemas, predictable defaults, errors from the CLI/SDK surfaced legibly rather than swallowed.
+            - Capture flow stays coherent: `is_write` → refine with returned `sha` or `is_status({ path })` → user confirms → `is_commit` → optional `is_sync`.
+            - Graceful degradation: absent `_agent/`, missing space root, CLI/sync/auth failures handled without crashing the session.
+            - Awareness injection is a signal, not noise — drift surfaces honestly.
+
+            ### Complete 🏁
+            - Does the change keep tool registration, schemas, and skills consistent with each other?
+            - No leftover `sw_*` / remote-first dead code, stale skill references, or unused imports.
+            - Skills under `skills/` match the actual tool surface and capture flow.
+            - Dependency pins (CLI/SDK git SHAs) updated deliberately when behavior depends on them — not left stale, not bumped blindly.
+
+            ## pi-is-space-specific checks
+            - **Thin wrapper preservation.** Reject logic that should live in the CLI or SDK. This package adapts, it does not implement.
+            - **No tool duplication.** Don't add tools that re-do Pi natives (`read`/`edit`/`write`/`bash`).
+            - **No `sw_*` revival.** The remote-first surface belongs to legacy `pi-sw-space`.
+            - **Read-only awareness assembly.** Session-start awareness walks the tree and reads; it must not write or mutate `_agent/`.
+            - **Cross-platform paths** via `node:path` (no `/` string concatenation).
+            - **Async by default** for any I/O or CLI invocation.
+
+            ## Anti-pattern detection 🚨
+            - Reimplementing CLI/SDK behavior inside the wrapper.
+            - Adding speculative tools or schema surface no agent flow needs yet.
+            - Swallowing CLI/SDK errors so failures look like successes.
+            - Auto-filling missing `_agent/` files instead of surfacing drift.
+            - Bumping dependency SHAs without a stated reason tied to the change.
+
+            ## Output format
+
+            **SLC Assessment:**
+            - ✅/⚠️/❌ Simple: [brief assessment]
+            - ✅/⚠️/❌ Lovable: [brief assessment]
+            - ✅/⚠️/❌ Complete: [brief assessment]
+
+            **Anti-Patterns Found:** [list or "None detected"]
+
+            **pi-is-space-Specific Issues:** [list or "None detected"]
+
+            **Detailed Feedback:** [specific issues and suggestions]
+
+            **Recommendation:** Approve / Request Changes / Comment
+
+            Use `gh pr comment` to post your review.
+
+          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
