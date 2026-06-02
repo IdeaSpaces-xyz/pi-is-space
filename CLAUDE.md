@@ -12,9 +12,12 @@ Agent (Pi) → pi-is-space → IdeaSpaces CLI --json → SDK → local files / o
 
 ## Tool Surface
 
-Exactly 2 tools:
+IdeaSpaces-aware tools:
 
-- `is_write` — frontmatter-aware Note writes
+- `is_write` — frontmatter-aware Note writes; stages, tracks, and returns `sha`
+- `is_status` — capture/git state and file `sha` for safe updates
+- `is_commit` — explicit save; commits only tracked or explicit capture paths
+- `is_sync` — integrates remote changes and pushes committed captures
 - `is_auth` — login/logout for optional sync
 
 Pi's native `read`, `edit`, `write`, and `bash` cover navigation, search, code/config editing, git, moves, and deletes.
@@ -30,6 +33,8 @@ On session start, walk up from `cwd` looking for `_agent/`, use `@ideaspaces/sdk
 Use-case layer shipped in `skills/`:
 
 - is-setup, is-publish, is-space, is-writing, is-capture, is-reflect
+
+Capture flow: `is_write` → refine with returned `sha` or `is_status({ path })` → user confirms → `is_commit` → optional `is_sync`.
 
 ## Development
 

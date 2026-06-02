@@ -9,8 +9,8 @@
     "skills": ["./skills"]
   },
   "dependencies": {
-    "@ideaspaces/cli": "github:IdeaSpaces-xyz/cli",
-    "@ideaspaces/sdk": "github:IdeaSpaces-xyz/sdk"
+    "@ideaspaces/cli": "git+https://github.com/IdeaSpaces-xyz/cli.git#bf3e32b58e00dafdaff05b052a3f98654b823040",
+    "@ideaspaces/sdk": "git+https://github.com/IdeaSpaces-xyz/sdk.git#dc17af97a376980165b13ee198c64eab8b0c0d0b"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",

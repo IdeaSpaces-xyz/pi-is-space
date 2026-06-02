@@ -6,7 +6,7 @@ description: >
   structure outgrown. Offered as a readiness check (both sides decide whether
   to reflect now). Triggers at natural breaks or after state updates, not
   mid-task.
-allowed-tools: "is_write read bash"
+allowed-tools: "is_write is_status read bash"
 user-invocable: false
 ---
 
@@ -31,6 +31,8 @@ Reflection is the trigger; recalibration is what it runs. Offered as a readiness
 ## How
 
 Read current state first — `read` `_agent/purpose.md` and `_agent/now.md`. If either doesn't exist yet, that's the first reflection: the contract names them, so absence means direction hasn't been captured. Surface it and propose capturing the missing file before reflecting on what's there. `bash` recent activity (`find`, `git diff`, `git log`) if needed.
+
+Before asserting that something "shipped", "is implemented", or "is pending" based on a doc, verify against the code. The code may live in a sibling repo. Use `bash` (`rg`, `git log`, `git diff`) and `read` to compare the doc with implementation reality; treat doc status lines as hints, not authority.
 
 Be specific: "The Now says 'build skill packages.' We've defined three. Update the bullets?" Not "should we update Now?"
 

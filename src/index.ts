@@ -11,6 +11,7 @@ type CliResult = { out: string; err: string; code: number };
 
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
+  details: Record<string, unknown>;
   isError?: boolean;
 };
 
@@ -31,11 +32,11 @@ const AUTOCOMPLETE_FD_LIMIT = 1000;
 const AUTOCOMPLETE_EXCLUDES = [".git", "node_modules", "backups", ".pi", ".claude"];
 
 function ok(text: string): ToolResult {
-  return { content: [{ type: "text", text }] };
+  return { content: [{ type: "text", text }], details: {} };
 }
 
 function fail(text: string): ToolResult {
-  return { content: [{ type: "text", text }], isError: true };
+  return { content: [{ type: "text", text }], details: {}, isError: true };
 }
 
 function isErrorResult(result: ToolResult): boolean {
@@ -413,8 +414,8 @@ export default function (pi: ExtensionAPI) {
     name: "is_write",
     label: "IS Write",
     description:
-      "Create or update a Note with Layer 1 frontmatter (name, summary). Use for capture; native file tools cover code/config and ordinary edits.",
-    promptSnippet: "Create/update a markdown Note with IdeaSpaces frontmatter",
+      "Create or update a Note with Layer 1 frontmatter (name, summary). Stages the file, records it in IdeaSpaces session state, and returns its content sha for safe refinement. Use for capture; native file tools cover code/config and ordinary edits.",
+    promptSnippet: "Create/update a markdown Note with IdeaSpaces frontmatter; stages + returns sha",
     parameters: Type.Object({
       path: Type.String({ description: "File path within the ideaspace" }),
       content: Type.String({ description: "Markdown content; frontmatter is prepended automatically" }),
@@ -422,8 +423,13 @@ export default function (pi: ExtensionAPI) {
       summary: Type.Optional(Type.String({ description: "Dense summary for search/orientation" })),
       tags: Type.Optional(Type.Array(Type.String())),
       attached_to: Type.Optional(Type.Array(Type.String({ description: "Entity binding" }))),
-      if_match: Type.Optional(Type.String({ description: "Reserved for conditional writes" })),
-      force: Type.Optional(Type.Boolean({ description: "Overwrite an existing file" })),
+      if_match: Type.Optional(
+        Type.String({
+          description:
+            "Content sha from a prior is_write response or is_status({ path }); refuses on mismatch unless force is true.",
+        }),
+      ),
+      force: Type.Optional(Type.Boolean({ description: "Overwrite without if_match after reconciling divergent content" })),
       cwd: Type.Optional(
         Type.String({
           description:
@@ -431,7 +437,8 @@ export default function (pi: ExtensionAPI) {
         }),
       ),
     }),
-    async execute(_id, params) {
+    async execute(_id, params, _signal, _onUpdate, ctx) {
+      const cwd = params.cwd || ctx.cwd;
       const args = ["write", params.path];
       if (params.name) args.push("--name", params.name);
       if (params.summary) args.push("--summary", params.summary);
@@ -440,9 +447,89 @@ export default function (pi: ExtensionAPI) {
       if (params.if_match) args.push("--if-match", params.if_match);
       if (params.force) args.push("--force");
 
-      const result = await run(args, params.content, params.cwd);
-      if (!isErrorResult(result)) await refreshAwareness(params.cwd || process.cwd());
+      const result = await run(args, params.content, cwd);
+      if (!isErrorResult(result)) await refreshAwareness(cwd);
       return result;
+    },
+  });
+
+  pi.registerTool({
+    name: "is_status",
+    label: "IS Status",
+    description:
+      "Show IdeaSpaces capture state. Without path: git position plus session-tracked captures awaiting commit. With path: single-file state including sha for is_write if_match.",
+    promptSnippet: "Inspect IdeaSpaces capture state or get a file sha for safe updates",
+    parameters: Type.Object({
+      path: Type.Optional(
+        Type.String({
+          description:
+            "Optional file path. When present, returns { exists, sha, in_index, modified, in_tracked }; use sha as is_write.if_match.",
+        }),
+      ),
+      cwd: Type.Optional(
+        Type.String({
+          description:
+            "Absolute working directory for path resolution. Pass this if the intended cwd differs from the session start directory.",
+        }),
+      ),
+    }),
+    async execute(_id, params, _signal, _onUpdate, ctx) {
+      const args = ["status"];
+      if (params.path) args.push("--path", params.path);
+      return run(args, undefined, params.cwd || ctx.cwd);
+    },
+  });
+
+  pi.registerTool({
+    name: "is_commit",
+    label: "IS Commit",
+    description:
+      "Save captured Notes as an explicit commit. Commits only explicit paths, or the IdeaSpaces session-tracked paths when tracked=true; never sweeps unrelated staged user work. Confirm with the user before calling.",
+    promptSnippet: "Commit only captured/tracked IdeaSpaces paths after user confirmation",
+    parameters: Type.Object({
+      message: Type.String({ description: "Commit message, user-provided or user-confirmed" }),
+      paths: Type.Optional(
+        Type.Array(Type.String({ description: "Exact path to commit; omit only when tracked=true" })),
+      ),
+      tracked: Type.Optional(
+        Type.Boolean({ description: "Commit the IdeaSpaces session-tracked capture paths instead of explicit paths" }),
+      ),
+      cwd: Type.Optional(
+        Type.String({
+          description:
+            "Absolute working directory for path resolution. Pass this if the intended cwd differs from the session start directory.",
+        }),
+      ),
+    }),
+    async execute(_id, params, _signal, _onUpdate, ctx) {
+      const args = ["commit", "-m", params.message];
+      if (params.tracked) args.push("--tracked");
+      else if (params.paths?.length) args.push(...params.paths);
+      return run(args, undefined, params.cwd || ctx.cwd);
+    },
+  });
+
+  pi.registerTool({
+    name: "is_sync",
+    label: "IS Sync",
+    description:
+      "Integrate remote changes and push committed captures. Refuses while IdeaSpaces session-tracked captures remain uncommitted. Use dry_run to preview first.",
+    promptSnippet: "Sync committed IdeaSpaces captures; dry-run before mutating when useful",
+    parameters: Type.Object({
+      dry_run: Type.Optional(Type.Boolean({ description: "Preview sync state without fetch, rebase/merge, or push" })),
+      rebase: Type.Optional(Type.Boolean({ description: "Use rebase when integrating remote changes (default true)" })),
+      cwd: Type.Optional(
+        Type.String({
+          description:
+            "Absolute working directory for path resolution. Pass this if the intended cwd differs from the session start directory.",
+        }),
+      ),
+    }),
+    async execute(_id, params, _signal, _onUpdate, ctx) {
+      const args = ["sync"];
+      if (params.dry_run) args.push("--dry-run");
+      if (params.rebase === false) args.push("--rebase=false");
+      return run(args, undefined, params.cwd || ctx.cwd);
     },
   });
 }

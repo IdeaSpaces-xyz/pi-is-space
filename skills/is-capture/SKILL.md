@@ -5,7 +5,7 @@ description: >
   is made, understanding shifts, research produces a finding, or context would
   save the next session time. Proposes, doesn't auto-save. NOT for code, tasks,
   or preferences.
-allowed-tools: "is_write read bash"
+allowed-tools: "is_write is_status is_commit is_sync read bash"
 user-invocable: false
 ---
 
@@ -27,7 +27,15 @@ Brief. Don't interrupt flow.
 
 > "That decision about [X] is worth capturing. Want me to write it to the space?"
 
-If yes: `bash` (`find`/`rg`) first to avoid duplicates, `read` the target area for context, then `is_write` to capture with Layer 1 frontmatter (`name`, `summary`). Follow [is-writing](../is-writing/SKILL.md) standard.
+If yes:
+
+1. `bash` (`find`/`rg`) first to avoid duplicates; `read` the target area for context.
+2. `is_write` to capture with Layer 1 frontmatter (`name`, `summary`). It stages the file, tracks it in IdeaSpaces session state, and returns a content `sha`.
+3. For a refinement to a file just written, call `is_write` again with `if_match: <sha>` from the previous response. For a first update to an existing file, call `is_status({ path })` first and use the returned `sha` as `if_match`.
+4. **Confirm before saving.** On user agreement, call `is_commit({ message, tracked: true })` or pass explicit `paths`. It commits only captured/tracked paths, not unrelated staged user work.
+5. Optionally `is_sync` to push committed captures.
+
+Follow [is-writing](../is-writing/SKILL.md) standard.
 
 If no: drop it. Don't re-ask.
 
