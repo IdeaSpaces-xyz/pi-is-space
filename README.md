@@ -34,6 +34,18 @@ Pi's native `read`, `edit`, `write`, and `bash` cover local navigation and editi
 | `is_sync` | Integrate remote changes and push committed captures; refuses while tracked captures remain uncommitted. |
 | `is_auth` | Log in / out for optional remote sync. |
 
+## Commands
+
+Human-facing capture actions are Pi-native commands:
+
+| Command | What |
+|---|---|
+| `/is-status` | Show git/capture state and refresh the footer/widget. |
+| `/is-commit` | Review session-tracked captures, enter a commit message, confirm, then commit only those paths. |
+| `/is-sync` | Run `sync --dry-run`, confirm the plan, then sync committed captures. |
+
+When captures await commit, the extension shows a small widget near the editor so state stays visible without reminder spam.
+
 ## Awareness
 
 On session start, the extension walks up from `cwd` looking for `_agent/`, formats the awareness block via `@ideaspaces/sdk`, and injects it before each agent turn. Missing `_agent/purpose.md` or `_agent/now.md` are surfaced as drift signals.

@@ -20,6 +20,12 @@ IdeaSpaces-aware tools:
 - `is_sync` — integrates remote changes and pushes committed captures
 - `is_auth` — login/logout for optional sync
 
+Pi-native commands for human-facing flow:
+
+- `/is-status` — show capture/sync state and refresh UI
+- `/is-commit` — review tracked captures, collect a message, confirm, commit tracked paths only
+- `/is-sync` — dry-run, confirm, sync committed captures
+
 Pi's native `read`, `edit`, `write`, and `bash` cover navigation, search, code/config editing, git, moves, and deletes.
 
 No `sw_*` tools in this package.
