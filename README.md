@@ -46,6 +46,12 @@ Human-facing capture actions are Pi-native commands:
 
 When captures await commit, the extension shows a small widget near the editor so state stays visible without reminder spam.
 
+## Runtime guardrails
+
+The extension watches native `write` / `edit` results. If a markdown or `_agent/` file inside the active ideaspace is changed with native tools, the tool result gets a short nudge to prefer `is_write` for durable capture so the path is staged, tracked, and safe to commit with `/is-commit`. Source-code writes stay silent, including markdown inside nested code repos unless that repo has its own `_agent/` ideaspace.
+
+Before switching or forking sessions, Pi checks for session-tracked captures awaiting commit. In interactive mode it offers to save now, proceed without saving, or cancel. In non-interactive mode it cancels conservatively when pending captures exist.
+
 ## Awareness
 
 On session start, the extension walks up from `cwd` looking for `_agent/`, formats the awareness block via `@ideaspaces/sdk`, and injects it before each agent turn. Missing `_agent/purpose.md` or `_agent/now.md` are surfaced as drift signals.

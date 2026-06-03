@@ -3,7 +3,7 @@ import { Type } from "typebox";
 import { spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join, resolve as resolvePath, sep } from "node:path";
+import { basename, dirname, join, relative, resolve as resolvePath, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { findSpaceRoot, assembleAwareness } from "@ideaspaces/sdk";
 
@@ -360,6 +360,69 @@ function buildCaptureWidget(status: CaptureStatus): string[] | undefined {
   ];
 }
 
+function isPathInside(child: string, parent: string): boolean {
+  const rel = relative(resolvePath(parent), resolvePath(child));
+  // `rel === ""` handles the degenerate equality case; callers pass files,
+  // but keeping the helper complete makes boundary assertions easier to read.
+  return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`));
+}
+
+function toolPath(input: Record<string, unknown>): string | null {
+  // Pi built-in write/edit inputs use `path`.
+  const path = input.path;
+  if (typeof path !== "string" || !path.trim()) return null;
+  // Pi's at-mention syntax prefixes paths with @; strip it before resolving.
+  return path.trim().replace(/^@/, "");
+}
+
+function isKnowledgePath(path: string): boolean {
+  const normalized = resolvePath(path);
+  const parts = normalized.split(sep);
+  return normalized.endsWith(".md") || parts.includes("_agent");
+}
+
+async function gitRootForDir(
+  pi: ExtensionAPI,
+  cache: Map<string, string | null>,
+  dir: string,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  const key = resolvePath(dir);
+  // Session-scoped cache: git ownership is stable for normal Pi sessions. If a
+  // user runs `git init` mid-session, a reload/new session refreshes this map.
+  if (cache.has(key)) return cache.get(key) ?? null;
+
+  const result = await pi.exec("git", ["-C", key, "rev-parse", "--show-toplevel"], { signal, timeout: 5_000 });
+  const root = result.code === 0 && result.stdout.trim() ? resolvePath(result.stdout.trim()) : null;
+  cache.set(key, root);
+  return root;
+}
+
+async function shouldNudgeKnowledgeWrite(
+  pi: ExtensionAPI,
+  cwd: string,
+  rawPath: string,
+  gitRootCache: Map<string, string | null>,
+  signal?: AbortSignal,
+): Promise<{ path: string; spaceRoot: string } | null> {
+  const absPath = resolvePath(cwd, rawPath);
+  if (!isKnowledgePath(absPath)) return null;
+
+  const space = await findSpaceRoot(dirname(absPath));
+  if (space.source === "none" || !space.root) return null;
+
+  const spaceRoot = resolvePath(space.root);
+  if (!isPathInside(absPath, spaceRoot)) return null;
+
+  // Avoid noisy nudges for markdown/docs inside nested code repos contained by
+  // a parent ideaspace. If the nested repo is its own ideaspace, findSpaceRoot
+  // returns that nested root and the repo root matches, so nudges still apply.
+  const gitRoot = await gitRootForDir(pi, gitRootCache, dirname(absPath), signal);
+  if (gitRoot && gitRoot !== spaceRoot && isPathInside(absPath, gitRoot)) return null;
+
+  return { path: absPath, spaceRoot };
+}
+
 async function buildAwareness(cwd: string): Promise<{ root: string | null; text: string | null }> {
   const space = await findSpaceRoot(cwd);
   if (space.source === "none" || !space.root) return { root: null, text: null };
@@ -389,6 +452,7 @@ export default function (pi: ExtensionAPI) {
   let cachedAwareness: string | null = null;
   let cachedRoot: string | null = null;
   const fdCommand = resolveFdCommand();
+  const gitRootCache = new Map<string, string | null>();
   let autocompleteFailureShown = false;
 
   async function refreshAwareness(cwd: string): Promise<void> {
@@ -421,6 +485,81 @@ export default function (pi: ExtensionAPI) {
     const status = await readCaptureStatus(cwd);
     updateSpaceUi(ctx, status);
     return status;
+  }
+
+  async function commitTrackedCaptures(ctx: ExtensionContext, status: CaptureStatus): Promise<boolean> {
+    // `/is-commit` can call this with no tracked paths; session guards only
+    // call it after detecting pending captures.
+    if (!status.tracked_captures.length) {
+      ctx.ui.notify("No IdeaSpaces captures awaiting commit", "info");
+      return true;
+    }
+
+    if (!ctx.hasUI) {
+      console.warn(
+        `IdeaSpaces: commit cancelled — ${status.tracked_captures.length} capture(s) awaiting commit, but UI is unavailable.`,
+      );
+      return false;
+    }
+
+    const paths = formatPathList(status.tracked_captures);
+    const defaultMessage = status.tracked_captures.length === 1
+      ? `Capture ${basename(status.tracked_captures[0])}`
+      : "Capture IdeaSpaces notes";
+    const message = await ctx.ui.editor("Commit message", defaultMessage);
+    const trimmed = message?.trim();
+    if (!trimmed) {
+      ctx.ui.notify("Commit cancelled — no message", "info");
+      return false;
+    }
+
+    const confirmed = await ctx.ui.confirm(
+      "Commit tracked captures?",
+      `This commits only IdeaSpaces session-tracked paths:\n\n${paths}\n\nMessage: ${trimmed}`,
+    );
+    if (!confirmed) {
+      ctx.ui.notify("Commit cancelled", "info");
+      return false;
+    }
+
+    const result = await runJson<{ commit_sha: string; committed_paths: string[] }>(["commit", "-m", trimmed, "--tracked"], ctx.cwd);
+    if (!result.ok) {
+      ctx.ui.notify(`Commit failed:\n${result.error}`, "error");
+      await refreshSpaceUi(ctx);
+      return false;
+    }
+
+    await refreshAwareness(ctx.cwd);
+    await refreshSpaceUi(ctx);
+    ctx.ui.notify(`Committed ${result.data.committed_paths.length} path(s): ${result.data.commit_sha}`, "info");
+    return true;
+  }
+
+  async function guardPendingCaptures(ctx: ExtensionContext, action: string): Promise<{ cancel: true } | undefined> {
+    await refreshAwareness(ctx.cwd);
+    const status = await refreshSpaceUi(ctx);
+    if (!status?.tracked_captures.length) return undefined;
+
+    if (!ctx.hasUI) {
+      console.warn(
+        `IdeaSpaces: ${action} cancelled — ${status.tracked_captures.length} capture(s) awaiting commit (non-interactive mode).`,
+      );
+      return { cancel: true };
+    }
+
+    const choice = await ctx.ui.select(
+      `You have ${status.tracked_captures.length} IdeaSpaces capture(s) awaiting commit before ${action}.`,
+      ["Save now", "Proceed without saving", "Cancel"],
+    );
+
+    if (choice === "Proceed without saving") return undefined;
+    if (choice === "Save now") {
+      const committed = await commitTrackedCaptures(ctx, status);
+      return committed ? undefined : { cancel: true };
+    }
+
+    ctx.ui.notify(`${action} cancelled — captures are still awaiting commit`, "warning");
+    return { cancel: true };
   }
 
   pi.on("session_start", async (_event, ctx) => {
@@ -496,6 +635,44 @@ export default function (pi: ExtensionAPI) {
     };
   });
 
+  pi.on("tool_result", async (event, ctx) => {
+    if (event.isError) return undefined;
+    if (event.toolName !== "write" && event.toolName !== "edit") return undefined;
+
+    const rawPath = toolPath(event.input);
+    if (!rawPath) return undefined;
+
+    try {
+      const nudge = await shouldNudgeKnowledgeWrite(pi, ctx.cwd, rawPath, gitRootCache, ctx.signal);
+      if (!nudge) return undefined;
+
+      const displayPath = relative(nudge.spaceRoot, nudge.path) || rawPath;
+      return {
+        content: [
+          ...(event.content ?? []),
+          {
+            type: "text" as const,
+            text:
+              `IdeaSpaces note: \`${displayPath}\` is a knowledge file changed with native ${event.toolName}. ` +
+              "If this represents durable capture, prefer `is_write` so it is staged, tracked, and safe to commit with `/is-commit`.",
+          },
+        ],
+      };
+    } catch {
+      // Capture nudges are best-effort; never break the original tool result.
+      return undefined;
+    }
+  });
+
+  pi.on("session_before_switch", async (event, ctx) => {
+    const action = event.reason === "new" ? "starting a new session" : "switching sessions";
+    return guardPendingCaptures(ctx, action);
+  });
+
+  pi.on("session_before_fork", async (_event, ctx) => {
+    return guardPendingCaptures(ctx, "forking this session");
+  });
+
   pi.registerCommand("is-status", {
     description: "Show IdeaSpaces capture and sync state",
     handler: async (_args, ctx) => {
@@ -517,41 +694,7 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.notify("No git-backed ideaspace status available here", "warning");
         return;
       }
-      if (!status.tracked_captures.length) {
-        ctx.ui.notify("No IdeaSpaces captures awaiting commit", "info");
-        return;
-      }
-
-      const paths = formatPathList(status.tracked_captures);
-      const defaultMessage = status.tracked_captures.length === 1
-        ? `Capture ${basename(status.tracked_captures[0])}`
-        : "Capture IdeaSpaces notes";
-      const message = await ctx.ui.editor("Commit message", defaultMessage);
-      const trimmed = message?.trim();
-      if (!trimmed) {
-        ctx.ui.notify("Commit cancelled — no message", "info");
-        return;
-      }
-
-      const confirmed = await ctx.ui.confirm(
-        "Commit tracked captures?",
-        `This commits only IdeaSpaces session-tracked paths:\n\n${paths}\n\nMessage: ${trimmed}`,
-      );
-      if (!confirmed) {
-        ctx.ui.notify("Commit cancelled", "info");
-        return;
-      }
-
-      const result = await runJson<{ commit_sha: string; committed_paths: string[] }>(["commit", "-m", trimmed, "--tracked"], ctx.cwd);
-      if (!result.ok) {
-        ctx.ui.notify(`Commit failed:\n${result.error}`, "error");
-        await refreshSpaceUi(ctx);
-        return;
-      }
-
-      await refreshAwareness(ctx.cwd);
-      await refreshSpaceUi(ctx);
-      ctx.ui.notify(`Committed ${result.data.committed_paths.length} path(s): ${result.data.commit_sha}`, "info");
+      await commitTrackedCaptures(ctx, status);
     },
   });
 

@@ -26,6 +26,12 @@ Pi-native commands for human-facing flow:
 - `/is-commit` — review tracked captures, collect a message, confirm, commit tracked paths only
 - `/is-sync` — dry-run, confirm, sync committed captures
 
+Runtime guardrails:
+
+- Native `write` / `edit` to markdown or `_agent/` files inside an ideaspace get a capture nudge in the tool result.
+- Nested code repos inside a parent ideaspace stay silent unless they carry their own `_agent/`.
+- Session switch/fork prompts when session-tracked captures are uncommitted; non-interactive mode cancels conservatively.
+
 Pi's native `read`, `edit`, `write`, and `bash` cover navigation, search, code/config editing, git, moves, and deletes.
 
 No `sw_*` tools in this package.
