@@ -48,7 +48,7 @@ No `sw_*` tools in this package.
 
 ## Session Awareness
 
-On session start, walk up from `cwd` looking for `_agent/`, use `@ideaspaces/sdk` to assemble awareness, and inject it before agent turns. Missing `_agent/purpose.md` / `_agent/now.md` are drift signals, not placeholders to silently fill.
+On session start, walk up from `cwd` looking for `_agent/`, use `@ideaspaces/sdk` to assemble awareness, and inject it before agent turns. Awareness includes position, git/capture state, Now/tree/context summaries, operating skills, and changes since last session when available. Missing `_agent/purpose.md` / `_agent/now.md` are drift signals, not placeholders to silently fill.
 
 ## Skills
 
@@ -65,9 +65,8 @@ Capture flow: user intent → `is-capture` → maybe `is_write` for Notes or nat
 ## Development
 
 ```bash
-pi install .
-# or
-pi -e .
+pi install .  # full extension + skills package
+pi -e .       # quick extension-only test
 ```
 
 ## Migration
