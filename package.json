@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ideaspaces/cli": "git+https://github.com/IdeaSpaces-xyz/cli.git#bf3e32b58e00dafdaff05b052a3f98654b823040",
+    "@ideaspaces/cli": "git+https://github.com/IdeaSpaces-xyz/cli.git#abfd9d52a53778c0d33a49f0bd89a453a6f41ffc",
     "@ideaspaces/sdk": "git+https://github.com/IdeaSpaces-xyz/sdk.git#dc17af97a376980165b13ee198c64eab8b0c0d0b"
   },
   "peerDependencies": {
