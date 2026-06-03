@@ -407,16 +407,19 @@ export default function (pi: ExtensionAPI) {
     return result.ok ? result.data : null;
   }
 
+  function updateSpaceUi(ctx: ExtensionContext, status: CaptureStatus | null): void {
+    ctx.ui.setStatus("is", buildStatusLine(cachedRoot, status));
+    ctx.ui.setWidget("is-captures", status ? buildCaptureWidget(status) : undefined, { placement: "belowEditor" });
+  }
+
   async function refreshSpaceUi(ctx: ExtensionContext, cwd = ctx.cwd): Promise<CaptureStatus | null> {
     if (!cachedRoot) {
-      ctx.ui.setStatus("is", buildStatusLine(null, null));
-      ctx.ui.setWidget("is-captures", undefined, { placement: "belowEditor" });
+      updateSpaceUi(ctx, null);
       return null;
     }
 
     const status = await readCaptureStatus(cwd);
-    ctx.ui.setStatus("is", buildStatusLine(cachedRoot, status));
-    ctx.ui.setWidget("is-captures", status ? buildCaptureWidget(status) : undefined, { placement: "belowEditor" });
+    updateSpaceUi(ctx, status);
     return status;
   }
 
@@ -581,6 +584,10 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.notify(plan, "info");
         return;
       }
+      if (status.dirty && dryRun.data.behind) {
+        ctx.ui.notify("Working tree is dirty — commit or stash changes before syncing remote updates.", "warning");
+        return;
+      }
 
       const confirmed = await ctx.ui.confirm("Run IdeaSpaces sync?", plan);
       if (!confirmed) {
@@ -696,13 +703,16 @@ export default function (pi: ExtensionAPI) {
       ),
     }),
     async execute(_id, params, _signal, _onUpdate, ctx) {
-      const args = ["status"];
-      if (params.path) args.push("--path", params.path);
-      const result = await run(args, undefined, params.cwd || ctx.cwd);
+      const cwd = params.cwd || ctx.cwd;
+      if (params.path) return run(["status", "--path", params.path], undefined, cwd);
+
       // A global status read is also a deliberate UI refresh; single-path sha
       // queries are local concurrency checks and should not rewrite the widget.
-      if (!params.path) await refreshSpaceUi(ctx, params.cwd || ctx.cwd);
-      return result;
+      await refreshAwareness(cwd);
+      const result = await runJson<CaptureStatus>(["status"], cwd);
+      if (!result.ok) return fail(result.error);
+      updateSpaceUi(ctx, result.data);
+      return ok(JSON.stringify(result.data, null, 2));
     },
   });
 
