@@ -32,6 +32,8 @@ jobs:
             @earendil-works/pi-coding-agent
           ln -s .ci-deps/node_modules node_modules
           mkdir -p node_modules/@ideaspaces/sdk
+          # Typecheck-only SDK stub. Keep in sync with the @ideaspaces/sdk
+          # package pin in package.json (currently dc17af97a376980165b13ee198c64eab8b0c0d0b).
           cat > node_modules/@ideaspaces/sdk/package.json <<'JSON'
           { "name": "@ideaspaces/sdk", "version": "0.0.0-ci", "types": "index.d.ts" }
           JSON
