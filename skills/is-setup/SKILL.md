@@ -7,7 +7,7 @@ description: >
   the seed of the contract. Captures purpose / now / next as real files in
   conversation when content emerges. Use when: user says "set up a space",
   "add ideaspaces here", or asks about the contract.
-allowed-tools: "is_write is_auth edit read write bash"
+allowed-tools: "is_write is_commit is_auth edit read write bash"
 ---
 
 # Setup an Ideaspace
@@ -89,7 +89,7 @@ For each of these, draw the content out and write the file when there's real con
 2. **Now** — *"What are you working on right now?"* Single paragraph becomes `_agent/now.md`.
 3. **Next** — *"What's queued after now?"* Optional. Vague is OK.
 
-Use `is_write` for these (Layer 1 frontmatter — `name`, `summary`). Capture is conscious; don't write Purpose for the user, elicit and reflect back. After each capture, commit it as its own commit (`bash`: `git add _agent/{file}.md && git commit -m "Capture {name}"`).
+Use `is_write` for these (Layer 1 frontmatter — `name`, `summary`). Capture is conscious; don't write Purpose for the user, elicit and reflect back. After each capture, commit it as its own capture commit with `is_commit` (explicit `paths` or `tracked=true`), not a broad git sweep.
 
 ## 5. Offer publish
 
