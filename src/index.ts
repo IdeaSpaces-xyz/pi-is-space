@@ -709,7 +709,7 @@ export default function (pi: ExtensionAPI) {
             type: "text" as const,
             text:
               `IdeaSpaces note: \`${displayPath}\` is a knowledge file changed with native ${event.toolName}. ` +
-              "If this represents durable capture, prefer `is_write` so it is staged, tracked, and safe to commit with `/is-commit`.",
+              "If this represents durable shared understanding, use the capture flow (`is-capture` / `/is-commit`) so it is staged, tracked, and committed deliberately.",
           },
         ],
       };
@@ -1012,8 +1012,8 @@ export default function (pi: ExtensionAPI) {
     name: "is_write",
     label: "IS Write",
     description:
-      "Create or update a Note with Layer 1 frontmatter (name, summary). Stages the file, records it in IdeaSpaces session state, and returns its content sha for safe refinement. Use for capture; native file tools cover code/config and ordinary edits.",
-    promptSnippet: "Create/update a markdown Note with IdeaSpaces frontmatter; stages + returns sha",
+      "Capture primitive for Notes: create or update a Note with Layer 1 frontmatter (name, summary), stage it, record it in IdeaSpaces session state, and return its content sha for safe refinement. Normally use through the is-capture skill; native file tools cover code/config and ordinary edits.",
+    promptSnippet: "Capture primitive: create/update a markdown Note with frontmatter; stages + returns sha",
     parameters: Type.Object({
       path: Type.String({ description: "File path within the ideaspace" }),
       content: Type.String({ description: "Markdown content; frontmatter is prepended automatically" }),
@@ -1092,8 +1092,8 @@ export default function (pi: ExtensionAPI) {
     name: "is_commit",
     label: "IS Commit",
     description:
-      "Save captured Notes as an explicit commit. Commits only explicit paths, or the IdeaSpaces session-tracked paths when tracked=true; never sweeps unrelated staged user work. Confirm with the user before calling.",
-    promptSnippet: "Commit only captured/tracked IdeaSpaces paths after user confirmation",
+      "Capture primitive: commit agreed IdeaSpaces changes. Commits only explicit paths, or the IdeaSpaces session-tracked paths when tracked=true; never sweeps unrelated staged user work. Confirm with the user before calling.",
+    promptSnippet: "Capture primitive: commit only captured/tracked IdeaSpaces paths after confirmation",
     parameters: Type.Object({
       message: Type.String({ description: "Commit message, user-provided or user-confirmed" }),
       paths: Type.Optional(
@@ -1126,7 +1126,7 @@ export default function (pi: ExtensionAPI) {
     name: "is_sync",
     label: "IS Sync",
     description:
-      "Integrate remote changes and push committed captures. Refuses while IdeaSpaces session-tracked captures remain uncommitted. Use dry_run to preview first.",
+      "Sync committed IdeaSpaces state: integrate remote changes and push committed captures. Refuses while IdeaSpaces session-tracked captures remain uncommitted. Use through the is-sync skill when the user asks to sync/share/push.",
     promptSnippet: "Sync committed IdeaSpaces captures; dry-run before mutating when useful",
     parameters: Type.Object({
       dry_run: Type.Optional(Type.Boolean({ description: "Preview sync state without fetch, rebase/merge, or push" })),

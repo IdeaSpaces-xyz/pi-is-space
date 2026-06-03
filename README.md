@@ -4,15 +4,19 @@ Pi extension for [IdeaSpaces](https://ideaspaces.xyz). Local-first: an ideaspace
 
 ## Why this exists
 
-`pi-is-space` is the Pi package counterpart to the Claude Code plugin.
+`pi-is-space` makes the ideaspace inhabitation loop feel native in Pi:
 
-Architecture:
+```txt
+arrive → orient → inspect → act → capture → sync → reflect
+```
+
+The agent chooses the intent; the package chooses the mechanism. Architecture stays thin:
 
 ```txt
 Agent (Pi) → pi-is-space → IdeaSpaces CLI --json → SDK → local files / optional remote sync
 ```
 
-The extension stays thin. Behavior lives in the IdeaSpaces CLI and SDK.
+Behavior lives in the IdeaSpaces CLI and SDK where possible.
 
 ## Install
 
@@ -24,14 +28,14 @@ pi -e /path/to/pi-is-space
 
 ## Tools
 
-Pi's native `read`, `edit`, `write`, and `bash` cover local navigation and editing. `pi-is-space` adds IdeaSpaces-aware tools for capture and optional sync:
+Pi's native `read`, `edit`, `write`, and `bash` cover navigation, inspection, and ordinary edits. `pi-is-space` adds IdeaSpaces-aware primitives used by the capture and sync flows:
 
 | Tool | What |
 |---|---|
-| `is_write` | Create/update a markdown Note with Layer 1 frontmatter, stage it, track it in session state, and return a content `sha`. |
-| `is_status` | Show git/capture state, or return a file `sha` for safe `is_write.if_match` updates. |
-| `is_commit` | Commit only explicit or session-tracked capture paths after confirmation; never sweep unrelated staged work. |
-| `is_sync` | Integrate remote changes and push committed captures; refuses while tracked captures remain uncommitted. |
+| `is_status` | Inspect git/capture state, or return a file `sha` for safe Note updates. |
+| `is_write` | Capture primitive: create/update a markdown Note with Layer 1 frontmatter, stage it, track it in session state, and return a content `sha`. Normally reached through the `is-capture` skill. |
+| `is_commit` | Capture primitive: commit only explicit or session-tracked capture paths after confirmation; never sweep unrelated staged work. |
+| `is_sync` | Sync primitive: integrate remote changes and push committed captures; refuses while tracked captures remain uncommitted. |
 | `is_auth` | Log in / out for optional remote sync. |
 
 ## Commands
@@ -50,7 +54,7 @@ When captures await commit, the extension shows a small widget near the editor s
 
 ## Runtime guardrails
 
-The extension watches native `write` / `edit` results. If a markdown or `_agent/` file inside the active ideaspace is changed with native tools, the tool result gets a short nudge to prefer `is_write` for durable capture so the path is staged, tracked, and safe to commit with `/is-commit`. Source-code writes stay silent, including markdown inside nested code repos unless that repo has its own `_agent/` ideaspace.
+The extension watches native `write` / `edit` results. If a markdown or `_agent/` file inside the active ideaspace is changed with native tools, the tool result gets a short nudge to use the capture flow when the edit represents durable shared understanding. Source-code writes stay silent, including markdown inside nested code repos unless that repo has its own `_agent/` ideaspace.
 
 Before switching or forking sessions, Pi checks for session-tracked captures awaiting commit. In interactive mode it offers to save now, proceed without saving, or cancel. In non-interactive mode it cancels conservatively when pending captures exist.
 
@@ -73,18 +77,20 @@ To host a local space remotely, use `/is-publish`. It checks scaffold/branch sta
 
 ## Skills and reference
 
-Pi ships surface-specific entrypoint skills:
+Pi ships surface-specific entrypoint skills mapped to the inhabitation loop:
 
-- `is-setup`
-- `is-publish`
-- `is-space`
-- `is-writing`
-- `is-capture`
-- `is-reflect`
-- `is-shape`
+- `is-orient` — understand where you are and what's active
+- `is-capture` — preserve agreed understanding
+- `is-sync` — align committed captures with remote
+- `is-reflect` — check drift after meaningful change
+- `is-shape` — change the `_agent/` agreement or reusable agent behavior
+- `is-setup` — scaffold a space
+- `is-publish` — host a local space remotely
+- `is-space` — compatibility/reference entrypoint
+- `is-writing` — writing quality reference
 
 Shared protocol content lives in `reference/`, generated from the SDK canonical skill catalog with `npm run build:reference`. Entry skills stay Pi-specific while reading SDK-backed references such as `reference/capture.md`, `reference/writing.md`, and `reference/awareness.md` on demand.
 
-Capture flow: `is_write` → refine with returned `sha` or `is_status({ path })` → user confirms → `is_commit` → optional `is_sync`.
+Capture flow: user intent → `is-capture` skill → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-sync`.
 
 See `MIGRATION.md` for mapping from legacy `pi-sw-space`.

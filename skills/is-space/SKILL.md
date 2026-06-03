@@ -1,12 +1,10 @@
 ---
 name: is-space
 description: >
-  Reference for working in an ideaspace — the five-file `_agent/` contract
-  (seed: foundation + guide; emergent: purpose, now, next), Two Roles
-  convention (user content vs agent context), and tool surface. Read this
-  when working with `is_*` tools or when the user asks how to navigate
-  their space. Native read/edit/write/bash cover most navigation;
-  `is_*` adds frontmatter-aware capture and sync state.
+  Reference for working in an ideaspace — the five-file `_agent/` contract,
+  Two Roles convention, and Pi tool surface. Use as a compatibility/reference
+  entrypoint when the user asks how an ideaspace works. For active intents,
+  prefer the loop skills: is-orient, is-capture, is-sync, is-reflect, is-shape.
 allowed-tools: "is_write is_status is_commit is_sync is_auth read edit write bash"
 ---
 
@@ -14,20 +12,32 @@ allowed-tools: "is_write is_status is_commit is_sync is_auth read edit write bas
 
 Canonical protocols: read [guide](../../reference/guide.md), [capture](../../reference/capture.md), [writing](../../reference/writing.md), or [awareness](../../reference/awareness.md) when the task needs the full shared standard. This entrypoint adds Pi-specific navigation and tool guidance.
 
-An ideaspace is a markdown folder where knowledge accumulates. The Pi extension makes the agent fluent in the conventions: how the tree is shaped, where agent context lives, when to capture.
+An ideaspace is inhabited through a simple loop:
+
+```text
+arrive → orient → inspect → act → capture → sync → reflect
+```
+
+Pi handles **arrive** automatically with session-start awareness. For active work, pick the intent skill:
+
+- **is-orient** — where are we, what is active, what changed?
+- **is-capture** — preserve agreed understanding.
+- **is-sync** — align committed captures with remote.
+- **is-reflect** — check drift after meaningful change.
+- **is-shape** — change the `_agent/` agreement or reusable agent behavior.
 
 You have two sets of tools:
 
-- **Native** — `read`, `edit`, `write`, `bash`. Default for navigation, search, and source-code work.
-- **`is_*` tools** — frontmatter-aware capture (`is_write`), capture state (`is_status`), explicit save (`is_commit`), sync (`is_sync`), and auth (`is_auth`). Use when knowledge needs Layer 1 frontmatter or when capture/sync state matters.
+- **Native** — `read`, `edit`, `write`, `bash`. Default for navigation, search, source-code work, and ordinary doc edits.
+- **`is_*` primitives** — capture/sync support (`is_status`, `is_write`, `is_commit`, `is_sync`, `is_auth`). Skills choose these mechanisms; don't make backend choice the user's problem.
 
 ## Start here
 
 **No `_agent/` yet?** Suggest `/is-setup` — it walks the user through the contract scaffold and conversational seeding.
 
-**Returning?** Read `_agent/foundation.md` and `_agent/guide.md` first — they always exist on a scaffolded space. Then `_agent/purpose.md`, `now.md`, `next.md` — these may not exist yet. **Missing files are first-class drift signals**: the contract names them, so absence means direction hasn't been captured. Surface this and propose capturing them in conversation before doing other work.
+**Returning?** The SessionStart hook surfaces what's present inline along with each file's summary and any operating skills. If you need to refresh it, use the **is-orient** skill.
 
-The SessionStart hook surfaces what's present inline along with each file's summary and any operating skills.
+Read `_agent/foundation.md` and `_agent/guide.md` first when acting beyond the injected awareness — they always exist on a scaffolded space. Then `_agent/purpose.md`, `now.md`, `next.md` when present. **Missing files are first-class drift signals**: the contract names them, so absence means direction hasn't been captured. Surface this and propose capturing them in conversation before doing other work.
 
 ## The five-file `_agent/` contract
 
@@ -76,16 +86,18 @@ Every position in the tree holds two kinds of content. The folder convention enf
 Within user content, voices can coexist at different branches. Don't mix them in one folder — use a subfolder to mark the shift:
 
 - **Raw personal thinking** — one person's voice, pre-refinement. Own folder (e.g., `slow-thoughts/`, `journal/`).
-- **Co-produced from conversation** — human + agent. Own folder or subfolder (e.g., `conversations/`, `captured/`). Every file carries `contributed_by: ["person:...", "agent:..."]` and `origin: "conversation:..."`.
+- **Co-produced from conversation** — human + agent. Own folder or subfolder (e.g., `conversations/`, `captured/`). Who produced it is recorded in the commit — author + `Co-authored-by` trailer — which the platform projects into provenance (`contributed_by`); it is not frontmatter. Current local tooling conforms: `is_write` / `ideaspaces write` write Note fields (`name`, `summary`, `tags`, `attached_to`) and do not write `contributed_by` or conversation `origin` frontmatter.
 - **Stable concept docs** — refined, canonical. Top-level or `concepts/`.
 
 When capturing from a conversation, check the target folder's voice before writing. If the folder is someone's raw personal thinking, don't write co-produced notes there — create a subfolder. See [is-writing](../is-writing/SKILL.md) for voice guidance and [is-capture](../is-capture/SKILL.md) for when to propose capture.
 
-## Capture tools
+## Capture primitives
+
+Use **is-capture** for the outer intent. It decides whether the mechanism is `is_write`, native edits, or a commit of explicit paths.
 
 ### `is_write` — create/update with Layer 1 frontmatter
 
-Use for capture. Carries the writing standard. Better than raw filesystem `write` when the file should compound as a Note.
+Use inside capture when the target is a Note. Carries the writing standard. Better than raw filesystem `write` when the file should compound as a Note.
 
 - `is_write path="analysis.md" content="..." name="Analysis" summary="Dense orientation"` — create or update the Note's frontmatter and body, stage it, record it in IdeaSpaces session state, and return a content `sha`
 - Optional fields: `tags`, `attached_to`, `if_match`, `force`, `cwd`
@@ -106,9 +118,9 @@ Safe update flow:
 - No path: shows git position plus IdeaSpaces session-tracked captures awaiting commit.
 - With `path`: returns single-file state, including `sha` for `is_write.if_match`.
 
-### `is_commit` — explicit save
+### `is_commit` — explicit capture commit
 
-Commit only captured paths after user confirmation:
+Use inside capture after user confirmation. Commit only captured paths:
 
 - `is_commit message="Capture decision" tracked=true` — commit the session-tracked capture paths
 - `is_commit message="Capture decision" paths=["notes/decision.md"]` — commit explicit paths
@@ -117,7 +129,7 @@ It never sweeps unrelated staged user work into the capture commit.
 
 ### `is_sync` — push committed captures
 
-Sync integrates remote changes and pushes committed captures. It refuses while IdeaSpaces session-tracked captures remain uncommitted. Use `dry_run: true` to preview.
+Use **is-sync** for the outer intent. `is_sync` integrates remote changes and pushes committed captures. It refuses while IdeaSpaces session-tracked captures remain uncommitted. Use `dry_run: true` to preview.
 
 **`cwd` matters when you've `cd`-ed inside `bash`.** A `cd subdir` in a `bash` invocation changes that subprocess's cwd; it doesn't propagate back to Pi's extension process. If you've worked in a subdir during the session and then call `is_write` with a relative `path`, `is_write` resolves it against the Pi session cwd — likely the wrong tree.
 

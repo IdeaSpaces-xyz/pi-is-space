@@ -1,17 +1,21 @@
 ---
 name: is-capture
 description: >
-  Propose saving knowledge to the space when something crystallizes — a decision
-  is made, understanding shifts, research produces a finding, or context would
-  save the next session time. Proposes, doesn't auto-save. NOT for code, tasks,
-  or preferences.
-allowed-tools: "is_write is_status is_commit is_sync read bash"
+  Preserve agreed understanding in the ideaspace when the user says capture,
+  remember, save this, write this into the space, or when a decision/finding has
+  crystallized. The skill chooses the mechanism: `is_write` for Notes, native
+  edits for existing docs/specs, then `is_commit` for the agreement boundary.
+allowed-tools: "is_write is_status is_commit is_sync read edit write bash"
 user-invocable: false
 ---
 
 # Capture
 
-Canonical protocols: read [capture](../../reference/capture.md) and [writing](../../reference/writing.md) for the full capture and writing standards. This entrypoint adds Pi-specific tool flow.
+Capture is the agreement moment: conversation becomes shared state.
+
+Do not make the user or agent choose between `write`, `is_write`, `git add`, and `is_commit` at the top level. The intent is **capture**. This skill chooses the mechanism.
+
+Canonical protocols: read [capture](../../reference/capture.md) and [writing](../../reference/writing.md) when the task needs the full capture and writing standards.
 
 ## When to Propose
 
@@ -21,7 +25,18 @@ Canonical protocols: read [capture](../../reference/capture.md) and [writing](..
 - **Pattern emerged.** Same thing surfaced three times — the common thread is worth naming.
 - **Context that saves time.** Next session would need this to be productive.
 
-**Don't propose** when it's already in code/git, is a temporary task detail, is a personal preference (use agent memory), or the conversation is still forming.
+**Don't propose** when it's already in code/git, is a temporary task detail, is a personal preference, or the conversation is still forming.
+
+## Mechanism Choice
+
+| Situation | Use |
+|---|---|
+| New or updated knowledge Note | `is_write` — it creates frontmatter, stages, tracks, and returns `sha` |
+| Existing spec/doc/README/agent contract edit | native `edit` / `write`, then commit the agreed paths |
+| File move/delete | native `bash` (`git mv`, `rm`) |
+| User asks to sync/share after capture | `is-sync` / `is_sync` |
+
+`is_write` is a capture primitive, not the outer intent. Reach for it inside this skill when the target is a Note that should carry Layer 1 frontmatter (`name`, `summary`) and optional Layer 2 fields (`tags`, `attached_to`).
 
 ## How
 
@@ -31,18 +46,32 @@ Brief. Don't interrupt flow.
 
 If yes:
 
-1. `bash` (`find`/`rg`) first to avoid duplicates; `read` the target area for context.
-2. `is_write` to capture with Layer 1 frontmatter (`name`, `summary`). It stages the file, tracks it in IdeaSpaces session state, and returns a content `sha`.
-3. For a refinement to a file just written, call `is_write` again with `if_match: <sha>` from the previous response. For a first update to an existing file, call `is_status({ path })` first and use the returned `sha` as `if_match`.
-4. **Confirm before saving.** On user agreement, call `is_commit({ message, tracked: true })` or pass explicit `paths`. It commits only captured/tracked paths, not unrelated staged user work. If the user runs `/is-commit`, treat that as the confirmation step and don't re-ask.
-5. Optionally `is_sync` to push committed captures. If the user runs `/is-sync`, treat that as the user's requested sync path.
+1. Search first (`bash` with `find`/`rg`) to avoid duplicates; `read` the target area for context.
+2. Choose the mechanism:
+   - Note capture → `is_write`.
+   - Existing doc/spec/contract refinement → native `edit` / `write`.
+3. For `is_write` refinements, use safe updates:
+   - first update to an existing file: `is_status({ path })` → use returned `sha` as `if_match`
+   - refinement of a file just written: use the prior `is_write` response `sha`
+   - `force: true` only after re-reading and reconciling divergent content
+4. Show what changed when useful. The user confirms the capture boundary.
+5. Commit with `is_commit({ message, tracked: true })` for session-tracked captures, or explicit `paths` for native edits. Never sweep unrelated staged work.
+6. Optionally use **is-sync** / `is_sync` to align with remote.
 
-Follow the [writing reference](../../reference/writing.md) standard.
+If the user runs `/is-commit`, treat that as confirmation and don't re-ask. If the user says no, drop it and don't re-ask.
 
-If no: drop it. Don't re-ask.
+## Commit message
+
+Use the space's commit convention when present (for example `_agent/skills/commit.md`). Otherwise include the core provenance trailers:
+
+```text
+Op: capture | update | create | restructure
+Conversation: <session description or id>
+Co-authored-by: Pi <agent:pi@ideaspaces>
+```
 
 ## Rhythm
 
 One or two captures per meaningful session. Not every session produces one.
 
-After meaningful captures, check: does the Now still match? → **is-reflect**
+After meaningful captures, check: does Now still match? → **is-reflect**
