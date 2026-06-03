@@ -50,8 +50,12 @@ jobs:
               next?: unknown;
             };
           };
+          export type SkillInfo = { name: string; description: string | null };
+          export type Skill = SkillInfo & { content: string };
           export function findSpaceRoot(cwd: string): Promise<SpaceRoot>;
           export function assembleAwareness(opts: { root: string; contract: SpaceRoot["contract"] }): Promise<string>;
+          export function listSkills(): Promise<SkillInfo[]>;
+          export function readSkill(name: string): Promise<Skill>;
           TS
 
       - name: Typecheck

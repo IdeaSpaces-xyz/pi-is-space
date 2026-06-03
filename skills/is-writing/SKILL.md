@@ -6,6 +6,8 @@ user-invocable: false
 
 # Writing Standard for IdeaSpaces
 
+Canonical protocol: read the [writing reference](../../reference/writing.md) for the full writing standard. This entrypoint keeps the core Pi-facing checklist in view.
+
 When writing Notes to IdeaSpaces, follow these principles. They're functional requirements for knowledge that compounds — not style preferences.
 
 ## Summary Is Everything

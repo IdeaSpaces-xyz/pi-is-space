@@ -44,7 +44,9 @@ On session start, walk up from `cwd` looking for `_agent/`, use `@ideaspaces/sdk
 
 Use-case layer shipped in `skills/`:
 
-- is-setup, is-publish, is-space, is-writing, is-capture, is-reflect
+- is-setup, is-publish, is-space, is-writing, is-capture, is-reflect, is-shape
+
+Shared protocol content lives in `reference/`, generated from the SDK canonical skill catalog with `npm run build:reference`. Keep Pi entrypoint skills surface-specific; update shared capture/writing/awareness/shaping protocols in the SDK, then regenerate `reference/`.
 
 Capture flow: `is_write` → refine with returned `sha` or `is_status({ path })` → user confirms → `is_commit` → optional `is_sync`.
 

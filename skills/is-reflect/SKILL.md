@@ -12,6 +12,8 @@ user-invocable: false
 
 # Reflect
 
+Canonical protocols: read [awareness](../../reference/awareness.md) and [guide](../../reference/guide.md) for the full Delta Protocol and guide posture. This entrypoint adds Pi-specific tool flow.
+
 Reflection is the trigger; recalibration is what it runs. Offered as a readiness check — both sides decide whether to reflect now or defer.
 
 ## When
@@ -32,7 +34,7 @@ Reflection is the trigger; recalibration is what it runs. Offered as a readiness
 
 Read current state first — `read` `_agent/purpose.md` and `_agent/now.md`. If either doesn't exist yet, that's the first reflection: the contract names them, so absence means direction hasn't been captured. Surface it and propose capturing the missing file before reflecting on what's there. `bash` recent activity (`find`, `git diff`, `git log`) if needed.
 
-Before asserting that something "shipped", "is implemented", or "is pending" based on a doc, verify against the code. The code may live in a sibling repo. Use `bash` (`rg`, `git log`, `git diff`) and `read` to compare the doc with implementation reality; treat doc status lines as hints, not authority.
+Before asserting that something "shipped", "is implemented", or "is pending" based on a doc, run the Delta Protocol from [awareness](../../reference/awareness.md): verify against the code. The code may live in a sibling repo. Use `bash` (`rg`, `git log`, `git diff`) and `read` to compare the doc with implementation reality; treat doc status lines as hints, not authority.
 
 Be specific: "The Now says 'build skill packages.' We've defined three. Update the bullets?" Not "should we update Now?"
 

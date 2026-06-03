@@ -9,6 +9,7 @@
     "skills": ["./skills"]
   },
   "scripts": {
+    "build:reference": "node reference.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
