@@ -37,7 +37,7 @@ If yes:
 4. **Confirm before saving.** On user agreement, call `is_commit({ message, tracked: true })` or pass explicit `paths`. It commits only captured/tracked paths, not unrelated staged user work. If the user runs `/is-commit`, treat that as the confirmation step and don't re-ask.
 5. Optionally `is_sync` to push committed captures. If the user runs `/is-sync`, treat that as the user's requested sync path.
 
-Follow [is-writing](../is-writing/SKILL.md) and the [writing reference](../../reference/writing.md) standard.
+Follow the [writing reference](../../reference/writing.md) standard.
 
 If no: drop it. Don't re-ask.
 
