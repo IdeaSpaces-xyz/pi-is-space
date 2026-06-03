@@ -28,9 +28,15 @@ await rm(dst, { recursive: true, force: true });
 await mkdir(dst, { recursive: true });
 
 for (const s of skills) {
-  const skill = await readSkill(s.name);
-  await writeFile(join(dst, `${s.name}.md`), skill.content, "utf-8");
-  console.log(`✓ reference/${s.name}.md`);
+  try {
+    const skill = await readSkill(s.name);
+    await writeFile(join(dst, `${s.name}.md`), skill.content, "utf-8");
+    console.log(`✓ reference/${s.name}.md`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`✗ reference/${s.name}.md — ${message}`);
+    process.exit(1);
+  }
 }
 
 console.log(`Built reference/ with ${skills.length} skill(s) via readSkill().`);

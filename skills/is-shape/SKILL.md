@@ -6,7 +6,8 @@ description: >
   repeatable thinking pattern). Use when the user wants to make how the agent
   works in a situation repeatable, or to define an evaluation/analysis they
   apply often.
-allowed-tools: "is_write read write edit bash"
+allowed-tools: "is_write is_status read write edit bash"
+user-invocable: true
 ---
 
 # Shape the `_agent/`
