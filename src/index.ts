@@ -30,6 +30,7 @@ type CaptureStatus = {
 };
 
 type SyncDryRun = {
+  /** Mirrors the CLI JSON shape for `ideaspaces sync --dry-run`. */
   dry_run: true;
   upstream: string | null;
   ahead: number;
@@ -311,6 +312,10 @@ function formatCaptureStatus(status: CaptureStatus): string {
       : "remote:  no upstream",
     `tree:    ${status.dirty ? "dirty" : "clean"}`,
   ];
+
+  if (status.untracked_in_tracked_dirs.length) {
+    lines.push("", `untracked in tracked dirs (${status.untracked_in_tracked_dirs.length}):`, formatPathList(status.untracked_in_tracked_dirs));
+  }
 
   if (status.tracked_captures.length) {
     lines.push("", `captures awaiting commit (${status.tracked_captures.length}):`, formatPathList(status.tracked_captures));
@@ -694,6 +699,8 @@ export default function (pi: ExtensionAPI) {
       const args = ["status"];
       if (params.path) args.push("--path", params.path);
       const result = await run(args, undefined, params.cwd || ctx.cwd);
+      // A global status read is also a deliberate UI refresh; single-path sha
+      // queries are local concurrency checks and should not rewrite the widget.
       if (!params.path) await refreshSpaceUi(ctx, params.cwd || ctx.cwd);
       return result;
     },
@@ -754,7 +761,7 @@ export default function (pi: ExtensionAPI) {
       if (params.dry_run) args.push("--dry-run");
       if (params.rebase === false) args.push("--rebase=false");
       const result = await run(args, undefined, params.cwd || ctx.cwd);
-      if (!isErrorResult(result)) {
+      if (!isErrorResult(result) && !params.dry_run) {
         await refreshAwareness(params.cwd || ctx.cwd);
         await refreshSpaceUi(ctx, params.cwd || ctx.cwd);
       }
