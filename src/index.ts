@@ -348,14 +348,11 @@ function buildStatusLine(root: string | null, status: CaptureStatus | null): str
 function buildCaptureWidget(status: CaptureStatus): string[] | undefined {
   if (!status.tracked_captures.length) return undefined;
 
-  const lines = [`Captures awaiting save (${status.tracked_captures.length}):`];
-  const head = status.tracked_captures.slice(0, 5);
-  for (const path of head) lines.push(`  ${path}`);
-  if (status.tracked_captures.length > head.length) {
-    lines.push(`  ... and ${status.tracked_captures.length - head.length} more`);
-  }
-  lines.push("/is-commit to save · /is-sync to push");
-  return lines;
+  return [
+    `Captures awaiting save (${status.tracked_captures.length}):`,
+    ...formatPathList(status.tracked_captures, 5).split("\n"),
+    "/is-commit to save · /is-sync to push",
+  ];
 }
 
 async function buildAwareness(cwd: string): Promise<{ root: string | null; text: string | null }> {
@@ -575,6 +572,11 @@ export default function (pi: ExtensionAPI) {
       }
 
       const plan = formatSyncDryRun(dryRun.data);
+      if (!dryRun.data.upstream) {
+        ctx.ui.notify(plan, "info");
+        return;
+      }
+
       const confirmed = await ctx.ui.confirm("Run IdeaSpaces sync?", plan);
       if (!confirmed) {
         ctx.ui.notify("Sync cancelled", "info");
