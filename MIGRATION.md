@@ -19,7 +19,7 @@
 - Tool surface is now local-capture focused: `is_write`, `is_status`, `is_commit`, `is_sync`, `is_auth`.
 - Local markdown is the source of truth; sync is optional.
 - `_agent/` awareness is assembled locally through `@ideaspaces/sdk`.
-- Setup/publish flows are skills over the CLI: `/is-setup`, `/is-publish`.
+- Setup/publish flows are Pi-native commands over the CLI: `/is-setup`, `/is-publish`.
 - Business logic lives in `@ideaspaces/cli` and `@ideaspaces/sdk`.
 
 ## Suggested rollout
