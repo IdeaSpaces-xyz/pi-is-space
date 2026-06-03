@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
@@ -13,6 +13,28 @@ type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
   details: Record<string, unknown>;
   isError?: boolean;
+};
+
+type JsonCliResult<T> =
+  | { ok: true; data: T; text: string }
+  | { ok: false; error: string; text: string };
+
+type CaptureStatus = {
+  repoRoot: string;
+  branch: string | null;
+  ahead: number | null;
+  behind: number | null;
+  dirty: boolean;
+  untracked_in_tracked_dirs: string[];
+  tracked_captures: string[];
+};
+
+type SyncDryRun = {
+  /** Mirrors the CLI JSON shape for `ideaspaces sync --dry-run`. */
+  dry_run: true;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
 };
 
 type AtMention = {
@@ -263,6 +285,81 @@ async function run(args: string[], stdin?: string, cwd?: string): Promise<ToolRe
   return ok(out.trim() || err.trim() || "Done");
 }
 
+async function runJson<T>(args: string[], cwd?: string): Promise<JsonCliResult<T>> {
+  const { out, err, code } = await cli(["--json", ...args], undefined, cwd);
+  const text = out.trim() || err.trim();
+  if (code !== 0) return { ok: false, error: err.trim() || out.trim() || `Exit ${code}`, text };
+
+  try {
+    return { ok: true, data: JSON.parse(out) as T, text };
+  } catch {
+    return { ok: false, error: `Expected JSON from ideaspaces ${args.join(" ")}`, text };
+  }
+}
+
+function formatPathList(paths: string[], max = 8): string {
+  const head = paths.slice(0, max).map((path) => `  ${path}`);
+  if (paths.length > max) head.push(`  ... and ${paths.length - max} more`);
+  return head.join("\n");
+}
+
+function formatCaptureStatus(status: CaptureStatus): string {
+  const lines = [
+    `repo:    ${status.repoRoot}`,
+    `branch:  ${status.branch ?? "(detached)"}`,
+    status.ahead != null || status.behind != null
+      ? `remote:  ahead ${status.ahead ?? 0}, behind ${status.behind ?? 0}`
+      : "remote:  no upstream",
+    `tree:    ${status.dirty ? "dirty" : "clean"}`,
+  ];
+
+  if (status.untracked_in_tracked_dirs.length) {
+    lines.push("", `untracked in tracked dirs (${status.untracked_in_tracked_dirs.length}):`, formatPathList(status.untracked_in_tracked_dirs));
+  }
+
+  if (status.tracked_captures.length) {
+    lines.push("", `captures awaiting commit (${status.tracked_captures.length}):`, formatPathList(status.tracked_captures));
+  } else {
+    lines.push("", "no captures awaiting commit");
+  }
+
+  return lines.join("\n");
+}
+
+function formatSyncDryRun(sync: SyncDryRun): string {
+  if (!sync.upstream) return "No upstream configured — nothing to sync.\n(dry run — nothing fetched or pushed)";
+
+  const lines = [`upstream: ${sync.upstream} (ahead ${sync.ahead}, behind ${sync.behind})`];
+  if (sync.behind) lines.push("would integrate remote changes (requires clean tree)");
+  if (sync.ahead) lines.push(`would push ${sync.ahead} commit(s)`);
+  if (!sync.ahead && !sync.behind) lines.push("up to date");
+  lines.push("(dry run — nothing fetched or pushed)");
+  return lines.join("\n");
+}
+
+function buildStatusLine(root: string | null, status: CaptureStatus | null): string {
+  const name = root ? basename(root) : "local-first";
+  const parts = [`📚 ${name}`];
+  if (!status) return parts.join(" · ");
+
+  if (status.tracked_captures.length) parts.push(`${status.tracked_captures.length} captures`);
+  if (status.dirty) parts.push("dirty");
+  if (status.ahead != null && status.behind != null && (status.ahead || status.behind)) {
+    parts.push(`↑${status.ahead} ↓${status.behind}`);
+  }
+  return parts.join(" · ");
+}
+
+function buildCaptureWidget(status: CaptureStatus): string[] | undefined {
+  if (!status.tracked_captures.length) return undefined;
+
+  return [
+    `Captures awaiting save (${status.tracked_captures.length}):`,
+    ...formatPathList(status.tracked_captures, 5).split("\n"),
+    "/is-commit to save · /is-sync to push",
+  ];
+}
+
 async function buildAwareness(cwd: string): Promise<{ root: string | null; text: string | null }> {
   const space = await findSpaceRoot(cwd);
   if (space.source === "none" || !space.root) return { root: null, text: null };
@@ -305,13 +402,30 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
+  async function readCaptureStatus(cwd: string): Promise<CaptureStatus | null> {
+    const result = await runJson<CaptureStatus>(["status"], cwd);
+    return result.ok ? result.data : null;
+  }
+
+  function updateSpaceUi(ctx: ExtensionContext, status: CaptureStatus | null): void {
+    ctx.ui.setStatus("is", buildStatusLine(cachedRoot, status));
+    ctx.ui.setWidget("is-captures", status ? buildCaptureWidget(status) : undefined, { placement: "belowEditor" });
+  }
+
+  async function refreshSpaceUi(ctx: ExtensionContext, cwd = ctx.cwd): Promise<CaptureStatus | null> {
+    if (!cachedRoot) {
+      updateSpaceUi(ctx, null);
+      return null;
+    }
+
+    const status = await readCaptureStatus(cwd);
+    updateSpaceUi(ctx, status);
+    return status;
+  }
+
   pi.on("session_start", async (_event, ctx) => {
     await refreshAwareness(ctx.cwd);
-    if (cachedRoot) {
-      ctx.ui.setStatus("is", `📚 ${cachedRoot}`);
-    } else {
-      ctx.ui.setStatus("is", "📚 local-first");
-    }
+    await refreshSpaceUi(ctx);
 
     // IdeaSpaces often uses .gitignore as a sharing boundary, not a local
     // context boundary. Broaden @mention discovery to include gitignored local
@@ -382,6 +496,117 @@ export default function (pi: ExtensionAPI) {
     };
   });
 
+  pi.registerCommand("is-status", {
+    description: "Show IdeaSpaces capture and sync state",
+    handler: async (_args, ctx) => {
+      const status = await refreshSpaceUi(ctx);
+      if (!status) {
+        ctx.ui.notify("No git-backed ideaspace status available here", "warning");
+        return;
+      }
+      ctx.ui.notify(formatCaptureStatus(status), "info");
+    },
+  });
+
+  pi.registerCommand("is-commit", {
+    description: "Commit IdeaSpaces session-tracked captures after confirmation",
+    handler: async (_args, ctx) => {
+      await refreshAwareness(ctx.cwd);
+      const status = await refreshSpaceUi(ctx);
+      if (!status) {
+        ctx.ui.notify("No git-backed ideaspace status available here", "warning");
+        return;
+      }
+      if (!status.tracked_captures.length) {
+        ctx.ui.notify("No IdeaSpaces captures awaiting commit", "info");
+        return;
+      }
+
+      const paths = formatPathList(status.tracked_captures);
+      const defaultMessage = status.tracked_captures.length === 1
+        ? `Capture ${basename(status.tracked_captures[0])}`
+        : "Capture IdeaSpaces notes";
+      const message = await ctx.ui.editor("Commit message", defaultMessage);
+      const trimmed = message?.trim();
+      if (!trimmed) {
+        ctx.ui.notify("Commit cancelled — no message", "info");
+        return;
+      }
+
+      const confirmed = await ctx.ui.confirm(
+        "Commit tracked captures?",
+        `This commits only IdeaSpaces session-tracked paths:\n\n${paths}\n\nMessage: ${trimmed}`,
+      );
+      if (!confirmed) {
+        ctx.ui.notify("Commit cancelled", "info");
+        return;
+      }
+
+      const result = await runJson<{ commit_sha: string; committed_paths: string[] }>(["commit", "-m", trimmed, "--tracked"], ctx.cwd);
+      if (!result.ok) {
+        ctx.ui.notify(`Commit failed:\n${result.error}`, "error");
+        await refreshSpaceUi(ctx);
+        return;
+      }
+
+      await refreshAwareness(ctx.cwd);
+      await refreshSpaceUi(ctx);
+      ctx.ui.notify(`Committed ${result.data.committed_paths.length} path(s): ${result.data.commit_sha}`, "info");
+    },
+  });
+
+  pi.registerCommand("is-sync", {
+    description: "Dry-run then sync committed IdeaSpaces captures",
+    handler: async (_args, ctx) => {
+      await refreshAwareness(ctx.cwd);
+      const status = await refreshSpaceUi(ctx);
+      if (!status) {
+        ctx.ui.notify("No git-backed ideaspace status available here", "warning");
+        return;
+      }
+      if (status.tracked_captures.length) {
+        ctx.ui.notify(
+          `Refusing to sync: ${status.tracked_captures.length} capture(s) still await commit. Run /is-commit first.`,
+          "warning",
+        );
+        return;
+      }
+
+      const dryRun = await runJson<SyncDryRun>(["sync", "--dry-run"], ctx.cwd);
+      if (!dryRun.ok) {
+        ctx.ui.notify(`Sync dry-run failed:\n${dryRun.error}`, "error");
+        return;
+      }
+
+      const plan = formatSyncDryRun(dryRun.data);
+      if (!dryRun.data.upstream) {
+        ctx.ui.notify(plan, "info");
+        return;
+      }
+      if (status.dirty && dryRun.data.behind) {
+        ctx.ui.notify("Working tree is dirty — commit or stash changes before syncing remote updates.", "warning");
+        return;
+      }
+
+      const confirmed = await ctx.ui.confirm("Run IdeaSpaces sync?", plan);
+      if (!confirmed) {
+        ctx.ui.notify("Sync cancelled", "info");
+        return;
+      }
+
+      const result = await runJson<{ upstream: string | null; pushed: number; integrated: number }>(["sync"], ctx.cwd);
+      if (!result.ok) {
+        ctx.ui.notify(`Sync failed:\n${result.error}`, "error");
+        await refreshSpaceUi(ctx);
+        return;
+      }
+
+      await refreshAwareness(ctx.cwd);
+      await refreshSpaceUi(ctx);
+      ctx.ui.notify(`Synced: integrated ${result.data.integrated} commit(s), pushed ${result.data.pushed} commit(s).`, "info");
+    },
+  });
+
   pi.registerTool({
     name: "is_auth",
     label: "IS Auth",
@@ -448,7 +673,10 @@ export default function (pi: ExtensionAPI) {
       if (params.force) args.push("--force");
 
       const result = await run(args, params.content, cwd);
-      if (!isErrorResult(result)) await refreshAwareness(cwd);
+      if (!isErrorResult(result)) {
+        await refreshAwareness(cwd);
+        await refreshSpaceUi(ctx, cwd);
+      }
       return result;
     },
   });
@@ -457,7 +685,7 @@ export default function (pi: ExtensionAPI) {
     name: "is_status",
     label: "IS Status",
     description:
-      "Show IdeaSpaces capture state. Without path: git position plus session-tracked captures awaiting commit. With path: single-file state including sha for is_write if_match.",
+      "Show IdeaSpaces capture state. Without path: returns JSON for git position plus session-tracked captures and refreshes the UI. With path: returns single-file state text including sha for is_write if_match, without refreshing the UI.",
     promptSnippet: "Inspect IdeaSpaces capture state or get a file sha for safe updates",
     parameters: Type.Object({
       path: Type.Optional(
@@ -474,9 +702,16 @@ export default function (pi: ExtensionAPI) {
       ),
     }),
     async execute(_id, params, _signal, _onUpdate, ctx) {
-      const args = ["status"];
-      if (params.path) args.push("--path", params.path);
-      return run(args, undefined, params.cwd || ctx.cwd);
+      const cwd = params.cwd || ctx.cwd;
+      if (params.path) return run(["status", "--path", params.path], undefined, cwd);
+
+      // A global status read is also a deliberate UI refresh; single-path sha
+      // queries are local concurrency checks and should not rewrite the widget.
+      await refreshAwareness(cwd);
+      const result = await runJson<CaptureStatus>(["status"], cwd);
+      if (!result.ok) return fail(result.error);
+      updateSpaceUi(ctx, result.data);
+      return ok(JSON.stringify(result.data, null, 2));
     },
   });
 
@@ -505,7 +740,12 @@ export default function (pi: ExtensionAPI) {
       const args = ["commit", "-m", params.message];
       if (params.tracked) args.push("--tracked");
       else if (params.paths?.length) args.push(...params.paths);
-      return run(args, undefined, params.cwd || ctx.cwd);
+      const result = await run(args, undefined, params.cwd || ctx.cwd);
+      if (!isErrorResult(result)) {
+        await refreshAwareness(params.cwd || ctx.cwd);
+        await refreshSpaceUi(ctx, params.cwd || ctx.cwd);
+      }
+      return result;
     },
   });
 
@@ -529,7 +769,12 @@ export default function (pi: ExtensionAPI) {
       const args = ["sync"];
       if (params.dry_run) args.push("--dry-run");
       if (params.rebase === false) args.push("--rebase=false");
-      return run(args, undefined, params.cwd || ctx.cwd);
+      const result = await run(args, undefined, params.cwd || ctx.cwd);
+      if (!isErrorResult(result) && !params.dry_run) {
+        await refreshAwareness(params.cwd || ctx.cwd);
+        await refreshSpaceUi(ctx, params.cwd || ctx.cwd);
+      }
+      return result;
     },
   });
 }

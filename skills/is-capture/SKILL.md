@@ -32,8 +32,8 @@ If yes:
 1. `bash` (`find`/`rg`) first to avoid duplicates; `read` the target area for context.
 2. `is_write` to capture with Layer 1 frontmatter (`name`, `summary`). It stages the file, tracks it in IdeaSpaces session state, and returns a content `sha`.
 3. For a refinement to a file just written, call `is_write` again with `if_match: <sha>` from the previous response. For a first update to an existing file, call `is_status({ path })` first and use the returned `sha` as `if_match`.
-4. **Confirm before saving.** On user agreement, call `is_commit({ message, tracked: true })` or pass explicit `paths`. It commits only captured/tracked paths, not unrelated staged user work.
-5. Optionally `is_sync` to push committed captures.
+4. **Confirm before saving.** On user agreement, call `is_commit({ message, tracked: true })` or pass explicit `paths`. It commits only captured/tracked paths, not unrelated staged user work. If the user runs `/is-commit`, treat that as the confirmation step and don't re-ask.
+5. Optionally `is_sync` to push committed captures. If the user runs `/is-sync`, treat that as the user's requested sync path.
 
 Follow [is-writing](../is-writing/SKILL.md) standard.
 
