@@ -13,6 +13,8 @@ allowed-tools: "read bash"
 
 **Goal:** login check → confirm destination → run `ideaspaces publish` → narrate result.
 
+**Pi command available:** for human-triggered publishing, prefer `/is-publish`. It checks scaffold/branch state, confirms destination, runs the same CLI publish command, and offers login/retry if the CLI reports missing credentials. Use this skill when the agent needs the protocol, when `/is-publish` is unavailable, or for recovery reasoning after a failed publish.
+
 This skill is the conversational layer around the IdeaSpaces CLI. The extension exposes the resolved CLI as `$IS_CLI_PATH` when available. Define this helper in any `bash` command that invokes the CLI:
 
 ```bash

@@ -36,13 +36,15 @@ Pi's native `read`, `edit`, `write`, and `bash` cover local navigation and editi
 
 ## Commands
 
-Human-facing capture actions are Pi-native commands:
+Human-facing IdeaSpaces actions are Pi-native commands:
 
 | Command | What |
 |---|---|
+| `/is-setup` | Preview and scaffold the `_agent/` seed contract with Pi UI confirmation. |
 | `/is-status` | Show git/capture state and refresh the footer/widget. |
 | `/is-commit` | Review session-tracked captures, enter a commit message, confirm, then commit only those paths. |
 | `/is-sync` | Run `sync --dry-run`, confirm the plan, then sync committed captures. |
+| `/is-publish` | Confirm destination, retry through login if needed, then publish the space remotely. |
 
 When captures await commit, the extension shows a small widget near the editor so state stays visible without reminder spam.
 
@@ -67,7 +69,7 @@ Auth is optional:
 - `is_auth` — login (opens browser OAuth)
 - `is_auth action="logout"` — clear credentials
 
-To host a local space remotely, use `/is-publish` or run `ideaspaces publish` from inside the space.
+To host a local space remotely, use `/is-publish`. It checks scaffold/branch state, confirms destination, then runs `ideaspaces publish`; if the CLI reports missing credentials, it offers login and retries.
 
 ## Skills and reference
 

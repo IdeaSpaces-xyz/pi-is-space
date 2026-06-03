@@ -16,6 +16,8 @@ Canonical protocols: read [purpose elicitation](../../reference/purpose-elicitat
 
 **Goal:** detect → confirm → run `ideaspaces create` → capture purpose / now / next in conversation when content emerges.
 
+**Pi command available:** for human-triggered setup, prefer `/is-setup`. It runs the same CLI dry-run/apply flow with Pi-native preview and confirmation. Use this skill when the agent needs the protocol, when `/is-setup` is unavailable, or when purpose/now/next elicitation continues after the scaffold.
+
 This skill is the **conversational layer** around the IdeaSpaces CLI. The conversation lives here; the file writes live in the CLI. That keeps one source of truth — change the CLI's templates, the skill's behavior updates automatically.
 
 The extension resolves the IdeaSpaces CLI and exposes it to Bash as `$IS_CLI_PATH` when available. Define this helper in any `bash` command that invokes the CLI so local dev, installed packages, and PATH installs all work:

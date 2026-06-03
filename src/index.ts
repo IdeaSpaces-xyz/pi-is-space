@@ -37,6 +37,35 @@ type SyncDryRun = {
   behind: number;
 };
 
+type CreatePlanStep = {
+  op: string;
+  path?: string;
+  detail?: string;
+};
+
+type CreatePlan = {
+  target: string;
+  shape: "greenfield" | "content-existing" | "code-repo" | "old-shape" | "complete";
+  privateAgent: boolean;
+  plan: CreatePlanStep[];
+};
+
+type CreateResult = {
+  target: string;
+  shape: string;
+  privateAgent: boolean;
+  scaffolded: true;
+};
+
+type PublishResult = {
+  repo_id: string;
+  slug: string;
+  namespace: string;
+  remote_url: string;
+  web_url: string;
+  identity_email: string;
+};
+
 type AtMention = {
   prefix: string;
   query: string;
@@ -334,6 +363,32 @@ function formatSyncDryRun(sync: SyncDryRun): string {
   if (sync.ahead) lines.push(`would push ${sync.ahead} commit(s)`);
   if (!sync.ahead && !sync.behind) lines.push("up to date");
   lines.push("(dry run — nothing fetched or pushed)");
+  return lines.join("\n");
+}
+
+function createArgs(name: string | undefined, shared: boolean, apply: boolean): string[] {
+  const args = ["create"];
+  if (name) args.push(name);
+  if (shared) args.push("--shared");
+  if (apply) args.push("--yes");
+  return args;
+}
+
+function formatCreatePlan(plan: CreatePlan): string {
+  const lines = [
+    `target:  ${plan.target}`,
+    `shape:   ${plan.shape}${plan.privateAgent ? " (private _agent/)" : ""}`,
+    "",
+    "plan:",
+  ];
+
+  for (const step of plan.plan) {
+    const op = step.op.toUpperCase().padEnd(9);
+    const path = step.path ? ` ${step.path}` : "";
+    const detail = step.detail ? ` — ${step.detail}` : "";
+    lines.push(`  ${op}${path}${detail}`);
+  }
+
   return lines.join("\n");
 }
 
@@ -671,6 +726,181 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_before_fork", async (_event, ctx) => {
     return guardPendingCaptures(ctx, "forking this session");
+  });
+
+  pi.registerCommand("is-setup", {
+    description: "Scaffold an ideaspace with a guided preview and confirmation",
+    handler: async (args, ctx) => {
+      const targetName = args.trim() || undefined;
+      let shared = false;
+      let preview = await runJson<CreatePlan>(createArgs(targetName, shared, false), ctx.cwd);
+      if (!preview.ok) {
+        const level = preview.error.includes("already an ideaspace") ? "info" : "error";
+        ctx.ui.notify(`Create preview failed:\n${preview.error}`, level);
+        return;
+      }
+
+      if (preview.data.shape === "code-repo") {
+        const choice = await ctx.ui.select(
+          "This looks like a code repo. How should IdeaSpaces scaffold agent context?",
+          [
+            "Private _agent/ (default for code repos)",
+            "Shared committed _agent/",
+            "Cancel",
+          ],
+        );
+        if (choice === "Cancel" || choice === undefined) {
+          ctx.ui.notify("Setup cancelled", "info");
+          return;
+        }
+        shared = choice === "Shared committed _agent/";
+        if (shared) {
+          preview = await runJson<CreatePlan>(createArgs(targetName, shared, false), ctx.cwd);
+          if (!preview.ok) {
+            ctx.ui.notify(`Create preview failed:\n${preview.error}`, "error");
+            return;
+          }
+        }
+      }
+
+      const confirmed = await ctx.ui.confirm(
+        "Create ideaspace scaffold?",
+        `${formatCreatePlan(preview.data)}\n\nThe CLI is the source of truth and will not overwrite existing markdown or CLAUDE.md. Apply this plan?`,
+      );
+      if (!confirmed) {
+        ctx.ui.notify("Setup cancelled", "info");
+        return;
+      }
+
+      const result = await runJson<CreateResult>(createArgs(targetName, shared, true), ctx.cwd);
+      if (!result.ok) {
+        ctx.ui.notify(`Setup failed:\n${result.error}\n\nUse git status / git restore to recover any partial scaffold.`, "error");
+        return;
+      }
+
+      if (!targetName) {
+        await refreshAwareness(ctx.cwd);
+        await refreshSpaceUi(ctx);
+      }
+
+      const next = targetName
+        ? `Open ${result.data.target} in Pi to continue. Run /is-publish there when ready to host it remotely.`
+        : "Next session will start oriented to this space. Run /is-publish when ready to host it remotely.";
+      ctx.ui.notify(`Scaffolded ideaspace at ${result.data.target}.\n${next}`, "info");
+    },
+  });
+
+  pi.registerCommand("is-publish", {
+    description: "Publish this ideaspace to the IdeaSpaces remote after guided preflight",
+    handler: async (_args, ctx) => {
+      const space = await findSpaceRoot(ctx.cwd);
+      if (space.source === "none" || !space.root) {
+        ctx.ui.notify("Run /is-publish from the root of a scaffolded ideaspace. Use /is-setup first if this folder has no _agent/ contract.", "warning");
+        return;
+      }
+      if (resolvePath(space.root) !== resolvePath(ctx.cwd)) {
+        ctx.ui.notify(`Run /is-publish from the ideaspace root: ${space.root}`, "warning");
+        return;
+      }
+
+      await refreshAwareness(ctx.cwd);
+      const status = await refreshSpaceUi(ctx);
+      if (status?.tracked_captures.length) {
+        const choice = await ctx.ui.select(
+          `You have ${status.tracked_captures.length} IdeaSpaces capture(s) awaiting commit before publish.`,
+          ["Save first", "Publish committed state only", "Cancel"],
+        );
+        if (choice === "Cancel" || choice === undefined) {
+          ctx.ui.notify("Publish cancelled — captures are still awaiting commit", "info");
+          return;
+        }
+        if (choice === "Save first") {
+          const committed = await commitTrackedCaptures(ctx, status);
+          if (!committed) return;
+        }
+      }
+
+      const folderName = basename(ctx.cwd);
+      const publishArgs = ["publish"];
+      let summary = "Using folder defaults. If this folder is already published, the CLI will reuse its existing remote mapping.";
+
+      const choice = await ctx.ui.select("Publish destination", ["Use folder defaults", "Customize first publish", "Cancel"]);
+      if (choice === "Cancel" || choice === undefined) {
+        ctx.ui.notify("Publish cancelled", "info");
+        return;
+      }
+      if (choice === "Customize first publish") {
+        const displayNameInput = await ctx.ui.input("Display name", folderName);
+        if (displayNameInput === undefined) {
+          ctx.ui.notify("Publish cancelled", "info");
+          return;
+        }
+        const slugInput = await ctx.ui.input("Slug (CLI will normalize)", folderName);
+        if (slugInput === undefined) {
+          ctx.ui.notify("Publish cancelled", "info");
+          return;
+        }
+        const hostnameInput = await ctx.ui.input("Organization hostname (blank for personal)", "");
+        if (hostnameInput === undefined) {
+          ctx.ui.notify("Publish cancelled", "info");
+          return;
+        }
+
+        const displayName = displayNameInput.trim() || folderName;
+        const slug = slugInput.trim() || folderName;
+        const hostname = hostnameInput.trim();
+        publishArgs.push("--name", displayName, "--slug", slug);
+        if (hostname) publishArgs.push("--hostname", hostname);
+        summary = [
+          `name:      ${displayName}`,
+          `slug:      ${slug} (CLI normalizes before creating the remote)`,
+          `namespace: ${hostname || "your personal namespace"}`,
+          "",
+          "If this folder is already published, the CLI will refuse these first-publish flags instead of silently ignoring them.",
+        ].join("\n");
+      }
+
+      const confirmed = await ctx.ui.confirm(
+        "Publish ideaspace?",
+        `${summary}\n\nPublishing sets this repo's local git identity to your IdeaSpaces identity. On first publish, the CLI may amend the tip commit author so server attribution passes; review git history afterward if that matters. Continue?`,
+      );
+      if (!confirmed) {
+        ctx.ui.notify("Publish cancelled", "info");
+        return;
+      }
+
+      let published = await runJson<PublishResult>(publishArgs, ctx.cwd);
+      if (!published.ok && published.error.includes("Not logged in")) {
+        const login = await ctx.ui.confirm(
+          "Log in to IdeaSpaces?",
+          "Publishing requires IdeaSpaces credentials. I'll open the browser login flow and save credentials locally, then retry publish. Continue?",
+        );
+        if (!login) {
+          ctx.ui.notify("Publish cancelled — login required", "info");
+          return;
+        }
+        const loginResult = await run(["login"], undefined, ctx.cwd);
+        if (isErrorResult(loginResult)) {
+          ctx.ui.notify(`Login failed:\n${loginResult.content.map((c) => c.text).join("\n")}`, "error");
+          return;
+        }
+        published = await runJson<PublishResult>(publishArgs, ctx.cwd);
+      }
+      if (!published.ok) {
+        const hint = published.error.includes("Local branch is")
+          ? "\n\nRename the current branch with `git branch -m main` and re-run /is-publish."
+          : "";
+        ctx.ui.notify(`Publish failed:\n${published.error}${hint}`, "error");
+        return;
+      }
+
+      await refreshAwareness(ctx.cwd);
+      await refreshSpaceUi(ctx);
+      ctx.ui.notify(
+        `Published ${published.data.namespace}/${published.data.slug}.\nView: ${published.data.web_url}\nGit remote: ${published.data.remote_url}\nLocal identity: ${published.data.identity_email}`,
+        "info",
+      );
+    },
   });
 
   pi.registerCommand("is-status", {
