@@ -12,6 +12,8 @@ allowed-tools: "is_write is_auth edit read write bash"
 
 # Setup an Ideaspace
 
+Canonical protocols: read [purpose elicitation](../../reference/purpose-elicitation.md) and [repo context](../../reference/repo-context.md) when eliciting direction or judging how an existing repo should be scaffolded.
+
 **Goal:** detect → confirm → run `ideaspaces create` → capture purpose / now / next in conversation when content emerges.
 
 This skill is the **conversational layer** around the IdeaSpaces CLI. The conversation lives here; the file writes live in the CLI. That keeps one source of truth — change the CLI's templates, the skill's behavior updates automatically.

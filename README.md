@@ -69,7 +69,9 @@ Auth is optional:
 
 To host a local space remotely, use `/is-publish` or run `ideaspaces publish` from inside the space.
 
-## Skills
+## Skills and reference
+
+Pi ships surface-specific entrypoint skills:
 
 - `is-setup`
 - `is-publish`
@@ -77,6 +79,9 @@ To host a local space remotely, use `/is-publish` or run `ideaspaces publish` fr
 - `is-writing`
 - `is-capture`
 - `is-reflect`
+- `is-shape`
+
+Shared protocol content lives in `reference/`, generated from the SDK canonical skill catalog with `npm run build:reference`. Entry skills stay Pi-specific while reading SDK-backed references such as `reference/capture.md`, `reference/writing.md`, and `reference/awareness.md` on demand.
 
 Capture flow: `is_write` → refine with returned `sha` or `is_status({ path })` → user confirms → `is_commit` → optional `is_sync`.
 

@@ -11,6 +11,8 @@ user-invocable: false
 
 # Capture
 
+Canonical protocols: read [capture](../../reference/capture.md) and [writing](../../reference/writing.md) for the full capture and writing standards. This entrypoint adds Pi-specific tool flow.
+
 ## When to Propose
 
 - **Decision made.** "We're going with X because Y." Highest-value capture — prevents relitigating.
@@ -35,7 +37,7 @@ If yes:
 4. **Confirm before saving.** On user agreement, call `is_commit({ message, tracked: true })` or pass explicit `paths`. It commits only captured/tracked paths, not unrelated staged user work. If the user runs `/is-commit`, treat that as the confirmation step and don't re-ask.
 5. Optionally `is_sync` to push committed captures. If the user runs `/is-sync`, treat that as the user's requested sync path.
 
-Follow [is-writing](../is-writing/SKILL.md) standard.
+Follow the [writing reference](../../reference/writing.md) standard.
 
 If no: drop it. Don't re-ask.
 

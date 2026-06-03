@@ -12,6 +12,8 @@ allowed-tools: "is_write is_status is_commit is_sync is_auth read edit write bas
 
 # Working in an Ideaspace
 
+Canonical protocols: read [guide](../../reference/guide.md), [capture](../../reference/capture.md), [writing](../../reference/writing.md), or [awareness](../../reference/awareness.md) when the task needs the full shared standard. This entrypoint adds Pi-specific navigation and tool guidance.
+
 An ideaspace is a markdown folder where knowledge accumulates. The Pi extension makes the agent fluent in the conventions: how the tree is shaped, where agent context lives, when to capture.
 
 You have two sets of tools:
@@ -155,3 +157,4 @@ To host a space remotely after login, run `/is-publish` or `ideaspaces publish` 
 - **is-reflect** — when to propose updating Purpose, Now, or structure
 - **is-writing** — quality standard for summaries, sections, entities
 - **is-setup** — conversational layer over `ideaspaces create` for a new or existing space
+- **is-shape** — create `_agent/` primitives and perspectives

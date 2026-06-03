@@ -25,34 +25,19 @@ jobs:
       - name: Install typecheck dependencies
         run: |
           mkdir -p .ci-deps
+          SDK_SPEC=$(node -p "require('./package.json').dependencies['@ideaspaces/sdk']")
           npm install --prefix .ci-deps --no-save --no-audit --no-fund \
             typescript@^5.8.3 \
             @types/node@^25.5.2 \
             typebox \
-            @earendil-works/pi-coding-agent
+            @earendil-works/pi-coding-agent \
+            "$SDK_SPEC"
           ln -s .ci-deps/node_modules node_modules
-          mkdir -p node_modules/@ideaspaces/sdk
-          # Typecheck-only SDK stub. Keep in sync with the @ideaspaces/sdk
-          # package pin in package.json (currently dc17af97a376980165b13ee198c64eab8b0c0d0b).
-          # This covers SDK imports only; CLI JSON shapes are not CI-verified here.
-          cat > node_modules/@ideaspaces/sdk/package.json <<'JSON'
-          { "name": "@ideaspaces/sdk", "version": "0.0.0-ci", "types": "index.d.ts" }
-          JSON
-          cat > node_modules/@ideaspaces/sdk/index.d.ts <<'TS'
-          export type SpaceRoot = {
-            source: "agent" | "none";
-            root: string | null;
-            contract: {
-              foundation?: unknown;
-              guide?: unknown;
-              purpose?: unknown;
-              now?: unknown;
-              next?: unknown;
-            };
-          };
-          export function findSpaceRoot(cwd: string): Promise<SpaceRoot>;
-          export function assembleAwareness(opts: { root: string; contract: SpaceRoot["contract"] }): Promise<string>;
-          TS
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Verify reference catalog is current
+        run: |
+          npm run build:reference
+          git diff --exit-code reference/
