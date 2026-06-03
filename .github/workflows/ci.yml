@@ -22,14 +22,34 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Install dependencies
-        env:
-          GIT_CONFIG_COUNT: "2"
-          GIT_CONFIG_KEY_0: "url.https://github.com/.insteadOf"
-          GIT_CONFIG_VALUE_0: "ssh://git@github.com/"
-          GIT_CONFIG_KEY_1: "url.https://github.com/.insteadOf"
-          GIT_CONFIG_VALUE_1: "git@github.com:"
-        run: npm install --no-audit --no-fund
+      - name: Install typecheck dependencies
+        run: |
+          mkdir -p .ci-deps
+          npm install --prefix .ci-deps --no-save --no-audit --no-fund \
+            typescript@^5.8.3 \
+            @types/node@^25.5.2 \
+            typebox \
+            @earendil-works/pi-coding-agent
+          ln -s .ci-deps/node_modules node_modules
+          mkdir -p node_modules/@ideaspaces/sdk
+          cat > node_modules/@ideaspaces/sdk/package.json <<'JSON'
+          { "name": "@ideaspaces/sdk", "version": "0.0.0-ci", "types": "index.d.ts" }
+          JSON
+          cat > node_modules/@ideaspaces/sdk/index.d.ts <<'TS'
+          export type SpaceRoot = {
+            source: "agent" | "none";
+            root: string | null;
+            contract: {
+              foundation?: unknown;
+              guide?: unknown;
+              purpose?: unknown;
+              now?: unknown;
+              next?: unknown;
+            };
+          };
+          export function findSpaceRoot(cwd: string): Promise<SpaceRoot>;
+          export function assembleAwareness(opts: { root: string; contract: SpaceRoot["contract"] }): Promise<string>;
+          TS
 
       - name: Typecheck
         run: npm run typecheck
