@@ -499,7 +499,6 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("is-status", {
     description: "Show IdeaSpaces capture and sync state",
     handler: async (_args, ctx) => {
-      await refreshAwareness(ctx.cwd);
       const status = await refreshSpaceUi(ctx);
       if (!status) {
         ctx.ui.notify("No git-backed ideaspace status available here", "warning");
@@ -686,7 +685,7 @@ export default function (pi: ExtensionAPI) {
     name: "is_status",
     label: "IS Status",
     description:
-      "Show IdeaSpaces capture state. Without path: git position plus session-tracked captures awaiting commit. With path: single-file state including sha for is_write if_match.",
+      "Show IdeaSpaces capture state. Without path: returns JSON for git position plus session-tracked captures and refreshes the UI. With path: returns single-file state text including sha for is_write if_match, without refreshing the UI.",
     promptSnippet: "Inspect IdeaSpaces capture state or get a file sha for safe updates",
     parameters: Type.Object({
       path: Type.Optional(
