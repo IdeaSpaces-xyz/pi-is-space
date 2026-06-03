@@ -22,7 +22,7 @@ Behavior lives in the IdeaSpaces CLI and SDK where possible.
 
 ```bash
 pi install /path/to/pi-is-space
-# or run without installing
+# quick extension-only test; install for the full extension + skills package
 pi -e /path/to/pi-is-space
 ```
 
@@ -60,7 +60,7 @@ Before switching or forking sessions, Pi checks for session-tracked captures awa
 
 ## Awareness
 
-On session start, the extension walks up from `cwd` looking for `_agent/`, formats the awareness block via `@ideaspaces/sdk`, and injects it before each agent turn. Missing `_agent/purpose.md` or `_agent/now.md` are surfaced as drift signals.
+On session start, the extension walks up from `cwd` looking for `_agent/`, formats the awareness block via `@ideaspaces/sdk`, and injects it before each agent turn. The block includes position, git/capture state, Now, tree/context summaries, operating skills, and changes since the last session when available. Missing `_agent/purpose.md` or `_agent/now.md` are surfaced as drift signals.
 
 ## CLI
 

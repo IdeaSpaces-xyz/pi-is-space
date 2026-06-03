@@ -5,7 +5,15 @@ import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve as resolvePath, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { findSpaceRoot, assembleAwareness } from "@ideaspaces/sdk";
+import {
+  findSpaceRoot,
+  assembleAwareness,
+  gitState,
+  sessionState,
+  walkPathContext,
+  spaceRootLevel,
+  currentBranchLevel,
+} from "@ideaspaces/sdk";
 
 type CliResult = { out: string; err: string; code: number };
 
@@ -478,15 +486,73 @@ async function shouldNudgeKnowledgeWrite(
   return { path: absPath, spaceRoot };
 }
 
-async function buildAwareness(cwd: string): Promise<{ root: string | null; text: string | null }> {
+function formatPositionSection(cwd: string, repoRoot: string, pathContext: Awaited<ReturnType<typeof walkPathContext>>): string {
+  const spaceRoot = spaceRootLevel(pathContext);
+  const branch = currentBranchLevel(pathContext);
+  const cwdRel = relative(repoRoot, cwd) || ".";
+  const lines = ["Position:"];
+  lines.push(`  repo: ${repoRoot}`);
+  lines.push(`  cwd: ${cwdRel}`);
+  if (spaceRoot) lines.push(`  space root: ${spaceRoot.path || "."}`);
+  if (branch) lines.push(`  active _agent: ${branch.path || "."}`);
+  return lines.join("\n");
+}
+
+function formatStateSection(status: CaptureStatus | null): string | null {
+  if (!status) return null;
+  const lines = ["State:"];
+  lines.push(`  branch: ${status.branch ?? "(detached)"}`);
+  if (status.ahead != null || status.behind != null) {
+    lines.push(`  remote: ahead ${status.ahead ?? 0}, behind ${status.behind ?? 0}`);
+  } else {
+    lines.push("  remote: no upstream");
+  }
+  lines.push(`  working tree: ${status.dirty ? "dirty" : "clean"}`);
+  lines.push(`  captures awaiting commit: ${status.tracked_captures.length}`);
+  if (status.untracked_in_tracked_dirs.length) {
+    lines.push(`  untracked knowledge files: ${status.untracked_in_tracked_dirs.length}`);
+  }
+  return lines.join("\n");
+}
+
+async function readCaptureStatus(cwd: string): Promise<CaptureStatus | null> {
+  const result = await runJson<CaptureStatus>(["status"], cwd);
+  return result.ok ? result.data : null;
+}
+
+async function buildAwareness(cwd: string): Promise<{ root: string | null; repoRoot: string | null; text: string | null }> {
   const space = await findSpaceRoot(cwd);
-  if (space.source === "none" || !space.root) return { root: null, text: null };
+  if (space.source === "none" || !space.root) return { root: null, repoRoot: null, text: null };
 
-  const block = await assembleAwareness({
-    root: space.root,
-    contract: space.contract,
-  });
+  const status = await readCaptureStatus(cwd);
+  let repoRoot = status?.repoRoot ?? null;
+  if (!repoRoot) {
+    try {
+      repoRoot = (await gitState(cwd)).repoRoot;
+    } catch {
+      // No git repo available. Do not substitute the ideaspace root here:
+      // space root and git root are different concepts.
+      repoRoot = null;
+    }
+  }
 
+  let lastSha: string | undefined;
+  if (repoRoot) {
+    try {
+      lastSha = (await sessionState(repoRoot).readState()).lastSha;
+    } catch {
+      // Missing or unreadable local session state is normal on first run.
+      lastSha = undefined;
+    }
+  }
+  const [block, pathContext] = await Promise.all([
+    assembleAwareness({
+      root: space.root,
+      contract: space.contract,
+      lastSha,
+    }),
+    repoRoot ? walkPathContext(repoRoot, cwd) : Promise.resolve(null),
+  ]);
   const drift: string[] = [];
   if (!space.contract.purpose) {
     drift.push(
@@ -499,13 +565,19 @@ async function buildAwareness(cwd: string): Promise<{ root: string | null; text:
     );
   }
 
-  const parts = [block.trim(), ...drift].filter(Boolean);
-  return { root: space.root, text: parts.length ? parts.join("\n\n") : null };
+  const parts = [
+    pathContext && repoRoot ? formatPositionSection(cwd, repoRoot, pathContext) : null,
+    formatStateSection(status),
+    block.trim(),
+    ...drift,
+  ].filter(Boolean);
+  return { root: space.root, repoRoot, text: parts.length ? parts.join("\n\n") : null };
 }
 
 export default function (pi: ExtensionAPI) {
   let cachedAwareness: string | null = null;
   let cachedRoot: string | null = null;
+  let cachedRepoRoot: string | null = null;
   const fdCommand = resolveFdCommand();
   const gitRootCache = new Map<string, string | null>();
   let autocompleteFailureShown = false;
@@ -515,15 +587,14 @@ export default function (pi: ExtensionAPI) {
       const awareness = await buildAwareness(cwd);
       cachedAwareness = awareness.text;
       cachedRoot = awareness.root;
-    } catch {
+      cachedRepoRoot = awareness.repoRoot;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`IdeaSpaces: awareness build failed: ${message}`);
       cachedAwareness = null;
       cachedRoot = null;
+      cachedRepoRoot = null;
     }
-  }
-
-  async function readCaptureStatus(cwd: string): Promise<CaptureStatus | null> {
-    const result = await runJson<CaptureStatus>(["status"], cwd);
-    return result.ok ? result.data : null;
   }
 
   function updateSpaceUi(ctx: ExtensionContext, status: CaptureStatus | null): void {
@@ -726,6 +797,19 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_before_fork", async (_event, ctx) => {
     return guardPendingCaptures(ctx, "forking this session");
+  });
+
+  pi.on("session_shutdown", async () => {
+    // Lifecycle write, not awareness assembly: persist the last-seen commit so
+    // the next session can render "Since last session" from git history.
+    if (!cachedRepoRoot) return;
+    try {
+      const state = await gitState(cachedRepoRoot);
+      if (state.headSha) await sessionState(cachedRepoRoot).setLastSha(state.headSha);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`IdeaSpaces: failed to persist last-seen HEAD: ${message}`);
+    }
   });
 
   pi.registerCommand("is-setup", {
@@ -1001,6 +1085,7 @@ export default function (pi: ExtensionAPI) {
           if (!isErrorResult(result)) {
             cachedAwareness = null;
             cachedRoot = null;
+            cachedRepoRoot = null;
           }
           return result;
         }
