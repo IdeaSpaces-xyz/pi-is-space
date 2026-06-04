@@ -21,7 +21,7 @@ Sync aligns the local ideaspace with its remote. It is not where understanding i
 ## How
 
 1. Inspect state with `is_status`.
-2. If session-tracked captures are pending, do not sync yet. Ask to commit/capture them first, or leave them local.
+2. If staged captures are still uncommitted, do not sync yet. Ask to commit them first, or leave them local.
 3. Preview when useful: `is_sync({ dry_run: true })`.
 4. If the plan is safe, run `is_sync`.
 5. Report what moved: integrated commits, pushed commits, or why nothing changed.

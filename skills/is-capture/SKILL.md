@@ -55,7 +55,7 @@ If yes:
    - refinement of a file just written: use the prior `is_write` response `sha`
    - `force: true` only after re-reading and reconciling divergent content
 4. Show what changed when useful. The user confirms the capture boundary.
-5. Commit with `is_commit({ message, tracked: true })` for session-tracked captures, or explicit `paths` for native edits. Never sweep unrelated staged work.
+5. Commit with `is_commit({ message, all: true })` for staged knowledge, or explicit `paths` for native edits. Never sweep unrelated staged work.
 6. Optionally use **is-sync** / `is_sync` to align with remote.
 
 If the user runs `/is-commit`, treat that as confirmation and don't re-ask. If the user says no, drop it and don't re-ask.
