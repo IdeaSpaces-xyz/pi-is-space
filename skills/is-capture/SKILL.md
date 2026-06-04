@@ -62,13 +62,7 @@ If the user runs `/is-commit`, treat that as confirmation and don't re-ask. If t
 
 ## Commit message
 
-Use the space's commit convention when present (for example `_agent/skills/commit.md`). Otherwise include the core provenance trailers:
-
-```text
-Op: capture | update | create | restructure
-Conversation: <session description or id>
-Co-authored-by: Pi <agent:pi@ideaspaces>
-```
+Use the space's commit convention when present (for example `_agent/skills/commit.md`) — it defines the message shape and the provenance trailers. Don't restate the trailer format here.
 
 ## Rhythm
 
