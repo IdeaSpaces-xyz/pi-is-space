@@ -33,9 +33,9 @@ Pi's native `read`, `edit`, `write`, and `bash` cover navigation, inspection, an
 | Tool | What |
 |---|---|
 | `is_status` | Inspect git/capture state, or return a file `sha` for safe Note updates. |
-| `is_write` | Capture primitive: create/update a markdown Note with Layer 1 frontmatter, stage it, track it in session state, and return a content `sha`. Normally reached through the `is-capture` skill. |
-| `is_commit` | Capture primitive: commit only explicit or session-tracked capture paths after confirmation; never sweep unrelated staged work. |
-| `is_sync` | Sync primitive: integrate remote changes and push committed captures; refuses while tracked captures remain uncommitted. |
+| `is_write` | Capture primitive: create/update a markdown Note with Layer 1 frontmatter, stage it in git, and return a content `sha`. Normally reached through the `is-capture` skill. |
+| `is_commit` | Capture primitive: commit only explicit paths or all staged knowledge after confirmation; never sweep unrelated staged work. |
+| `is_sync` | Sync primitive: integrate remote changes and push committed captures; refuses while staged knowledge remains uncommitted. |
 | `is_auth` | Log in / out for optional remote sync. |
 
 ## Commands
@@ -46,7 +46,7 @@ Human-facing IdeaSpaces actions are Pi-native commands:
 |---|---|
 | `/is-setup` | Preview and scaffold the `_agent/` seed contract with Pi UI confirmation. |
 | `/is-status` | Show git/capture state and refresh the footer/widget. |
-| `/is-commit` | Review session-tracked captures, enter a commit message, confirm, then commit only those paths. |
+| `/is-commit` | Review staged captures, enter a commit message, confirm, then commit them. |
 | `/is-sync` | Run `sync --dry-run`, confirm the plan, then sync committed captures. |
 | `/is-publish` | Confirm destination, retry through login if needed, then publish the space remotely. |
 
@@ -56,7 +56,7 @@ When captures await commit, the extension shows a small widget near the editor s
 
 The extension watches native `write` / `edit` results. If a markdown or `_agent/` file inside the active ideaspace is changed with native tools, the tool result gets a short nudge to use the capture flow when the edit represents durable shared understanding. Source-code writes stay silent, including markdown inside nested code repos unless that repo has its own `_agent/` ideaspace.
 
-Before switching or forking sessions, Pi checks for session-tracked captures awaiting commit. In interactive mode it offers to save now, proceed without saving, or cancel. In non-interactive mode it cancels conservatively when pending captures exist.
+Before switching or forking sessions, Pi checks for staged captures awaiting commit. In interactive mode it offers to save now, proceed without saving, or cancel. In non-interactive mode it cancels conservatively when pending captures exist.
 
 ## Awareness
 
