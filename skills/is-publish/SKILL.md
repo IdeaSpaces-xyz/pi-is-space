@@ -37,7 +37,7 @@ No separate install required.
 test -f _agent/foundation.md && test -d .git && echo "ok" || echo "missing"
 ```
 
-**Markdown frontmatter parses?** Don't run a separate identity check here. `node_id` frontmatter is no longer required. `ideaspaces publish` preflights tracked markdown for YAML syntax before login/network/push. If that preflight fails, surface the CLI output and ask the user to fix the reported YAML.
+**Markdown frontmatter parses?** Don't run a separate identity check here — no identity frontmatter is required. `ideaspaces publish` preflights tracked markdown for YAML syntax before login/network/push. If that preflight fails, surface the CLI output and ask the user to fix the reported YAML.
 
 **On the `main` branch?** IdeaSpaces uses `main` as the default branch — publishing requires the local branch to match so server and clones stay aligned. Detect:
 

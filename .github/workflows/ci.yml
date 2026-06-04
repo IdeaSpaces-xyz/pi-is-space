@@ -37,6 +37,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Lint skill entrypoints
+        run: npm run lint:skills
+
       - name: Verify reference catalog is current
         run: |
           npm run build:reference

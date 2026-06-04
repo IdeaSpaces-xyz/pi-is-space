@@ -10,6 +10,7 @@
   },
   "scripts": {
     "build:reference": "node reference.mjs",
+    "lint:skills": "node scripts/lint-skills.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
