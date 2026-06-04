@@ -99,7 +99,7 @@ Use **is-capture** for the outer intent. It decides whether the mechanism is `is
 
 Use inside capture when the target is a Note. Carries the writing standard. Better than raw filesystem `write` when the file should compound as a Note.
 
-- `is_write path="analysis.md" content="..." name="Analysis" summary="Dense orientation"` — create or update the Note's frontmatter and body, stage it, record it in IdeaSpaces session state, and return a content `sha`
+- `is_write path="analysis.md" content="..." name="Analysis" summary="Dense orientation"` — create or update the Note's frontmatter and body, stage it in git, and return a content `sha`
 - Optional fields: `tags`, `attached_to`, `if_match`, `force`, `cwd`
 
 Replace-semantics: callers specify all Layer 1 + 2 fields they want set; existing frontmatter is replaced wholesale and the body is preserved. For local file moves, deletions, and metadata-only edits, use native `bash` (`git mv`, `rm`) and `edit`.
@@ -115,21 +115,21 @@ Safe update flow:
 
 ### `is_status` — capture state and file sha
 
-- No path: shows git position plus IdeaSpaces session-tracked captures awaiting commit.
+- No path: shows git position plus staged IdeaSpaces captures awaiting commit.
 - With `path`: returns single-file state, including `sha` for `is_write.if_match`.
 
 ### `is_commit` — explicit capture commit
 
 Use inside capture after user confirmation. Commit only captured paths:
 
-- `is_commit message="Capture decision" tracked=true` — commit the session-tracked capture paths
+- `is_commit message="Capture decision" all=true` — commit all staged knowledge (markdown + `_agent/`)
 - `is_commit message="Capture decision" paths=["notes/decision.md"]` — commit explicit paths
 
 It never sweeps unrelated staged user work into the capture commit.
 
 ### `is_sync` — push committed captures
 
-Use **is-sync** for the outer intent. `is_sync` integrates remote changes and pushes committed captures. It refuses while IdeaSpaces session-tracked captures remain uncommitted. Use `dry_run: true` to preview.
+Use **is-sync** for the outer intent. `is_sync` integrates remote changes and pushes committed captures. It refuses while staged IdeaSpaces knowledge remains uncommitted. Use `dry_run: true` to preview.
 
 **`cwd` matters when you've `cd`-ed inside `bash`.** A `cd subdir` in a `bash` invocation changes that subprocess's cwd; it doesn't propagate back to Pi's extension process. If you've worked in a subdir during the session and then call `is_write` with a relative `path`, `is_write` resolves it against the Pi session cwd — likely the wrong tree.
 
