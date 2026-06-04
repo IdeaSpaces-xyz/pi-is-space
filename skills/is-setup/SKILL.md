@@ -89,7 +89,7 @@ For each of these, draw the content out and write the file when there's real con
 2. **Now** — *"What are you working on right now?"* Single paragraph becomes `_agent/now.md`.
 3. **Next** — *"What's queued after now?"* Optional. Vague is OK.
 
-Use `is_write` for these (Layer 1 frontmatter — `name`, `summary`). Capture is conscious; don't write Purpose for the user, elicit and reflect back. After each capture, commit it as its own capture commit with `is_commit` (explicit `paths` or `tracked=true`), not a broad git sweep.
+Use `is_write` for these (Layer 1 frontmatter — `name`, `summary`). Capture is conscious; don't write Purpose for the user, elicit and reflect back. After each capture, commit it as its own capture commit with `is_commit` (explicit `paths` or `all=true`), not a broad git sweep.
 
 ## 5. Offer publish
 
