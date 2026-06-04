@@ -32,7 +32,7 @@ Pi-native commands for human-facing flow:
 
 - `/is-setup` — preview and scaffold the `_agent/` seed contract with confirmation
 - `/is-status` — show capture/sync state and refresh UI
-- `/is-commit` — review tracked captures, collect a message, confirm, commit tracked paths only
+- `/is-commit` — review staged captures, collect a message, confirm, commit staged knowledge
 - `/is-sync` — dry-run, confirm, sync committed captures
 - `/is-publish` — check scaffold/branch state, confirm destination, publish remotely, retry through login if needed
 
@@ -40,7 +40,7 @@ Runtime guardrails:
 
 - Native `write` / `edit` to markdown or `_agent/` files inside an ideaspace get an intent-level capture nudge in the tool result.
 - Nested code repos inside a parent ideaspace stay silent unless they carry their own `_agent/`.
-- Session switch/fork prompts when session-tracked captures are uncommitted; non-interactive mode cancels conservatively.
+- Session switch/fork prompts when staged captures are uncommitted; non-interactive mode cancels conservatively.
 
 Pi's native `read`, `edit`, `write`, and `bash` cover navigation, search, code/config editing, git, moves, and deletes.
 

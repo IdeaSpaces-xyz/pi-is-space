@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve as resolvePath, sep } from "node:path";
@@ -9,7 +9,6 @@ import {
   findSpaceRoot,
   assembleAwareness,
   gitState,
-  sessionState,
   walkPathContext,
   spaceRootLevel,
   currentBranchLevel,
@@ -296,6 +295,24 @@ function isCliFile(): boolean {
   return CLI.includes("/") || CLI.includes("\\") || CLI.endsWith(".js");
 }
 
+// The "last seen" marker — HEAD at the end of the previous session — lives in a
+// local git ref, not a file in HOME. update-ref is atomic, local refs aren't
+// pushed, and `recentActivity` diffs HEAD against it for the since-last-session
+// view. (Replaces the SDK session-state file.)
+const SEEN_REF = "refs/ideaspaces/seen";
+
+function readSeenMarker(cwd: string): string | undefined {
+  const r = spawnSync("git", ["-C", cwd, "rev-parse", "--verify", "--quiet", SEEN_REF], {
+    encoding: "utf-8",
+  });
+  return r.status === 0 && r.stdout.trim() ? r.stdout.trim() : undefined;
+}
+
+function setSeenMarker(cwd: string, sha: string): void {
+  // Best-effort: a failed marker update must never break the session.
+  spawnSync("git", ["-C", cwd, "update-ref", SEEN_REF, sha], { encoding: "utf-8" });
+}
+
 function cli(args: string[], stdin?: string, cwd?: string): Promise<CliResult> {
   return new Promise((resolve) => {
     const proc = spawn(isCliFile() ? "node" : CLI, isCliFile() ? [CLI, ...args] : args, {
@@ -538,12 +555,8 @@ async function buildAwareness(cwd: string): Promise<{ root: string | null; repoR
 
   let lastSha: string | undefined;
   if (repoRoot) {
-    try {
-      lastSha = (await sessionState(repoRoot).readState()).lastSha;
-    } catch {
-      // Missing or unreadable local session state is normal on first run.
-      lastSha = undefined;
-    }
+    // First run (no marker yet) returns undefined — no "since last session" diff.
+    lastSha = readSeenMarker(repoRoot);
   }
   const [block, pathContext] = await Promise.all([
     assembleAwareness({
@@ -640,15 +653,15 @@ export default function (pi: ExtensionAPI) {
     }
 
     const confirmed = await ctx.ui.confirm(
-      "Commit tracked captures?",
-      `This commits only IdeaSpaces session-tracked paths:\n\n${paths}\n\nMessage: ${trimmed}`,
+      "Commit staged captures?",
+      `This commits the staged IdeaSpaces knowledge:\n\n${paths}\n\nMessage: ${trimmed}`,
     );
     if (!confirmed) {
       ctx.ui.notify("Commit cancelled", "info");
       return false;
     }
 
-    const result = await runJson<{ commit_sha: string; committed_paths: string[] }>(["commit", "-m", trimmed, "--tracked"], ctx.cwd);
+    const result = await runJson<{ commit_sha: string; committed_paths: string[] }>(["commit", "-m", trimmed, "--all"], ctx.cwd);
     if (!result.ok) {
       ctx.ui.notify(`Commit failed:\n${result.error}`, "error");
       await refreshSpaceUi(ctx);
@@ -805,7 +818,7 @@ export default function (pi: ExtensionAPI) {
     if (!cachedRepoRoot) return;
     try {
       const state = await gitState(cachedRepoRoot);
-      if (state.headSha) await sessionState(cachedRepoRoot).setLastSha(state.headSha);
+      if (state.headSha) setSeenMarker(cachedRepoRoot, state.headSha);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.warn(`IdeaSpaces: failed to persist last-seen HEAD: ${message}`);
@@ -1000,7 +1013,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerCommand("is-commit", {
-    description: "Commit IdeaSpaces session-tracked captures after confirmation",
+    description: "Commit staged IdeaSpaces captures after confirmation",
     handler: async (_args, ctx) => {
       await refreshAwareness(ctx.cwd);
       const status = await refreshSpaceUi(ctx);
@@ -1097,7 +1110,7 @@ export default function (pi: ExtensionAPI) {
     name: "is_write",
     label: "IS Write",
     description:
-      "Capture primitive for Notes: create or update a Note with Layer 1 frontmatter (name, summary), stage it, record it in IdeaSpaces session state, and return its content sha for safe refinement. Normally use through the is-capture skill; native file tools cover code/config and ordinary edits.",
+      "Capture primitive for Notes: create or update a Note with Layer 1 frontmatter (name, summary), stage it in git, and return its content sha for safe refinement. Normally use through the is-capture skill; native file tools cover code/config and ordinary edits.",
     promptSnippet: "Capture primitive: create/update a markdown Note with frontmatter; stages + returns sha",
     parameters: Type.Object({
       path: Type.String({ description: "File path within the ideaspace" }),
@@ -1143,7 +1156,7 @@ export default function (pi: ExtensionAPI) {
     name: "is_status",
     label: "IS Status",
     description:
-      "Show IdeaSpaces capture state. Without path: returns JSON for git position plus session-tracked captures and refreshes the UI. With path: returns single-file state text including sha for is_write if_match, without refreshing the UI.",
+      "Show IdeaSpaces capture state. Without path: returns JSON for git position plus staged captures and refreshes the UI. With path: returns single-file state text including sha for is_write if_match, without refreshing the UI.",
     promptSnippet: "Inspect IdeaSpaces capture state or get a file sha for safe updates",
     parameters: Type.Object({
       path: Type.Optional(
@@ -1177,15 +1190,15 @@ export default function (pi: ExtensionAPI) {
     name: "is_commit",
     label: "IS Commit",
     description:
-      "Capture primitive: commit agreed IdeaSpaces changes. Commits only explicit paths, or the IdeaSpaces session-tracked paths when tracked=true; never sweeps unrelated staged user work. Confirm with the user before calling.",
-    promptSnippet: "Capture primitive: commit only captured/tracked IdeaSpaces paths after confirmation",
+      "Capture primitive: commit agreed IdeaSpaces changes. Commits only explicit paths, or all staged IdeaSpaces knowledge when all=true; never sweeps unrelated staged user work. Confirm with the user before calling.",
+    promptSnippet: "Capture primitive: commit only captured/staged IdeaSpaces paths after confirmation",
     parameters: Type.Object({
       message: Type.String({ description: "Commit message, user-provided or user-confirmed" }),
       paths: Type.Optional(
-        Type.Array(Type.String({ description: "Exact path to commit; omit only when tracked=true" })),
+        Type.Array(Type.String({ description: "Exact path to commit; omit only when all=true" })),
       ),
-      tracked: Type.Optional(
-        Type.Boolean({ description: "Commit the IdeaSpaces session-tracked capture paths instead of explicit paths" }),
+      all: Type.Optional(
+        Type.Boolean({ description: "Commit all staged IdeaSpaces knowledge (markdown + _agent/) instead of explicit paths" }),
       ),
       cwd: Type.Optional(
         Type.String({
@@ -1196,7 +1209,7 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const args = ["commit", "-m", params.message];
-      if (params.tracked) args.push("--tracked");
+      if (params.all) args.push("--all");
       else if (params.paths?.length) args.push(...params.paths);
       const result = await run(args, undefined, params.cwd || ctx.cwd);
       if (!isErrorResult(result)) {
@@ -1211,7 +1224,7 @@ export default function (pi: ExtensionAPI) {
     name: "is_sync",
     label: "IS Sync",
     description:
-      "Sync committed IdeaSpaces state: integrate remote changes and push committed captures. Refuses while IdeaSpaces session-tracked captures remain uncommitted. Use through the is-sync skill when the user asks to sync/share/push.",
+      "Sync committed IdeaSpaces state: integrate remote changes and push committed captures. Refuses while staged IdeaSpaces knowledge remains uncommitted. Use through the is-sync skill when the user asks to sync/share/push.",
     promptSnippet: "Sync committed IdeaSpaces captures; dry-run before mutating when useful",
     parameters: Type.Object({
       dry_run: Type.Optional(Type.Boolean({ description: "Preview sync state without fetch, rebase/merge, or push" })),
