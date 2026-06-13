@@ -1,5 +1,6 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
+import type { ExtensionAPI, ExtensionContext, SessionEntry, SessionMessageEntry } from "@earendil-works/pi-coding-agent";
+import { Type, type Static } from "typebox";
+import { Check } from "typebox/value";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -13,6 +14,12 @@ import {
   spaceRootLevel,
   currentBranchLevel,
 } from "@ideaspaces/sdk";
+import {
+  type ConversationMeta,
+  formatConversationMeta,
+  upsertCurrentConversation,
+} from "./conversations";
+import { isRecord } from "./utils";
 
 type CliResult = { out: string; err: string; code: number };
 
@@ -84,6 +91,77 @@ type FileSuggestion = {
   isDirectory: boolean;
   score: number;
 };
+
+type CaptureRef = {
+  path: string;
+  name?: string;
+  summary?: string;
+  sha?: string;
+};
+
+type SettleRequest = {
+  id: string;
+  conversation: ConversationMeta;
+  checkpoint: string;
+  keep?: string;
+  drop?: string;
+  captures: CaptureRef[];
+  requestedAt: string;
+  firstEntryId?: string;
+  leafIdAtRequest?: string;
+};
+
+type IsWriteOutput = {
+  path?: string;
+  sha?: string;
+  commit_sha?: string;
+};
+
+type SettleToolResultEntry = SessionMessageEntry & {
+  message: {
+    role: "toolResult";
+    toolCallId: string;
+    toolName: string;
+    details?: unknown;
+  };
+};
+
+const CaptureRefSchema = Type.Object({
+  path: Type.String(),
+  name: Type.Optional(Type.String()),
+  summary: Type.Optional(Type.String()),
+  sha: Type.Optional(Type.String()),
+});
+
+const ConversationMetaSchema = Type.Object({
+  id: Type.String(),
+  sessionId: Type.String(),
+  sessionFile: Type.Optional(Type.String()),
+  name: Type.Optional(Type.String()),
+  description: Type.Optional(Type.String()),
+  cwd: Type.String(),
+  spaceRoot: Type.Optional(Type.String()),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+  lastSettledAt: Type.Optional(Type.String()),
+});
+
+const SettleDetailsSchema = Type.Object({
+  kind: Type.Literal("is-settle"),
+  request: Type.Object({
+    id: Type.String(),
+    conversation: ConversationMetaSchema,
+    checkpoint: Type.String(),
+    keep: Type.Optional(Type.String()),
+    drop: Type.Optional(Type.String()),
+    captures: Type.Array(CaptureRefSchema),
+    requestedAt: Type.String(),
+    firstEntryId: Type.Optional(Type.String()),
+    leafIdAtRequest: Type.Optional(Type.String()),
+  }),
+});
+
+type SettleDetails = Static<typeof SettleDetailsSchema>;
 
 const AUTOCOMPLETE_LIMIT = 20;
 const AUTOCOMPLETE_FD_LIMIT = 1000;
@@ -357,6 +435,119 @@ function formatPathList(paths: string[], max = 8): string {
   return head.join("\n");
 }
 
+function isWriteOutputFromUnknown(value: unknown): IsWriteOutput | null {
+  if (!isRecord(value)) return null;
+  return {
+    path: typeof value.path === "string" ? value.path : undefined,
+    sha: typeof value.sha === "string" ? value.sha : undefined,
+    commit_sha: typeof value.commit_sha === "string" ? value.commit_sha : undefined,
+  };
+}
+
+function parseIsWriteOutput(text: string): IsWriteOutput | null {
+  try {
+    return isWriteOutputFromUnknown(JSON.parse(text));
+  } catch {
+    return null;
+  }
+}
+
+function dedupeCaptures(captures: CaptureRef[]): CaptureRef[] {
+  const seen = new Set<string>();
+  const result: CaptureRef[] = [];
+  for (const capture of captures) {
+    const key = capture.path;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(capture);
+  }
+  return result;
+}
+
+function captureRefsFromPaths(paths: string[]): CaptureRef[] {
+  return paths.map((path) => ({ path }));
+}
+
+function formatCaptureRefs(captures: CaptureRef[]): string {
+  if (!captures.length) return "- (none recorded)";
+  return captures
+    .map((capture) => {
+      const suffix = capture.summary ? ` — ${capture.summary}` : "";
+      const sha = capture.sha ? ` (${capture.sha.slice(0, 12)})` : "";
+      return `- ${capture.path}${suffix}${sha}`;
+    })
+    .join("\n");
+}
+
+function formatSettleCheckpoint(request: SettleRequest): string {
+  const lines = [
+    "[IdeaSpaces context checkpoint]",
+    "",
+    `Conversation: ${request.conversation.name ?? "(unnamed)"}`,
+    `Conversation-Id: ${request.conversation.id}`,
+    "",
+    "Captured durable state:",
+    formatCaptureRefs(request.captures),
+    "",
+    "Conversation state now:",
+    request.checkpoint.trim(),
+  ];
+  if (request.keep?.trim()) lines.push("", "Keep active:", request.keep.trim());
+  if (request.drop?.trim()) lines.push("", "Dropped from active context:", request.drop.trim());
+  return lines.join("\n");
+}
+
+function formatSettleSummary(request: SettleRequest): string {
+  const lines = [
+    "Prior conversation was settled into IdeaSpaces state and removed from active context.",
+    "",
+    `Conversation: ${request.conversation.name ?? "(unnamed)"}`,
+    `Conversation-Id: ${request.conversation.id}`,
+    "",
+    "Captured durable state:",
+    formatCaptureRefs(request.captures),
+    "",
+    "Checkpoint:",
+    request.checkpoint.trim(),
+  ];
+  if (request.keep?.trim()) lines.push("", "Still active:", request.keep.trim());
+  if (request.drop?.trim()) lines.push("", "Intentionally omitted from active context:", request.drop.trim());
+  lines.push("", "The raw process remains in the local Pi JSONL session tree and can be revisited via /tree or future recall tooling.");
+  return lines.join("\n");
+}
+
+function settleRequestFromDetails(details: unknown): SettleRequest | null {
+  if (!Check(SettleDetailsSchema, details)) return null;
+  return (details as SettleDetails).request;
+}
+
+function isSettleToolResultEntry(entry: SessionEntry, requestId?: string): entry is SettleToolResultEntry {
+  if (entry.type !== "message" || entry.message.role !== "toolResult") return false;
+  if (entry.message.toolName !== "is_settle") return false;
+  const request = settleRequestFromDetails(entry.message.details);
+  if (!request) return false;
+  return requestId ? request.id === requestId : true;
+}
+
+function assistantEntryForToolCall(entries: SessionEntry[], toolCallId: string): SessionMessageEntry | null {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    if (entry.type !== "message" || entry.message.role !== "assistant") continue;
+    for (const block of entry.message.content) {
+      if (block.type === "toolCall" && block.id === toolCallId) return entry;
+    }
+  }
+  return null;
+}
+
+function latestSettleToolResult(entries: SessionEntry[], requestId?: string): SettleToolResultEntry | null {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    if (isSettleToolResultEntry(entry, requestId)) return entry;
+  }
+  return null;
+}
+
 function formatCaptureStatus(status: CaptureStatus): string {
   const lines = [
     `repo:    ${status.repoRoot}`,
@@ -594,6 +785,8 @@ export default function (pi: ExtensionAPI) {
   const fdCommand = resolveFdCommand();
   const gitRootCache = new Map<string, string | null>();
   let autocompleteFailureShown = false;
+  let recentCaptures: CaptureRef[] = [];
+  let pendingSettle: SettleRequest | null = null;
 
   async function refreshAwareness(cwd: string): Promise<void> {
     try {
@@ -624,6 +817,17 @@ export default function (pi: ExtensionAPI) {
     const status = await readCaptureStatus(cwd);
     updateSpaceUi(ctx, status);
     return status;
+  }
+
+  function upsertConversation(
+    ctx: ExtensionContext,
+    update: { name?: string; description?: string; settledAt?: string } = {},
+  ): ConversationMeta {
+    return upsertCurrentConversation(ctx, { ...update, spaceRoot: cachedRoot });
+  }
+
+  function recordCapture(capture: CaptureRef): void {
+    recentCaptures = dedupeCaptures([capture, ...recentCaptures]).slice(0, 20);
   }
 
   async function commitTrackedCaptures(ctx: ExtensionContext, status: CaptureStatus): Promise<boolean> {
@@ -701,9 +905,20 @@ export default function (pi: ExtensionAPI) {
     return { cancel: true };
   }
 
+  function guardPendingSettle(ctx: ExtensionContext, action: string): { cancel: true } | undefined {
+    if (!pendingSettle) return undefined;
+    const message = `IdeaSpaces: ${action} cancelled — context settle is still pending. Wait for compaction to finish first.`;
+    if (ctx.hasUI) ctx.ui.notify(message, "warning");
+    else console.warn(message);
+    return { cancel: true };
+  }
+
   pi.on("session_start", async (_event, ctx) => {
+    recentCaptures = [];
+    pendingSettle = null;
     await refreshAwareness(ctx.cwd);
     await refreshSpaceUi(ctx);
+    upsertConversation(ctx);
 
     // IdeaSpaces often uses .gitignore as a sharing boundary, not a local
     // context boundary. Broaden @mention discovery to include gitignored local
@@ -805,11 +1020,63 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_before_switch", async (event, ctx) => {
     const action = event.reason === "new" ? "starting a new session" : "switching sessions";
-    return guardPendingCaptures(ctx, action);
+    return guardPendingSettle(ctx, action) ?? guardPendingCaptures(ctx, action);
   });
 
   pi.on("session_before_fork", async (_event, ctx) => {
-    return guardPendingCaptures(ctx, "forking this session");
+    return guardPendingSettle(ctx, "forking this session") ?? guardPendingCaptures(ctx, "forking this session");
+  });
+
+  pi.on("agent_end", async (_event, ctx) => {
+    const request = pendingSettle;
+    if (!request) return;
+    // Defer until Pi finishes draining agent_end handlers; compacting synchronously here can re-enter the session lifecycle.
+    setTimeout(() => {
+      if (pendingSettle?.id !== request.id) return;
+      ctx.compact({
+        customInstructions: "Settle IdeaSpaces conversation context after capture.",
+        onComplete: () => {
+          pendingSettle = null;
+          ctx.ui.notify("Settled active context", "info");
+        },
+        onError: (error) => {
+          pendingSettle = null;
+          ctx.ui.notify(`Context settle compaction failed: ${error.message}`, "warning");
+        },
+      });
+    }, 0);
+  });
+
+  pi.on("session_before_compact", async (event) => {
+    const request = pendingSettle;
+    if (!request) return undefined;
+
+    const settleEntry = latestSettleToolResult(event.branchEntries, request.id);
+    if (!settleEntry) return undefined;
+
+    const firstKeptEntry = assistantEntryForToolCall(event.branchEntries, settleEntry.message.toolCallId) ?? settleEntry;
+    return {
+      compaction: {
+        summary: formatSettleSummary(request),
+        firstKeptEntryId: firstKeptEntry.id,
+        tokensBefore: event.preparation.tokensBefore,
+        details: {
+          kind: "is-settle",
+          conversationId: request.conversation.id,
+          checkpointEntryId: settleEntry.id,
+          firstKeptEntryId: firstKeptEntry.id,
+          captures: request.captures,
+        },
+      },
+    };
+  });
+
+  pi.on("session_compact", async (event, ctx) => {
+    const details = event.compactionEntry.details;
+    if (isRecord(details) && details.kind === "is-settle") {
+      upsertConversation(ctx, { settledAt: event.compactionEntry.timestamp });
+      pendingSettle = null;
+    }
   });
 
   pi.on("session_shutdown", async () => {
@@ -1000,6 +1267,46 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  pi.registerCommand("is-conversation", {
+    description: "Show or update the current IdeaSpaces conversation flow name/description",
+    handler: async (args, ctx) => {
+      await refreshAwareness(ctx.cwd);
+      const trimmed = args.trim();
+      if (!trimmed || trimmed === "status" || trimmed === "show") {
+        ctx.ui.notify(formatConversationMeta(upsertConversation(ctx)), "info");
+        return;
+      }
+
+      if (trimmed === "name" || trimmed.startsWith("name ")) {
+        const provided = trimmed === "name" ? undefined : trimmed.slice("name ".length).trim();
+        const name = provided || (await ctx.ui.input("Conversation name", ctx.sessionManager.getSessionName() ?? ""));
+        const nextName = name?.trim();
+        if (!nextName) {
+          ctx.ui.notify("Conversation name unchanged", "info");
+          return;
+        }
+        pi.setSessionName(nextName);
+        ctx.ui.notify(formatConversationMeta(upsertConversation(ctx, { name: nextName })), "info");
+        return;
+      }
+
+      if (trimmed === "describe" || trimmed.startsWith("describe ")) {
+        const current = upsertConversation(ctx);
+        const provided = trimmed === "describe" ? undefined : trimmed.slice("describe ".length).trim();
+        const description = provided || (await ctx.ui.editor("Conversation description", current.description ?? ""));
+        const nextDescription = description?.trim();
+        if (!nextDescription) {
+          ctx.ui.notify("Conversation description unchanged", "info");
+          return;
+        }
+        ctx.ui.notify(formatConversationMeta(upsertConversation(ctx, { description: nextDescription })), "info");
+        return;
+      }
+
+      ctx.ui.notify("Usage: /is-conversation [status|name <name>|describe <description>]", "warning");
+    },
+  });
+
   pi.registerCommand("is-status", {
     description: "Show IdeaSpaces capture and sync state",
     handler: async (_args, ctx) => {
@@ -1145,8 +1452,17 @@ export default function (pi: ExtensionAPI) {
 
       const result = await run(args, params.content, cwd);
       if (!isErrorResult(result)) {
+        const text = result.content.map((item) => item.text).join("\n");
+        const output = isWriteOutputFromUnknown(result.details) ?? parseIsWriteOutput(text);
+        recordCapture({
+          path: output?.path ?? params.path,
+          name: params.name,
+          summary: params.summary,
+          sha: output?.sha ?? output?.commit_sha,
+        });
         await refreshAwareness(cwd);
         await refreshSpaceUi(ctx, cwd);
+        upsertConversation(ctx);
       }
       return result;
     },
@@ -1183,6 +1499,83 @@ export default function (pi: ExtensionAPI) {
       if (!result.ok) return fail(result.error);
       updateSpaceUi(ctx, result.data);
       return ok(JSON.stringify(result.data, null, 2));
+    },
+  });
+
+  pi.registerTool({
+    name: "is_conversation",
+    label: "IS Conversation",
+    description:
+      "Show or update the current local conversation flow metadata. This indexes Pi's existing JSONL session; it does not relocate or sync raw conversation logs.",
+    promptSnippet: "Show/name/describe the current local conversation flow",
+    parameters: Type.Object({
+      action: Type.Optional(Type.Union([Type.Literal("status"), Type.Literal("name"), Type.Literal("describe")])),
+      name: Type.Optional(Type.String({ description: "Conversation name when action=name" })),
+      description: Type.Optional(Type.String({ description: "Conversation description when action=describe" })),
+    }),
+    async execute(_id, params, _signal, _onUpdate, ctx) {
+      const action = params.action ?? "status";
+      if (action === "name") {
+        const name = params.name?.trim();
+        if (!name) throw new Error("is_conversation action=name requires name");
+        pi.setSessionName(name);
+        const meta = upsertConversation(ctx, { name });
+        return { content: [{ type: "text", text: formatConversationMeta(meta) }], details: { meta } };
+      }
+      if (action === "describe") {
+        const description = params.description?.trim();
+        if (!description) throw new Error("is_conversation action=describe requires description");
+        const meta = upsertConversation(ctx, { description });
+        return { content: [{ type: "text", text: formatConversationMeta(meta) }], details: { meta } };
+      }
+      const meta = upsertConversation(ctx);
+      return { content: [{ type: "text", text: formatConversationMeta(meta) }], details: { meta } };
+    },
+  });
+
+  pi.registerTool({
+    name: "is_settle",
+    label: "IS Settle",
+    description:
+      "Settle the current conversation state after capture: record a checkpoint and compact prior raw discussion out of active context while keeping the full JSONL session history recoverable.",
+    promptSnippet: "Settle captured conversation state and slide active context to a checkpoint",
+    promptGuidelines: [
+      "Use is_settle only after explicit user agreement that captured raw discussion can leave active context.",
+      "Use is_settle after meaningful IdeaSpaces capture when a compact checkpoint can replace verbose exploratory conversation.",
+    ],
+    parameters: Type.Object({
+      checkpoint: Type.String({ description: "Current settled conversation state to keep as the checkpoint" }),
+      keep: Type.Optional(Type.String({ description: "What should remain live in active context" })),
+      drop: Type.Optional(Type.String({ description: "What raw discussion can leave active context" })),
+      captures: Type.Optional(Type.Array(Type.String({ description: "Captured IdeaSpaces paths/refs represented by this checkpoint" }))),
+    }),
+    async execute(toolCallId, params, _signal, _onUpdate, ctx) {
+      const conversation = upsertConversation(ctx);
+      const branch = ctx.sessionManager.getBranch();
+      const explicitCaptures = params.captures?.length ? captureRefsFromPaths(params.captures) : [];
+      const captures = dedupeCaptures([...explicitCaptures, ...recentCaptures]);
+      const request: SettleRequest = {
+        id: toolCallId,
+        conversation,
+        checkpoint: params.checkpoint,
+        keep: params.keep,
+        drop: params.drop,
+        captures,
+        requestedAt: new Date().toISOString(),
+        firstEntryId: branch[0]?.id,
+        leafIdAtRequest: ctx.sessionManager.getLeafId() ?? undefined,
+      };
+      pendingSettle = request;
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `${formatSettleCheckpoint(request)}\n\nContext settle scheduled: after this response finishes, prior raw conversation will be compacted out of active context. The full JSONL session remains recoverable via /tree.`,
+          },
+        ],
+        details: { kind: "is-settle", request },
+      };
     },
   });
 

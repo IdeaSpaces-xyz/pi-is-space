@@ -36,6 +36,8 @@ Pi's native `read`, `edit`, `write`, and `bash` cover navigation, inspection, an
 | `is_write` | Capture primitive: create/update a markdown Note with Layer 1 frontmatter, stage it in git, and return a content `sha`. Normally reached through the `is-capture` skill. |
 | `is_commit` | Capture primitive: commit only explicit paths or all staged knowledge after confirmation; never sweep unrelated staged work. |
 | `is_sync` | Sync primitive: integrate remote changes and push committed captures; refuses while staged knowledge remains uncommitted. |
+| `is_conversation` | Show or update the current named local conversation flow over Pi's existing JSONL session. |
+| `is_settle` | After explicit agreement, record a conversation checkpoint and compact prior raw discussion out of active context while keeping the JSONL session recoverable. |
 | `is_auth` | Log in / out for optional remote sync. |
 
 ## Commands
@@ -48,6 +50,7 @@ Human-facing IdeaSpaces actions are Pi-native commands:
 | `/is-status` | Show git/capture state and refresh the footer/widget. |
 | `/is-commit` | Review staged captures, enter a commit message, confirm, then commit them. |
 | `/is-sync` | Run `sync --dry-run`, confirm the plan, then sync committed captures. |
+| `/is-conversation` | Show or name/describe the current local conversation flow (an index over Pi's existing session JSONL). |
 | `/is-publish` | Confirm destination, retry through login if needed, then publish the space remotely. |
 
 When captures await commit, the extension shows a small widget near the editor so state stays visible without reminder spam.
@@ -91,6 +94,6 @@ Pi ships surface-specific entrypoint skills mapped to the inhabitation loop:
 
 Shared protocol content lives in `reference/`, generated from the SDK canonical skill catalog with `npm run build:reference`. Entry skills stay Pi-specific while reading SDK-backed references such as `reference/capture.md`, `reference/writing.md`, and `reference/awareness.md` on demand.
 
-Capture flow: user intent → `is-capture` skill → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-sync`.
+Capture flow: user intent → `is-capture` skill → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-sync`. After meaningful capture, the agent can ask to settle context; `is_settle` records a checkpoint and slides active context past raw discussion while leaving the full Pi JSONL session available through `/tree`.
 
 See `MIGRATION.md` for mapping from legacy `pi-sw-space`.
