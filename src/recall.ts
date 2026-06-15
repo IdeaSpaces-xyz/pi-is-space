@@ -65,7 +65,7 @@ type RecallSearchHit = {
   preview: string;
 };
 
-// FIXME(PR #28): Interim adapter over Pi's SessionManager. Pi exposes entries/tree/branch but not
+// FIXME(#29): Interim adapter over Pi's SessionManager. Pi exposes entries/tree/branch but not
 // higher-level conversation map/search/range helpers yet; keep this deterministic
 // and local until those APIs exist lower in the stack.
 const DEFAULT_LIMIT = 10;

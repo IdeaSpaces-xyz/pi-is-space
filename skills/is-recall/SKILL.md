@@ -31,4 +31,4 @@ Use `is_recall` instead of reading raw JSONL files directly.
 
 ## Posture
 
-Start with `map` when you need handles. Use `search` when you know the phrase or topic. Use `excerpt` only for the small relevant piece; do not rehydrate whole compacted ranges by default.
+Start with `map` when you need handles. Use `search` when you know the phrase or topic; MVP search is phrase/substr match, not semantic or term-expanded search. Use `excerpt` only for the small relevant piece; do not rehydrate whole compacted ranges by default.

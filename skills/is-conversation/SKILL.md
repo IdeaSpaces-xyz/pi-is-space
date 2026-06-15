@@ -4,7 +4,7 @@ description: >
   Name, describe, or inspect the current local conversation flow. Use when the
   user asks what conversation/thread/flow this is, wants to name it, or wants a
   short description attached to the private Pi JSONL session overlay.
-allowed-tools: "is_conversation is_recall"
+allowed-tools: "is_conversation"
 ---
 
 # Conversation Flow
@@ -23,4 +23,4 @@ Keep names short and human. Descriptions should say what this flow is for and wh
 
 For settled understanding, use **is-capture**. After meaningful capture, consider **is_settle** only with explicit user agreement.
 
-When prior or compacted turns from a named flow become relevant, use **is-recall** / `is_recall` to map, search, or excerpt the local conversation tree.
+When prior or compacted turns from a named flow become relevant, switch to **is-recall** to map, search, or excerpt the local conversation tree.

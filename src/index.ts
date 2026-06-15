@@ -1380,9 +1380,10 @@ export default function (pi: ExtensionAPI) {
 
       if (trimmed.startsWith("excerpt ")) {
         const target = trimmed.slice("excerpt ".length).trim();
-        const range = target.match(/^([^.]+)\.\.([^.]+)$/);
-        const excerpt = range?.[1] && range[2]
-          ? excerptRecall(ctx, undefined, range[1].trim(), range[2].trim())
+        const separator = target.indexOf("..");
+        const hasSingleRangeSeparator = separator > 0 && target.indexOf("..", separator + 2) === -1;
+        const excerpt = hasSingleRangeSeparator
+          ? excerptRecall(ctx, undefined, target.slice(0, separator).trim(), target.slice(separator + 2).trim())
           : excerptRecall(ctx, target);
         ctx.ui.notify(excerpt ?? `No recall entry/range found for ${target}`, excerpt ? "info" : "warning");
         return;
