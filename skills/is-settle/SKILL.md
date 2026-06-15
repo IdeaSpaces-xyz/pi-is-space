@@ -17,3 +17,5 @@ allowed-tools: "is_settle"
 - `/is-settle cancel` — clear a pending settle if compaction did not run or the user changed their mind.
 
 Use this when session switch/fork is blocked by a pending settle, or when the user asks to stop a settle before it completes.
+
+After a settle has completed, use **is-recall** / `is_recall` to map, search, or excerpt compacted conversation context.
