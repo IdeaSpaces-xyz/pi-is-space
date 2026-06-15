@@ -134,6 +134,7 @@ const CaptureRefSchema = Type.Object({
   sha: Type.Optional(Type.String()),
 });
 
+// Mirrors ConversationMeta for runtime validation of settle details persisted in session entries.
 const ConversationMetaSchema = Type.Object({
   id: Type.String(),
   sessionId: Type.String(),
@@ -1044,6 +1045,7 @@ export default function (pi: ExtensionAPI) {
         idle = ctx.isIdle();
       } catch {
         pendingSettle = null;
+        ctx.ui.notify("Context settle cancelled — session state check failed. Run is_settle again if needed.", "warning");
         return;
       }
       if (!idle) {
@@ -1114,7 +1116,12 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  pi.on("session_shutdown", async () => {
+  pi.on("session_shutdown", async (_event, ctx) => {
+    if (pendingSettle) {
+      const message = "Context settle cancelled — session is shutting down. Run is_settle again if needed.";
+      if (ctx.hasUI) ctx.ui.notify(message, "warning");
+      else console.warn(message);
+    }
     pendingSettle = null;
     if (settleCompactTimer) {
       clearTimeout(settleCompactTimer);

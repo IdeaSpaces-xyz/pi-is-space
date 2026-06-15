@@ -4,7 +4,6 @@ description: >
   Inspect or cancel a pending active-context settle. Use when the user asks
   whether context settling is pending, says settle is stuck, or wants to cancel
   a scheduled settle before compaction finishes.
-allowed-tools: "bash"
 ---
 
 # Settle Control
