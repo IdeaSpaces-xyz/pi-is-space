@@ -59,7 +59,7 @@ If yes:
 6. Optionally use **is-sync** / `is_sync` to align with remote.
 7. After a meaningful capture, offer to settle active context when the raw discussion is now represented by captured state:
    > "We captured this. Want to settle context now — keep a checkpoint and drop the raw discussion from active context?"
-   If the user agrees, call `is_settle` with the checkpoint, what remains active, what can be dropped, and captured paths.
+   If the user agrees, call `is_settle` with the checkpoint, what remains active, what can be dropped, and captured paths. The extension auto-remembers only the most recent captures as a safety bound; pass explicit `captures` when the checkpoint represents older or native-file captures.
 
 If the user runs `/is-commit`, treat that as confirmation and don't re-ask. If the user says no, drop it and don't re-ask.
 

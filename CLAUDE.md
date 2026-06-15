@@ -37,6 +37,7 @@ Pi-native commands for human-facing flow:
 - `/is-commit` — review staged captures, collect a message, confirm, commit staged knowledge
 - `/is-sync` — dry-run, confirm, sync committed captures
 - `/is-conversation` — show/name/describe the current local conversation flow over Pi's existing JSONL session
+- `/is-settle` — show/cancel a pending active-context settle
 - `/is-publish` — check scaffold/branch state, confirm destination, publish remotely, retry through login if needed
 
 Runtime guardrails:
@@ -58,7 +59,7 @@ On session start, walk up from `cwd` looking for `_agent/`, use `@ideaspaces/sdk
 Use-case layer shipped in `skills/`:
 
 - Loop skills: is-orient, is-capture, is-sync, is-reflect, is-shape
-- Conversation skill: is-conversation
+- Conversation skills: is-conversation, is-settle
 - Lifecycle/setup skills: is-setup, is-publish
 - Reference skills: is-space, is-writing
 

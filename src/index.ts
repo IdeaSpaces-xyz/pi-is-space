@@ -17,6 +17,7 @@ import {
 import {
   type ConversationMeta,
   formatConversationMeta,
+  readCurrentConversation,
   upsertCurrentConversation,
 } from "./conversations";
 import { isRecord } from "./utils";
@@ -787,6 +788,7 @@ export default function (pi: ExtensionAPI) {
   let autocompleteFailureShown = false;
   let recentCaptures: CaptureRef[] = [];
   let pendingSettle: SettleRequest | null = null;
+  let settleCompactTimer: ReturnType<typeof setTimeout> | undefined;
 
   async function refreshAwareness(cwd: string): Promise<void> {
     try {
@@ -817,6 +819,10 @@ export default function (pi: ExtensionAPI) {
     const status = await readCaptureStatus(cwd);
     updateSpaceUi(ctx, status);
     return status;
+  }
+
+  async function readConversation(ctx: ExtensionContext): Promise<ConversationMeta> {
+    return readCurrentConversation(ctx, { spaceRoot: cachedRoot });
   }
 
   async function upsertConversation(
@@ -907,7 +913,7 @@ export default function (pi: ExtensionAPI) {
 
   function guardPendingSettle(ctx: ExtensionContext, action: string): { cancel: true } | undefined {
     if (!pendingSettle) return undefined;
-    const message = `IdeaSpaces: ${action} cancelled — context settle is still pending. Wait for compaction to finish first.`;
+    const message = `IdeaSpaces: ${action} cancelled — context settle is still pending. Wait for compaction to finish or run /is-settle cancel.`;
     if (ctx.hasUI) ctx.ui.notify(message, "warning");
     else console.warn(message);
     return { cancel: true };
@@ -918,7 +924,6 @@ export default function (pi: ExtensionAPI) {
     pendingSettle = null;
     await refreshAwareness(ctx.cwd);
     await refreshSpaceUi(ctx);
-    if (cachedRoot) await upsertConversation(ctx);
 
     // IdeaSpaces often uses .gitignore as a sharing boundary, not a local
     // context boundary. Broaden @mention discovery to include gitignored local
@@ -1031,19 +1036,48 @@ export default function (pi: ExtensionAPI) {
     const request = pendingSettle;
     if (!request) return;
     // Defer until Pi finishes draining agent_end handlers; compacting synchronously here can re-enter the session lifecycle.
-    setTimeout(() => {
+    settleCompactTimer = setTimeout(() => {
+      settleCompactTimer = undefined;
       if (pendingSettle?.id !== request.id) return;
-      ctx.compact({
-        customInstructions: "Settle IdeaSpaces conversation context after capture.",
-        onComplete: () => {
-          pendingSettle = null;
-          ctx.ui.notify("Settled active context", "info");
-        },
-        onError: (error) => {
-          pendingSettle = null;
-          ctx.ui.notify(`Context settle compaction failed: ${error.message}`, "warning");
-        },
-      });
+      let idle: boolean;
+      try {
+        idle = ctx.isIdle();
+      } catch {
+        pendingSettle = null;
+        return;
+      }
+      if (!idle) {
+        pendingSettle = null;
+        ctx.ui.notify("Context settle cancelled — session was not idle after agent end. Run is_settle again if needed.", "warning");
+        return;
+      }
+      try {
+        ctx.compact({
+          customInstructions: "Settle IdeaSpaces conversation context after capture.",
+          onComplete: () => {
+            pendingSettle = null;
+            ctx.ui.notify("Settled active context", "info");
+          },
+          onError: (error) => {
+            pendingSettle = null;
+            ctx.ui.notify(`Context settle compaction failed: ${error.message}`, "warning");
+            try {
+              pi.sendMessage({
+                customType: "is-settle-status",
+                content: `[IdeaSpaces settle failed]\n${error.message}`,
+                display: true,
+                details: { kind: "is-settle-error", requestId: request.id },
+              });
+            } catch {
+              // Best-effort: the session may already be shutting down.
+            }
+          },
+        });
+      } catch (error) {
+        pendingSettle = null;
+        const message = error instanceof Error ? error.message : String(error);
+        ctx.ui.notify(`Context settle could not start: ${message}`, "warning");
+      }
     }, 0);
   });
 
@@ -1081,6 +1115,11 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async () => {
+    pendingSettle = null;
+    if (settleCompactTimer) {
+      clearTimeout(settleCompactTimer);
+      settleCompactTimer = undefined;
+    }
     // Lifecycle write, not awareness assembly: persist the last-seen commit so
     // the next session can render "Since last session" from git history.
     if (!cachedRepoRoot) return;
@@ -1274,7 +1313,7 @@ export default function (pi: ExtensionAPI) {
       await refreshAwareness(ctx.cwd);
       const trimmed = args.trim();
       if (!trimmed || trimmed === "status" || trimmed === "show") {
-        ctx.ui.notify(formatConversationMeta(await upsertConversation(ctx)), "info");
+        ctx.ui.notify(formatConversationMeta(await readConversation(ctx)), "info");
         return;
       }
 
@@ -1292,7 +1331,7 @@ export default function (pi: ExtensionAPI) {
       }
 
       if (trimmed === "describe" || trimmed.startsWith("describe ")) {
-        const current = await upsertConversation(ctx);
+        const current = await readConversation(ctx);
         const provided = trimmed === "describe" ? undefined : trimmed.slice("describe ".length).trim();
         const description = provided || (await ctx.ui.editor("Conversation description", current.description ?? ""));
         const nextDescription = description?.trim();
@@ -1305,6 +1344,35 @@ export default function (pi: ExtensionAPI) {
       }
 
       ctx.ui.notify("Usage: /is-conversation [status|name <name>|describe <description>]", "warning");
+    },
+  });
+
+  pi.registerCommand("is-settle", {
+    description: "Show or cancel a pending IdeaSpaces context settle",
+    handler: async (args, ctx) => {
+      const action = args.trim() || "status";
+      if (action === "cancel") {
+        if (!pendingSettle) {
+          ctx.ui.notify("No context settle is pending", "info");
+          return;
+        }
+        pendingSettle = null;
+        if (settleCompactTimer) {
+          clearTimeout(settleCompactTimer);
+          settleCompactTimer = undefined;
+        }
+        ctx.ui.notify("Cancelled pending context settle", "info");
+        return;
+      }
+      if (action === "status" || action === "show") {
+        if (!pendingSettle) {
+          ctx.ui.notify("No context settle is pending", "info");
+          return;
+        }
+        ctx.ui.notify(formatSettleCheckpoint(pendingSettle), "info");
+        return;
+      }
+      ctx.ui.notify("Usage: /is-settle [status|cancel]", "warning");
     },
   });
 
@@ -1529,7 +1597,7 @@ export default function (pi: ExtensionAPI) {
         const meta = await upsertConversation(ctx, { description });
         return { content: [{ type: "text", text: formatConversationMeta(meta) }], details: { meta } };
       }
-      const meta = await upsertConversation(ctx);
+      const meta = await readConversation(ctx);
       return { content: [{ type: "text", text: formatConversationMeta(meta) }], details: { meta } };
     },
   });

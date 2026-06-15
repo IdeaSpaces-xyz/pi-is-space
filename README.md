@@ -51,6 +51,7 @@ Human-facing IdeaSpaces actions are Pi-native commands:
 | `/is-commit` | Review staged captures, enter a commit message, confirm, then commit them. |
 | `/is-sync` | Run `sync --dry-run`, confirm the plan, then sync committed captures. |
 | `/is-conversation` | Show or name/describe the current local conversation flow (an index over Pi's existing session JSONL). |
+| `/is-settle` | Show or cancel a pending context settle. |
 | `/is-publish` | Confirm destination, retry through login if needed, then publish the space remotely. |
 
 When captures await commit, the extension shows a small widget near the editor so state stays visible without reminder spam.
@@ -88,6 +89,7 @@ Pi ships surface-specific entrypoint skills mapped to the inhabitation loop:
 - `is-reflect` — check drift after meaningful change
 - `is-shape` — change the `_agent/` agreement or reusable agent behavior
 - `is-conversation` — name/describe the current local conversation flow
+- `is-settle` — inspect or cancel a pending active-context settle
 - `is-setup` — scaffold a space
 - `is-publish` — host a local space remotely
 - `is-space` — compatibility/reference entrypoint

@@ -87,17 +87,17 @@ function cleaned(value: string | undefined): string | undefined {
   return trimmed || undefined;
 }
 
-export async function upsertCurrentConversation(
+function buildConversationMeta(
   ctx: ExtensionContext,
+  existing: ConversationMeta | undefined,
   update: ConversationUpdate = {},
-): Promise<ConversationMeta> {
+  write: boolean,
+): ConversationMeta {
   const sessionId = ctx.sessionManager.getSessionId();
   const now = new Date().toISOString();
-  const index = await readIndex();
-  const existing = index.conversations[sessionId];
   const sessionName = cleaned(ctx.sessionManager.getSessionName());
   const sessionFile = ctx.sessionManager.getSessionFile();
-  const next: ConversationMeta = {
+  return {
     id: existing?.id ?? sessionId,
     sessionId,
     sessionFile,
@@ -106,9 +106,27 @@ export async function upsertCurrentConversation(
     cwd: ctx.sessionManager.getCwd(),
     spaceRoot: update.spaceRoot === null ? undefined : update.spaceRoot ?? existing?.spaceRoot,
     createdAt: existing?.createdAt ?? now,
-    updatedAt: now,
+    updatedAt: write ? now : existing?.updatedAt ?? now,
     lastSettledAt: update.settledAt ?? existing?.lastSettledAt,
   };
+}
+
+export async function readCurrentConversation(
+  ctx: ExtensionContext,
+  update: ConversationUpdate = {},
+): Promise<ConversationMeta> {
+  const sessionId = ctx.sessionManager.getSessionId();
+  const index = await readIndex();
+  return buildConversationMeta(ctx, index.conversations[sessionId], update, false);
+}
+
+export async function upsertCurrentConversation(
+  ctx: ExtensionContext,
+  update: ConversationUpdate = {},
+): Promise<ConversationMeta> {
+  const sessionId = ctx.sessionManager.getSessionId();
+  const index = await readIndex();
+  const next = buildConversationMeta(ctx, index.conversations[sessionId], update, true);
 
   index.conversations[next.id] = next;
   await writeIndex(index);
