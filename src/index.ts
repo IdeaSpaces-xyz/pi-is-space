@@ -1359,7 +1359,7 @@ export default function (pi: ExtensionAPI) {
     description: "Map or search the current IdeaSpaces conversation tree",
     handler: async (args, ctx) => {
       const trimmed = args.trim();
-      if (!trimmed || trimmed === "map" || trimmed === "status") {
+      if (!trimmed || trimmed === "map") {
         ctx.ui.notify(formatRecallMap(buildRecallMap(ctx, await readConversation(ctx))), "info");
         return;
       }
@@ -1370,14 +1370,15 @@ export default function (pi: ExtensionAPI) {
           ctx.ui.notify("Usage: /is-recall search <query>", "warning");
           return;
         }
-        const hits = searchRecall(ctx, query);
-        ctx.ui.notify(formatRecallSearch(query, "branch", hits), "info");
+        const scope = cleanRecallScope(undefined);
+        const hits = searchRecall(ctx, query, scope);
+        ctx.ui.notify(formatRecallSearch(query, scope, hits), "info");
         return;
       }
 
       if (trimmed.startsWith("excerpt ")) {
         const target = trimmed.slice("excerpt ".length).trim();
-        const range = target.match(/^([^\.]+)\.\.([^\.]+)$/);
+        const range = target.match(/^([^.]+)\.\.([^.]+)$/);
         const excerpt = range?.[1] && range[2]
           ? excerptRecall(ctx, undefined, range[1].trim(), range[2].trim())
           : excerptRecall(ctx, target);
@@ -1656,7 +1657,13 @@ export default function (pi: ExtensionAPI) {
       "Use is_recall action=map first when you need handles for checkpoints, compactions, branch summaries, or entry ids.",
     ],
     parameters: Type.Object({
-      action: Type.Optional(Type.Union([Type.Literal("map"), Type.Literal("search"), Type.Literal("excerpt")])),
+      action: Type.Optional(
+        Type.Union([
+          Type.Literal("map", { description: "Return a structural map of the conversation tree" }),
+          Type.Literal("search", { description: "Search entries by text query" }),
+          Type.Literal("excerpt", { description: "Return the full text of one entry or a range" }),
+        ]),
+      ),
       query: Type.Optional(Type.String({ description: "Search text when action=search" })),
       scope: Type.Optional(
         Type.Union([
@@ -1685,6 +1692,7 @@ export default function (pi: ExtensionAPI) {
         return { content: [{ type: "text", text: formatRecallSearch(query, scope, hits) }], details: { hits, scope, query } };
       }
 
+      if (action !== "excerpt") return fail(`Unknown is_recall action: ${String(action)}`);
       const excerpt = excerptRecall(ctx, params.entryId, params.fromId, params.toId);
       if (!excerpt) return fail("is_recall action=excerpt requires entryId or a valid fromId/toId range on the active branch");
       return { content: [{ type: "text", text: excerpt }], details: { entryId: params.entryId, fromId: params.fromId, toId: params.toId } };

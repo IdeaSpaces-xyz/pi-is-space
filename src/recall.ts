@@ -65,6 +65,9 @@ type RecallSearchHit = {
   preview: string;
 };
 
+// Interim adapter over Pi's SessionManager. Pi exposes entries/tree/branch but not
+// higher-level conversation map/search/range helpers yet; keep this deterministic
+// and local until those APIs exist lower in the stack.
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;
 const PREVIEW_CHARS = 220;
@@ -315,7 +318,7 @@ export function formatRecallMap(map: RecallMap): string {
     "## Counts",
     `entries: ${map.counts.entries}`,
     `branch entries: ${map.counts.branchEntries}`,
-    `compactions: ${map.counts.compactions} (${map.counts.settleCompactions} settle)` ,
+    `compactions: ${map.counts.compactions} (${map.counts.settleCompactions} settle)`,
     `branch summaries: ${map.counts.branchSummaries}`,
     `labels: ${map.counts.labels}`,
     `compacted entries on active branch: ${map.counts.compactedEntries}`,
@@ -357,7 +360,7 @@ export function searchRecall(ctx: ExtensionContext, query: string, scope: Recall
     hits.push({ id: entry.id, timestamp: entry.timestamp, kind: entryKind(entry), score, preview: oneLine(text) });
   }
   return hits
-    .sort((a, b) => b.score - a.score || new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .sort((a, b) => b.score - a.score || b.timestamp.localeCompare(a.timestamp))
     .slice(0, cleanLimit(limit));
 }
 
