@@ -58,6 +58,7 @@ On session start, walk up from `cwd` looking for `_agent/`, use `@ideaspaces/sdk
 Use-case layer shipped in `skills/`:
 
 - Loop skills: is-orient, is-capture, is-sync, is-reflect, is-shape
+- Conversation skill: is-conversation
 - Lifecycle/setup skills: is-setup, is-publish
 - Reference skills: is-space, is-writing
 

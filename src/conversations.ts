@@ -1,5 +1,5 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { isRecord } from "./utils";
@@ -59,13 +59,9 @@ function readConversationMeta(value: unknown): ConversationMeta | null {
   };
 }
 
-function readIndex(): ConversationIndex {
-  if (!existsSync(CONVERSATION_INDEX_PATH)) {
-    return { version: 1, conversations: {} };
-  }
-
+async function readIndex(): Promise<ConversationIndex> {
   try {
-    const parsed = JSON.parse(readFileSync(CONVERSATION_INDEX_PATH, "utf8")) as unknown;
+    const parsed = JSON.parse(await readFile(CONVERSATION_INDEX_PATH, "utf8")) as unknown;
     if (!isRecord(parsed) || parsed.version !== 1 || !isRecord(parsed.conversations)) {
       return { version: 1, conversations: {} };
     }
@@ -81,9 +77,9 @@ function readIndex(): ConversationIndex {
   }
 }
 
-function writeIndex(index: ConversationIndex): void {
-  mkdirSync(dirname(CONVERSATION_INDEX_PATH), { recursive: true });
-  writeFileSync(CONVERSATION_INDEX_PATH, `${JSON.stringify(index, null, 2)}\n`, "utf8");
+async function writeIndex(index: ConversationIndex): Promise<void> {
+  await mkdir(dirname(CONVERSATION_INDEX_PATH), { recursive: true });
+  await writeFile(CONVERSATION_INDEX_PATH, `${JSON.stringify(index, null, 2)}\n`, "utf8");
 }
 
 function cleaned(value: string | undefined): string | undefined {
@@ -91,13 +87,13 @@ function cleaned(value: string | undefined): string | undefined {
   return trimmed || undefined;
 }
 
-export function upsertCurrentConversation(
+export async function upsertCurrentConversation(
   ctx: ExtensionContext,
   update: ConversationUpdate = {},
-): ConversationMeta {
+): Promise<ConversationMeta> {
   const sessionId = ctx.sessionManager.getSessionId();
   const now = new Date().toISOString();
-  const index = readIndex();
+  const index = await readIndex();
   const existing = index.conversations[sessionId];
   const sessionName = cleaned(ctx.sessionManager.getSessionName());
   const sessionFile = ctx.sessionManager.getSessionFile();
@@ -115,7 +111,7 @@ export function upsertCurrentConversation(
   };
 
   index.conversations[next.id] = next;
-  writeIndex(index);
+  await writeIndex(index);
   return next;
 }
 

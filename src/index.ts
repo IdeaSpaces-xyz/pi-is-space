@@ -819,10 +819,10 @@ export default function (pi: ExtensionAPI) {
     return status;
   }
 
-  function upsertConversation(
+  async function upsertConversation(
     ctx: ExtensionContext,
     update: { name?: string; description?: string; settledAt?: string } = {},
-  ): ConversationMeta {
+  ): Promise<ConversationMeta> {
     return upsertCurrentConversation(ctx, { ...update, spaceRoot: cachedRoot });
   }
 
@@ -918,7 +918,7 @@ export default function (pi: ExtensionAPI) {
     pendingSettle = null;
     await refreshAwareness(ctx.cwd);
     await refreshSpaceUi(ctx);
-    upsertConversation(ctx);
+    if (cachedRoot) await upsertConversation(ctx);
 
     // IdeaSpaces often uses .gitignore as a sharing boundary, not a local
     // context boundary. Broaden @mention discovery to include gitignored local
@@ -1074,8 +1074,9 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_compact", async (event, ctx) => {
     const details = event.compactionEntry.details;
     if (isRecord(details) && details.kind === "is-settle") {
-      upsertConversation(ctx, { settledAt: event.compactionEntry.timestamp });
+      await upsertConversation(ctx, { settledAt: event.compactionEntry.timestamp });
       pendingSettle = null;
+      recentCaptures = [];
     }
   });
 
@@ -1273,7 +1274,7 @@ export default function (pi: ExtensionAPI) {
       await refreshAwareness(ctx.cwd);
       const trimmed = args.trim();
       if (!trimmed || trimmed === "status" || trimmed === "show") {
-        ctx.ui.notify(formatConversationMeta(upsertConversation(ctx)), "info");
+        ctx.ui.notify(formatConversationMeta(await upsertConversation(ctx)), "info");
         return;
       }
 
@@ -1286,12 +1287,12 @@ export default function (pi: ExtensionAPI) {
           return;
         }
         pi.setSessionName(nextName);
-        ctx.ui.notify(formatConversationMeta(upsertConversation(ctx, { name: nextName })), "info");
+        ctx.ui.notify(formatConversationMeta(await upsertConversation(ctx, { name: nextName })), "info");
         return;
       }
 
       if (trimmed === "describe" || trimmed.startsWith("describe ")) {
-        const current = upsertConversation(ctx);
+        const current = await upsertConversation(ctx);
         const provided = trimmed === "describe" ? undefined : trimmed.slice("describe ".length).trim();
         const description = provided || (await ctx.ui.editor("Conversation description", current.description ?? ""));
         const nextDescription = description?.trim();
@@ -1299,7 +1300,7 @@ export default function (pi: ExtensionAPI) {
           ctx.ui.notify("Conversation description unchanged", "info");
           return;
         }
-        ctx.ui.notify(formatConversationMeta(upsertConversation(ctx, { description: nextDescription })), "info");
+        ctx.ui.notify(formatConversationMeta(await upsertConversation(ctx, { description: nextDescription })), "info");
         return;
       }
 
@@ -1462,7 +1463,7 @@ export default function (pi: ExtensionAPI) {
         });
         await refreshAwareness(cwd);
         await refreshSpaceUi(ctx, cwd);
-        upsertConversation(ctx);
+        if (cachedRoot) await upsertConversation(ctx);
       }
       return result;
     },
@@ -1517,18 +1518,18 @@ export default function (pi: ExtensionAPI) {
       const action = params.action ?? "status";
       if (action === "name") {
         const name = params.name?.trim();
-        if (!name) throw new Error("is_conversation action=name requires name");
+        if (!name) return fail("is_conversation action=name requires name");
         pi.setSessionName(name);
-        const meta = upsertConversation(ctx, { name });
+        const meta = await upsertConversation(ctx, { name });
         return { content: [{ type: "text", text: formatConversationMeta(meta) }], details: { meta } };
       }
       if (action === "describe") {
         const description = params.description?.trim();
-        if (!description) throw new Error("is_conversation action=describe requires description");
-        const meta = upsertConversation(ctx, { description });
+        if (!description) return fail("is_conversation action=describe requires description");
+        const meta = await upsertConversation(ctx, { description });
         return { content: [{ type: "text", text: formatConversationMeta(meta) }], details: { meta } };
       }
-      const meta = upsertConversation(ctx);
+      const meta = await upsertConversation(ctx);
       return { content: [{ type: "text", text: formatConversationMeta(meta) }], details: { meta } };
     },
   });
@@ -1550,7 +1551,7 @@ export default function (pi: ExtensionAPI) {
       captures: Type.Optional(Type.Array(Type.String({ description: "Captured IdeaSpaces paths/refs represented by this checkpoint" }))),
     }),
     async execute(toolCallId, params, _signal, _onUpdate, ctx) {
-      const conversation = upsertConversation(ctx);
+      const conversation = await upsertConversation(ctx);
       const branch = ctx.sessionManager.getBranch();
       const explicitCaptures = params.captures?.length ? captureRefsFromPaths(params.captures) : [];
       const captures = dedupeCaptures([...explicitCaptures, ...recentCaptures]);

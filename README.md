@@ -87,6 +87,7 @@ Pi ships surface-specific entrypoint skills mapped to the inhabitation loop:
 - `is-sync` — align committed captures with remote
 - `is-reflect` — check drift after meaningful change
 - `is-shape` — change the `_agent/` agreement or reusable agent behavior
+- `is-conversation` — name/describe the current local conversation flow
 - `is-setup` — scaffold a space
 - `is-publish` — host a local space remotely
 - `is-space` — compatibility/reference entrypoint
