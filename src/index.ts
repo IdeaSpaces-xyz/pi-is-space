@@ -1365,12 +1365,14 @@ export default function (pi: ExtensionAPI) {
       }
 
       if (trimmed.startsWith("search ")) {
-        const query = trimmed.slice("search ".length).trim();
+        const rawSearch = trimmed.slice("search ".length).trim();
+        const scopeMatch = rawSearch.match(/(?:^|\s)scope=(branch|all|compacted)(?=\s|$)/);
+        const scope = cleanRecallScope(scopeMatch?.[1]);
+        const query = rawSearch.replace(/(?:^|\s)scope=(branch|all|compacted)(?=\s|$)/, " ").trim();
         if (!query) {
-          ctx.ui.notify("Usage: /is-recall search <query>", "warning");
+          ctx.ui.notify("Usage: /is-recall search [scope=branch|all|compacted] <query>", "warning");
           return;
         }
-        const scope = cleanRecallScope(undefined);
         const hits = searchRecall(ctx, query, scope);
         ctx.ui.notify(formatRecallSearch(query, scope, hits), "info");
         return;
@@ -1386,7 +1388,7 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
-      ctx.ui.notify("Usage: /is-recall [map|search <query>|excerpt <entryId>|excerpt <fromId>..<toId>]", "warning");
+      ctx.ui.notify("Usage: /is-recall [map|search [scope=branch|all|compacted] <query>|excerpt <entryId>|excerpt <fromId>..<toId>]", "warning");
     },
   });
 

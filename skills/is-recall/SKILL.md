@@ -22,6 +22,8 @@ Use `is_recall` instead of reading raw JSONL files directly.
   `is_recall({ action: "search", query: "..." })`
 - Search compacted entries on active branch:
   `is_recall({ action: "search", query: "...", scope: "compacted" })`
+- Human command search with explicit scope:
+  `/is-recall search scope=compacted ...`
 - Excerpt an exact entry:
   `is_recall({ action: "excerpt", entryId: "..." })`
 - Excerpt a range on the active branch:

@@ -65,7 +65,7 @@ type RecallSearchHit = {
   preview: string;
 };
 
-// Interim adapter over Pi's SessionManager. Pi exposes entries/tree/branch but not
+// FIXME(PR #28): Interim adapter over Pi's SessionManager. Pi exposes entries/tree/branch but not
 // higher-level conversation map/search/range helpers yet; keep this deterministic
 // and local until those APIs exist lower in the stack.
 const DEFAULT_LIMIT = 10;
@@ -106,7 +106,6 @@ function messageText(entry: SessionMessageEntry): string {
   const message = entry.message;
   switch (message.role) {
     case "user":
-      return textContent(message.content);
     case "assistant":
       return textContent(message.content);
     case "toolResult":
@@ -213,6 +212,7 @@ function compactedEntryIds(branch: SessionEntry[]): Set<string> {
   const ids = new Set<string>();
   let beforeFirstKept = true;
   for (const entry of branch) {
+    // Entries before firstKeptEntryId are compacted; firstKeptEntryId..compactionId is the kept active window.
     if (entry.id === latest.firstKeptEntryId) beforeFirstKept = false;
     if (entry.id === latest.id) break;
     if (beforeFirstKept) ids.add(entry.id);
@@ -266,6 +266,7 @@ export function buildRecallMap(ctx: ExtensionContext, conversation: Conversation
   const branchSummaries = branch.map(branchSummaryInfo).filter((item): item is RecallBranchSummary => item !== null);
   const compacted = compactedEntryIds(branch);
   const labels: RecallLabel[] = [];
+  // SessionManager currently exposes labels per entry; switch to a bulk label API if Pi adds one.
   for (const entry of entries) {
     const label = ctx.sessionManager.getLabel(entry.id);
     if (label) labels.push({ id: entry.id, label, timestamp: entry.timestamp, kind: entryKind(entry) });
