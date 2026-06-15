@@ -5,7 +5,7 @@ description: >
   Two Roles convention, and Pi tool surface. Use as a compatibility/reference
   entrypoint when the user asks how an ideaspace works. For active intents,
   prefer the loop skills: is-orient, is-capture, is-sync, is-reflect, is-shape.
-allowed-tools: "is_write is_status is_commit is_sync is_conversation is_settle is_auth read edit write bash"
+allowed-tools: "is_write is_status is_commit is_sync is_conversation is_recall is_settle is_auth read edit write bash"
 ---
 
 # Working in an Ideaspace
@@ -29,7 +29,7 @@ Pi handles **arrive** automatically with session-start awareness. For active wor
 You have two sets of tools:
 
 - **Native** — `read`, `edit`, `write`, `bash`. Default for navigation, search, source-code work, and ordinary doc edits.
-- **`is_*` primitives** — capture/sync/context support (`is_status`, `is_write`, `is_commit`, `is_sync`, `is_conversation`, `is_settle`, `is_auth`). Skills choose these mechanisms; don't make backend choice the user's problem.
+- **`is_*` primitives** — capture/sync/context support (`is_status`, `is_write`, `is_commit`, `is_sync`, `is_conversation`, `is_recall`, `is_settle`, `is_auth`). Skills choose these mechanisms; don't make backend choice the user's problem.
 
 ## Start here
 
@@ -134,6 +134,18 @@ Use **is-sync** for the outer intent. `is_sync` integrates remote changes and pu
 ### `is_conversation` — name the local flow
 
 `is_conversation` shows or updates the current local conversation flow metadata. It indexes Pi's existing JSONL session with a stable conversation ID, name, and description; it does not move or sync raw conversation logs.
+
+### `is_recall` — retrieve prior local context
+
+`is_recall` maps, searches, or excerpts the current Pi conversation tree without requiring raw JSONL reads. Use it when compacted or prior turns may matter:
+
+```
+is_recall action="map"
+is_recall action="search" query="review blockers" scope="compacted"
+is_recall action="excerpt" entryId="abc12345"
+```
+
+It is deterministic in the current MVP: no generated summaries, only maps, matches, and excerpts from session state.
 
 ### `is_settle` — slide active context after capture
 

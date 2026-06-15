@@ -25,6 +25,7 @@ IdeaSpaces-aware primitives:
 - `is_commit` — capture primitive; commits only tracked or explicit capture paths
 - `is_sync` — sync primitive; integrates remote changes and pushes committed captures
 - `is_conversation` — conversation-flow primitive; show/name/describe the current local flow over Pi's existing JSONL session
+- `is_recall` — conversation-retrieval primitive; map/search/excerpt the local session tree, including compacted entries, without raw JSONL spelunking
 - `is_settle` — conversation-window primitive; after explicit agreement, records a checkpoint and compacts raw prior turns out of active context while JSONL remains recoverable
 - `is_auth` — login/logout for optional sync
 
@@ -37,6 +38,7 @@ Pi-native commands for human-facing flow:
 - `/is-commit` — review staged captures, collect a message, confirm, commit staged knowledge
 - `/is-sync` — dry-run, confirm, sync committed captures
 - `/is-conversation` — show/name/describe the current local conversation flow over Pi's existing JSONL session
+- `/is-recall` — map/search/excerpt the current local conversation tree
 - `/is-settle` — show/cancel a pending active-context settle
 - `/is-publish` — check scaffold/branch state, confirm destination, publish remotely, retry through login if needed
 
@@ -59,7 +61,7 @@ On session start, walk up from `cwd` looking for `_agent/`, use `@ideaspaces/sdk
 Use-case layer shipped in `skills/`:
 
 - Loop skills: is-orient, is-capture, is-sync, is-reflect, is-shape
-- Conversation skills: is-conversation, is-settle
+- Conversation skills: is-conversation, is-recall, is-settle
 - Lifecycle/setup skills: is-setup, is-publish
 - Reference skills: is-space, is-writing
 

@@ -21,6 +21,14 @@ import {
   readCurrentConversation,
   upsertCurrentConversation,
 } from "./conversations";
+import {
+  buildRecallMap,
+  cleanRecallScope,
+  excerptRecall,
+  formatRecallMap,
+  formatRecallSearch,
+  searchRecall,
+} from "./recall";
 import { isRecord } from "./utils";
 
 type CliResult = { out: string; err: string; code: number };
@@ -1347,6 +1355,40 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  pi.registerCommand("is-recall", {
+    description: "Map or search the current IdeaSpaces conversation tree",
+    handler: async (args, ctx) => {
+      const trimmed = args.trim();
+      if (!trimmed || trimmed === "map" || trimmed === "status") {
+        ctx.ui.notify(formatRecallMap(buildRecallMap(ctx, await readConversation(ctx))), "info");
+        return;
+      }
+
+      if (trimmed.startsWith("search ")) {
+        const query = trimmed.slice("search ".length).trim();
+        if (!query) {
+          ctx.ui.notify("Usage: /is-recall search <query>", "warning");
+          return;
+        }
+        const hits = searchRecall(ctx, query);
+        ctx.ui.notify(formatRecallSearch(query, "branch", hits), "info");
+        return;
+      }
+
+      if (trimmed.startsWith("excerpt ")) {
+        const target = trimmed.slice("excerpt ".length).trim();
+        const range = target.match(/^([^\.]+)\.\.([^\.]+)$/);
+        const excerpt = range?.[1] && range[2]
+          ? excerptRecall(ctx, undefined, range[1].trim(), range[2].trim())
+          : excerptRecall(ctx, target);
+        ctx.ui.notify(excerpt ?? `No recall entry/range found for ${target}`, excerpt ? "info" : "warning");
+        return;
+      }
+
+      ctx.ui.notify("Usage: /is-recall [map|search <query>|excerpt <entryId>|excerpt <fromId>..<toId>]", "warning");
+    },
+  });
+
   pi.registerCommand("is-settle", {
     description: "Show or cancel a pending IdeaSpaces context settle",
     handler: async (args, ctx) => {
@@ -1600,6 +1642,52 @@ export default function (pi: ExtensionAPI) {
       }
       const meta = await readConversation(ctx);
       return { content: [{ type: "text", text: formatConversationMeta(meta) }], details: { meta } };
+    },
+  });
+
+  pi.registerTool({
+    name: "is_recall",
+    label: "IS Recall",
+    description:
+      "Map, search, or excerpt the current local conversation tree, including compacted entries recoverable from Pi session state. Deterministic: no summarization.",
+    promptSnippet: "Map/search/excerpt the current local conversation tree",
+    promptGuidelines: [
+      "Use is_recall when compacted or prior conversation context may be relevant, instead of manually reading Pi JSONL files.",
+      "Use is_recall action=map first when you need handles for checkpoints, compactions, branch summaries, or entry ids.",
+    ],
+    parameters: Type.Object({
+      action: Type.Optional(Type.Union([Type.Literal("map"), Type.Literal("search"), Type.Literal("excerpt")])),
+      query: Type.Optional(Type.String({ description: "Search text when action=search" })),
+      scope: Type.Optional(
+        Type.Union([
+          Type.Literal("branch", { description: "Search only the active branch" }),
+          Type.Literal("all", { description: "Search all entries in the session file" }),
+          Type.Literal("compacted", { description: "Search entries before the active compaction window" }),
+        ]),
+      ),
+      limit: Type.Optional(Type.Number({ description: "Maximum search hits to return, capped internally" })),
+      entryId: Type.Optional(Type.String({ description: "Entry id to excerpt when action=excerpt" })),
+      fromId: Type.Optional(Type.String({ description: "Start entry id for a branch range excerpt" })),
+      toId: Type.Optional(Type.String({ description: "End entry id for a branch range excerpt" })),
+    }),
+    async execute(_id, params, _signal, _onUpdate, ctx) {
+      const action = params.action ?? "map";
+      if (action === "map") {
+        const map = buildRecallMap(ctx, await readConversation(ctx));
+        return { content: [{ type: "text", text: formatRecallMap(map) }], details: { map } };
+      }
+
+      if (action === "search") {
+        const query = params.query?.trim();
+        if (!query) return fail("is_recall action=search requires query");
+        const scope = cleanRecallScope(params.scope);
+        const hits = searchRecall(ctx, query, scope, params.limit);
+        return { content: [{ type: "text", text: formatRecallSearch(query, scope, hits) }], details: { hits, scope, query } };
+      }
+
+      const excerpt = excerptRecall(ctx, params.entryId, params.fromId, params.toId);
+      if (!excerpt) return fail("is_recall action=excerpt requires entryId or a valid fromId/toId range on the active branch");
+      return { content: [{ type: "text", text: excerpt }], details: { entryId: params.entryId, fromId: params.fromId, toId: params.toId } };
     },
   });
 
