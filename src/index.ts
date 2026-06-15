@@ -16,6 +16,7 @@ import {
 } from "@ideaspaces/sdk";
 import {
   type ConversationMeta,
+  ConversationMetaSchema,
   formatConversationMeta,
   readCurrentConversation,
   upsertCurrentConversation,
@@ -132,20 +133,6 @@ const CaptureRefSchema = Type.Object({
   name: Type.Optional(Type.String()),
   summary: Type.Optional(Type.String()),
   sha: Type.Optional(Type.String()),
-});
-
-// Mirrors ConversationMeta for runtime validation of settle details persisted in session entries.
-const ConversationMetaSchema = Type.Object({
-  id: Type.String(),
-  sessionId: Type.String(),
-  sessionFile: Type.Optional(Type.String()),
-  name: Type.Optional(Type.String()),
-  description: Type.Optional(Type.String()),
-  cwd: Type.String(),
-  spaceRoot: Type.Optional(Type.String()),
-  createdAt: Type.String(),
-  updatedAt: Type.String(),
-  lastSettledAt: Type.Optional(Type.String()),
 });
 
 const SettleDetailsSchema = Type.Object({
@@ -447,6 +434,7 @@ function isWriteOutputFromUnknown(value: unknown): IsWriteOutput | null {
 }
 
 function parseIsWriteOutput(text: string): IsWriteOutput | null {
+  // CLI-backed tools return text today; prefer structured details when present and keep this parser as a fallback.
   try {
     return isWriteOutputFromUnknown(JSON.parse(text));
   } catch {
@@ -1037,6 +1025,7 @@ export default function (pi: ExtensionAPI) {
     const request = pendingSettle;
     if (!request) return;
     // Defer until Pi finishes draining agent_end handlers; compacting synchronously here can re-enter the session lifecycle.
+    if (settleCompactTimer) clearTimeout(settleCompactTimer);
     settleCompactTimer = setTimeout(() => {
       settleCompactTimer = undefined;
       if (pendingSettle?.id !== request.id) return;
@@ -1062,7 +1051,11 @@ export default function (pi: ExtensionAPI) {
           },
           onError: (error) => {
             pendingSettle = null;
-            ctx.ui.notify(`Context settle compaction failed: ${error.message}`, "warning");
+            try {
+              ctx.ui.notify(`Context settle compaction failed: ${error.message}`, "warning");
+            } catch {
+              // Best-effort: the session may already be shutting down.
+            }
             try {
               pi.sendMessage({
                 customType: "is-settle-status",
@@ -1590,6 +1583,7 @@ export default function (pi: ExtensionAPI) {
       description: Type.Optional(Type.String({ description: "Conversation description when action=describe" })),
     }),
     async execute(_id, params, _signal, _onUpdate, ctx) {
+      await refreshAwareness(ctx.cwd);
       const action = params.action ?? "status";
       if (action === "name") {
         const name = params.name?.trim();

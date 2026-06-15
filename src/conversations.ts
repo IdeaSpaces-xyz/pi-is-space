@@ -2,20 +2,23 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { Type, type Static } from "typebox";
 import { isRecord } from "./utils";
 
-export type ConversationMeta = {
-  id: string;
-  sessionId: string;
-  sessionFile?: string;
-  name?: string;
-  description?: string;
-  cwd: string;
-  spaceRoot?: string;
-  createdAt: string;
-  updatedAt: string;
-  lastSettledAt?: string;
-};
+export const ConversationMetaSchema = Type.Object({
+  id: Type.String(),
+  sessionId: Type.String(),
+  sessionFile: Type.Optional(Type.String()),
+  name: Type.Optional(Type.String()),
+  description: Type.Optional(Type.String()),
+  cwd: Type.String(),
+  spaceRoot: Type.Optional(Type.String()),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+  lastSettledAt: Type.Optional(Type.String()),
+});
+
+export type ConversationMeta = Static<typeof ConversationMetaSchema>;
 
 type ConversationIndex = {
   version: 1;
