@@ -109,7 +109,13 @@ type CaptureRef = {
   sha?: string;
 };
 
-type SettleRequest = {
+type ContextUsageSnapshot = {
+  tokens?: number;
+  percent?: number;
+  contextWindow?: number;
+};
+
+type CleanupRequest = {
   id: string;
   conversation: ConversationMeta;
   checkpoint: string;
@@ -119,6 +125,8 @@ type SettleRequest = {
   requestedAt: string;
   firstEntryId?: string;
   leafIdAtRequest?: string;
+  usageBefore?: ContextUsageSnapshot;
+  entriesBeforeCleanup?: number;
 };
 
 type IsWriteOutput = {
@@ -127,7 +135,7 @@ type IsWriteOutput = {
   commit_sha?: string;
 };
 
-type SettleToolResultEntry = SessionMessageEntry & {
+type CleanupToolResultEntry = SessionMessageEntry & {
   message: {
     role: "toolResult";
     toolCallId: string;
@@ -143,8 +151,14 @@ const CaptureRefSchema = Type.Object({
   sha: Type.Optional(Type.String()),
 });
 
-const SettleDetailsSchema = Type.Object({
-  kind: Type.Literal("is-settle"),
+const ContextUsageSnapshotSchema = Type.Object({
+  tokens: Type.Optional(Type.Number()),
+  percent: Type.Optional(Type.Number()),
+  contextWindow: Type.Optional(Type.Number()),
+});
+
+const CleanupDetailsSchema = Type.Object({
+  kind: Type.Literal("is-cleanup"),
   request: Type.Object({
     id: Type.String(),
     conversation: ConversationMetaSchema,
@@ -155,10 +169,12 @@ const SettleDetailsSchema = Type.Object({
     requestedAt: Type.String(),
     firstEntryId: Type.Optional(Type.String()),
     leafIdAtRequest: Type.Optional(Type.String()),
+    usageBefore: Type.Optional(ContextUsageSnapshotSchema),
+    entriesBeforeCleanup: Type.Optional(Type.Number()),
   }),
 });
 
-type SettleDetails = Static<typeof SettleDetailsSchema>;
+type CleanupDetails = Static<typeof CleanupDetailsSchema>;
 
 const AUTOCOMPLETE_LIMIT = 20;
 const AUTOCOMPLETE_FD_LIMIT = 1000;
@@ -477,52 +493,103 @@ function formatCaptureRefs(captures: CaptureRef[]): string {
     .join("\n");
 }
 
-function formatSettleCheckpoint(request: SettleRequest): string {
+function finiteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function contextUsageSnapshot(ctx: ExtensionContext): ContextUsageSnapshot | undefined {
+  const usage = ctx.getContextUsage();
+  if (!usage) return undefined;
+  const tokens = finiteNumber(usage.tokens);
+  const percent = finiteNumber(usage.percent);
+  const contextWindow = finiteNumber(usage.contextWindow);
+  if (tokens === undefined && percent === undefined && contextWindow === undefined) return undefined;
+  return { tokens, percent, contextWindow };
+}
+
+function formatContextUsage(usage: ContextUsageSnapshot | undefined): string {
+  if (!usage) return "- current context: unknown";
+  const parts: string[] = [];
+  if (usage.tokens !== undefined) parts.push(`${Math.round(usage.tokens).toLocaleString()} tokens`);
+  if (usage.percent !== undefined) parts.push(`${usage.percent.toFixed(1)}%`);
+  if (usage.contextWindow !== undefined) parts.push(`window ${Math.round(usage.contextWindow).toLocaleString()}`);
+  return `- current context: ${parts.length ? parts.join(" / ") : "unknown"}`;
+}
+
+function formatCleanupCheckpoint(request: CleanupRequest): string {
   const lines = [
     "[IdeaSpaces context checkpoint]",
     "",
     `Conversation: ${request.conversation.name ?? "(unnamed)"}`,
     `Conversation-Id: ${request.conversation.id}`,
     "",
-    "Captured durable state:",
-    formatCaptureRefs(request.captures),
-    "",
-    "Conversation state now:",
+    "Context state now:",
     request.checkpoint.trim(),
   ];
   if (request.keep?.trim()) lines.push("", "Keep active:", request.keep.trim());
   if (request.drop?.trim()) lines.push("", "Dropped from active context:", request.drop.trim());
+  if (request.captures.length) lines.push("", "Durable captures represented:", formatCaptureRefs(request.captures));
   return lines.join("\n");
 }
 
-function formatSettleSummary(request: SettleRequest): string {
+function formatCleanupPreview(request: CleanupRequest): string {
+  const compactedEntries = request.entriesBeforeCleanup ?? 0;
   const lines = [
-    "Prior conversation was settled into IdeaSpaces state and removed from active context.",
+    "# Cleanup preview",
+    "",
+    `conversation: ${request.conversation.name ?? "(unnamed)"}`,
+    `conversation id: ${request.conversation.id}`,
+    "",
+    "## Current context",
+    formatContextUsage(request.usageBefore),
+    `- branch entries before cleanup request: ${compactedEntries.toLocaleString()}`,
+    "",
+    "## Cleanup plan",
+    "- compact prior raw conversation before the cleanup checkpoint (sliding-window cleanup)",
+    "- preserve selected live state in the checkpoint below",
+    "- keep full raw history recoverable through /tree and is_recall",
+    "",
+    "## Estimated savings",
+    `- will compact roughly ${compactedEntries.toLocaleString()} current branch entries before the cleanup checkpoint`,
+    "- expected to remove most current conversation/process tokens from active context",
+    "- exact post-cleanup footer usage is known after compaction and the next model response",
+    "",
+    "## Keep live",
+    request.checkpoint.trim(),
+  ];
+  if (request.keep?.trim()) lines.push("", request.keep.trim());
+  lines.push("", "## Drop from active context", request.drop?.trim() || "- (not specified; fill this before applying cleanup if anything specific should leave)");
+  if (request.captures.length) lines.push("", "## Durable captures represented", formatCaptureRefs(request.captures));
+  lines.push("", "Apply only after the user confirms this cleanup plan.");
+  return lines.join("\n");
+}
+
+function formatCleanupSummary(request: CleanupRequest): string {
+  const lines = [
+    "Prior conversation process was cleaned out of active context. This is context cleanup, not a shared-state capture.",
     "",
     `Conversation: ${request.conversation.name ?? "(unnamed)"}`,
     `Conversation-Id: ${request.conversation.id}`,
-    "",
-    "Captured durable state:",
-    formatCaptureRefs(request.captures),
     "",
     "Checkpoint:",
     request.checkpoint.trim(),
   ];
   if (request.keep?.trim()) lines.push("", "Still active:", request.keep.trim());
   if (request.drop?.trim()) lines.push("", "Intentionally omitted from active context:", request.drop.trim());
-  lines.push("", "The raw process remains in the local Pi JSONL session tree and can be revisited via /tree or future recall tooling.");
+  if (request.captures.length) lines.push("", "Durable captures represented:", formatCaptureRefs(request.captures));
+  lines.push("", "The raw process remains in the local Pi JSONL session tree and can be revisited via /tree or is_recall.");
   return lines.join("\n");
 }
 
-function settleRequestFromDetails(details: unknown): SettleRequest | null {
-  if (!Check(SettleDetailsSchema, details)) return null;
-  return (details as SettleDetails).request;
+function cleanupRequestFromDetails(details: unknown): CleanupRequest | null {
+  if (!Check(CleanupDetailsSchema, details)) return null;
+  return (details as CleanupDetails).request;
 }
 
-function isSettleToolResultEntry(entry: SessionEntry, requestId?: string): entry is SettleToolResultEntry {
+function isCleanupToolResultEntry(entry: SessionEntry, requestId?: string): entry is CleanupToolResultEntry {
   if (entry.type !== "message" || entry.message.role !== "toolResult") return false;
-  if (entry.message.toolName !== "is_settle") return false;
-  const request = settleRequestFromDetails(entry.message.details);
+  if (entry.message.toolName !== "is_cleanup") return false;
+  const request = cleanupRequestFromDetails(entry.message.details);
   if (!request) return false;
   return requestId ? request.id === requestId : true;
 }
@@ -538,10 +605,10 @@ function assistantEntryForToolCall(entries: SessionEntry[], toolCallId: string):
   return null;
 }
 
-function latestSettleToolResult(entries: SessionEntry[], requestId?: string): SettleToolResultEntry | null {
+function latestCleanupToolResult(entries: SessionEntry[], requestId?: string): CleanupToolResultEntry | null {
   for (let i = entries.length - 1; i >= 0; i--) {
     const entry = entries[i];
-    if (isSettleToolResultEntry(entry, requestId)) return entry;
+    if (isCleanupToolResultEntry(entry, requestId)) return entry;
   }
   return null;
 }
@@ -784,8 +851,8 @@ export default function (pi: ExtensionAPI) {
   const gitRootCache = new Map<string, string | null>();
   let autocompleteFailureShown = false;
   let recentCaptures: CaptureRef[] = [];
-  let pendingSettle: SettleRequest | null = null;
-  let settleCompactTimer: ReturnType<typeof setTimeout> | undefined;
+  let pendingCleanup: CleanupRequest | null = null;
+  let cleanupCompactTimer: ReturnType<typeof setTimeout> | undefined;
 
   async function refreshAwareness(cwd: string): Promise<void> {
     try {
@@ -824,7 +891,7 @@ export default function (pi: ExtensionAPI) {
 
   async function upsertConversation(
     ctx: ExtensionContext,
-    update: { name?: string; description?: string; settledAt?: string } = {},
+    update: { name?: string; description?: string; cleanedAt?: string } = {},
   ): Promise<ConversationMeta> {
     return upsertCurrentConversation(ctx, { ...update, spaceRoot: cachedRoot });
   }
@@ -908,9 +975,9 @@ export default function (pi: ExtensionAPI) {
     return { cancel: true };
   }
 
-  function guardPendingSettle(ctx: ExtensionContext, action: string): { cancel: true } | undefined {
-    if (!pendingSettle) return undefined;
-    const message = `IdeaSpaces: ${action} cancelled — context settle is still pending. Wait for compaction to finish or run /is-settle cancel.`;
+  function guardPendingCleanup(ctx: ExtensionContext, action: string): { cancel: true } | undefined {
+    if (!pendingCleanup) return undefined;
+    const message = `IdeaSpaces: ${action} cancelled — context cleanup is still pending. Wait for compaction to finish or run /is-cleanup cancel.`;
     if (ctx.hasUI) ctx.ui.notify(message, "warning");
     else console.warn(message);
     return { cancel: true };
@@ -918,7 +985,7 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event, ctx) => {
     recentCaptures = [];
-    pendingSettle = null;
+    pendingCleanup = null;
     await refreshAwareness(ctx.cwd);
     await refreshSpaceUi(ctx);
 
@@ -1022,54 +1089,54 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_before_switch", async (event, ctx) => {
     const action = event.reason === "new" ? "starting a new session" : "switching sessions";
-    return guardPendingSettle(ctx, action) ?? guardPendingCaptures(ctx, action);
+    return guardPendingCleanup(ctx, action) ?? guardPendingCaptures(ctx, action);
   });
 
   pi.on("session_before_fork", async (_event, ctx) => {
-    return guardPendingSettle(ctx, "forking this session") ?? guardPendingCaptures(ctx, "forking this session");
+    return guardPendingCleanup(ctx, "forking this session") ?? guardPendingCaptures(ctx, "forking this session");
   });
 
   pi.on("agent_end", async (_event, ctx) => {
-    const request = pendingSettle;
+    const request = pendingCleanup;
     if (!request) return;
     // Defer until Pi finishes draining agent_end handlers; compacting synchronously here can re-enter the session lifecycle.
-    if (settleCompactTimer) clearTimeout(settleCompactTimer);
-    settleCompactTimer = setTimeout(() => {
-      settleCompactTimer = undefined;
-      if (pendingSettle?.id !== request.id) return;
+    if (cleanupCompactTimer) clearTimeout(cleanupCompactTimer);
+    cleanupCompactTimer = setTimeout(() => {
+      cleanupCompactTimer = undefined;
+      if (pendingCleanup?.id !== request.id) return;
       let idle: boolean;
       try {
         idle = ctx.isIdle();
       } catch {
-        pendingSettle = null;
-        ctx.ui.notify("Context settle cancelled — session state check failed. Run is_settle again if needed.", "warning");
+        pendingCleanup = null;
+        ctx.ui.notify("Context cleanup cancelled — session state check failed. Run is_cleanup again if needed.", "warning");
         return;
       }
       if (!idle) {
-        pendingSettle = null;
-        ctx.ui.notify("Context settle cancelled — session was not idle after agent end. Run is_settle again if needed.", "warning");
+        pendingCleanup = null;
+        ctx.ui.notify("Context cleanup cancelled — session was not idle after agent end. Run is_cleanup again if needed.", "warning");
         return;
       }
       try {
         ctx.compact({
-          customInstructions: "Settle IdeaSpaces conversation context after capture.",
+          customInstructions: "Clean up IdeaSpaces conversation context using the provided checkpoint.",
           onComplete: () => {
-            pendingSettle = null;
-            ctx.ui.notify("Settled active context", "info");
+            pendingCleanup = null;
+            ctx.ui.notify("Cleaned up active context", "info");
           },
           onError: (error) => {
-            pendingSettle = null;
+            pendingCleanup = null;
             try {
-              ctx.ui.notify(`Context settle compaction failed: ${error.message}`, "warning");
+              ctx.ui.notify(`Context cleanup compaction failed: ${error.message}`, "warning");
             } catch {
               // Best-effort: the session may already be shutting down.
             }
             try {
               pi.sendMessage({
-                customType: "is-settle-status",
-                content: `[IdeaSpaces settle failed]\n${error.message}`,
+                customType: "is-cleanup-status",
+                content: `[IdeaSpaces cleanup failed]\n${error.message}`,
                 display: true,
-                details: { kind: "is-settle-error", requestId: request.id },
+                details: { kind: "is-cleanup-error", requestId: request.id },
               });
             } catch {
               // Best-effort: the session may already be shutting down.
@@ -1077,32 +1144,34 @@ export default function (pi: ExtensionAPI) {
           },
         });
       } catch (error) {
-        pendingSettle = null;
+        pendingCleanup = null;
         const message = error instanceof Error ? error.message : String(error);
-        ctx.ui.notify(`Context settle could not start: ${message}`, "warning");
+        ctx.ui.notify(`Context cleanup could not start: ${message}`, "warning");
       }
     }, 0);
   });
 
   pi.on("session_before_compact", async (event) => {
-    const request = pendingSettle;
+    const request = pendingCleanup;
     if (!request) return undefined;
 
-    const settleEntry = latestSettleToolResult(event.branchEntries, request.id);
-    if (!settleEntry) return undefined;
+    const cleanupEntry = latestCleanupToolResult(event.branchEntries, request.id);
+    if (!cleanupEntry) return undefined;
 
-    const firstKeptEntry = assistantEntryForToolCall(event.branchEntries, settleEntry.message.toolCallId) ?? settleEntry;
+    const firstKeptEntry = assistantEntryForToolCall(event.branchEntries, cleanupEntry.message.toolCallId) ?? cleanupEntry;
     return {
       compaction: {
-        summary: formatSettleSummary(request),
+        summary: formatCleanupSummary(request),
         firstKeptEntryId: firstKeptEntry.id,
         tokensBefore: event.preparation.tokensBefore,
         details: {
-          kind: "is-settle",
+          kind: "is-cleanup",
           conversationId: request.conversation.id,
-          checkpointEntryId: settleEntry.id,
+          checkpointEntryId: cleanupEntry.id,
           firstKeptEntryId: firstKeptEntry.id,
           captures: request.captures,
+          usageBefore: request.usageBefore,
+          entriesBeforeCleanup: request.entriesBeforeCleanup,
         },
       },
     };
@@ -1110,23 +1179,23 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_compact", async (event, ctx) => {
     const details = event.compactionEntry.details;
-    if (isRecord(details) && details.kind === "is-settle") {
-      await upsertConversation(ctx, { settledAt: event.compactionEntry.timestamp });
-      pendingSettle = null;
+    if (isRecord(details) && details.kind === "is-cleanup") {
+      await upsertConversation(ctx, { cleanedAt: event.compactionEntry.timestamp });
+      pendingCleanup = null;
       recentCaptures = [];
     }
   });
 
   pi.on("session_shutdown", async (_event, ctx) => {
-    if (pendingSettle) {
-      const message = "Context settle cancelled — session is shutting down. Run is_settle again if needed.";
+    if (pendingCleanup) {
+      const message = "Context cleanup cancelled — session is shutting down. Run is_cleanup again if needed.";
       if (ctx.hasUI) ctx.ui.notify(message, "warning");
       else console.warn(message);
     }
-    pendingSettle = null;
-    if (settleCompactTimer) {
-      clearTimeout(settleCompactTimer);
-      settleCompactTimer = undefined;
+    pendingCleanup = null;
+    if (cleanupCompactTimer) {
+      clearTimeout(cleanupCompactTimer);
+      cleanupCompactTimer = undefined;
     }
     // Lifecycle write, not awareness assembly: persist the last-seen commit so
     // the next session can render "Since last session" from git history.
@@ -1393,32 +1462,35 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerCommand("is-settle", {
-    description: "Show or cancel a pending IdeaSpaces context settle",
+  pi.registerCommand("is-cleanup", {
+    description: "Show or cancel a pending IdeaSpaces context cleanup",
     handler: async (args, ctx) => {
       const action = args.trim() || "status";
       if (action === "cancel") {
-        if (!pendingSettle) {
-          ctx.ui.notify("No context settle is pending", "info");
+        if (!pendingCleanup) {
+          ctx.ui.notify("No context cleanup is pending", "info");
           return;
         }
-        pendingSettle = null;
-        if (settleCompactTimer) {
-          clearTimeout(settleCompactTimer);
-          settleCompactTimer = undefined;
+        pendingCleanup = null;
+        if (cleanupCompactTimer) {
+          clearTimeout(cleanupCompactTimer);
+          cleanupCompactTimer = undefined;
         }
-        ctx.ui.notify("Cancelled pending context settle", "info");
+        ctx.ui.notify("Cancelled pending context cleanup", "info");
         return;
       }
       if (action === "status" || action === "show") {
-        if (!pendingSettle) {
-          ctx.ui.notify("No context settle is pending", "info");
+        if (!pendingCleanup) {
+          ctx.ui.notify("No context cleanup is pending", "info");
           return;
         }
-        ctx.ui.notify(formatSettleCheckpoint(pendingSettle), "info");
+        ctx.ui.notify(
+          `${formatCleanupCheckpoint(pendingCleanup)}\n\nCleanup is pending; compaction will run after the current response finishes. Raw history remains recallable via /tree and is_recall.`,
+          "info",
+        );
         return;
       }
-      ctx.ui.notify("Usage: /is-settle [status|cancel]", "warning");
+      ctx.ui.notify("Usage: /is-cleanup [status|cancel]", "warning");
     },
   });
 
@@ -1703,27 +1775,34 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerTool({
-    name: "is_settle",
-    label: "IS Settle",
+    name: "is_cleanup",
+    label: "IS Cleanup",
     description:
-      "Settle the current conversation state after capture: record a checkpoint and compact prior raw discussion out of active context while keeping the full JSONL session history recoverable.",
-    promptSnippet: "Settle captured conversation state and slide active context to a checkpoint",
+      "Preview or apply active-context cleanup: keep a checkpoint, compact prior raw discussion out of active context, and leave the full JSONL session history recoverable.",
+    promptSnippet: "Preview/apply active-context cleanup with keep/drop plan",
     promptGuidelines: [
-      "Use is_settle only after explicit user agreement that captured raw discussion can leave active context.",
-      "Use is_settle after meaningful IdeaSpaces capture when a compact checkpoint can replace verbose exploratory conversation.",
+      "Cleanup is workshop cleanup for active context; capture is the separate agreement that changes shared state.",
+      "Prefer action=preview first: show what will be kept, what will leave active context, and the rough context savings.",
+      "Use action=apply only after the user confirms the cleanup plan or explicitly asks to clean up now.",
+      "Be clear that cleanup is sliding-window compaction: keep/drop are preserved in the checkpoint, not exact old turns kept verbatim.",
     ],
     parameters: Type.Object({
-      checkpoint: Type.String({ description: "Current settled conversation state to keep as the checkpoint" }),
+      action: Type.Optional(
+        Type.Union([Type.Literal("preview"), Type.Literal("apply")], {
+          description: "preview (default) or apply; preview first, apply only after the user confirms the cleanup plan",
+        }),
+      ),
+      checkpoint: Type.String({ description: "Current conversation state to keep as the cleanup checkpoint" }),
       keep: Type.Optional(Type.String({ description: "What should remain live in active context" })),
-      drop: Type.Optional(Type.String({ description: "What raw discussion can leave active context" })),
-      captures: Type.Optional(Type.Array(Type.String({ description: "Captured IdeaSpaces paths/refs represented by this checkpoint" }))),
+      drop: Type.Optional(Type.String({ description: "What raw discussion/tool noise can leave active context" })),
+      captures: Type.Optional(Type.Array(Type.String({ description: "Captured IdeaSpaces paths/refs represented by this checkpoint, if any" }))),
     }),
     async execute(toolCallId, params, _signal, _onUpdate, ctx) {
       const conversation = await upsertConversation(ctx);
       const branch = ctx.sessionManager.getBranch();
       const explicitCaptures = params.captures?.length ? captureRefsFromPaths(params.captures) : [];
       const captures = dedupeCaptures([...explicitCaptures, ...recentCaptures]);
-      const request: SettleRequest = {
+      const request: CleanupRequest = {
         id: toolCallId,
         conversation,
         checkpoint: params.checkpoint,
@@ -1733,17 +1812,27 @@ export default function (pi: ExtensionAPI) {
         requestedAt: new Date().toISOString(),
         firstEntryId: branch[0]?.id,
         leafIdAtRequest: ctx.sessionManager.getLeafId() ?? undefined,
+        usageBefore: contextUsageSnapshot(ctx),
+        entriesBeforeCleanup: branch.length,
       };
-      pendingSettle = request;
 
+      const action = params.action ?? "preview";
+      if (action === "preview") {
+        return {
+          content: [{ type: "text", text: formatCleanupPreview(request) }],
+          details: { kind: "is-cleanup-preview", request },
+        };
+      }
+
+      pendingCleanup = request;
       return {
         content: [
           {
             type: "text",
-            text: `${formatSettleCheckpoint(request)}\n\nContext settle scheduled: after this response finishes, prior raw conversation will be compacted out of active context. The full JSONL session remains recoverable via /tree.`,
+            text: `${formatCleanupCheckpoint(request)}\n\nContext cleanup scheduled: after this response finishes, prior raw conversation will be compacted out of active context. The full JSONL session remains recoverable via /tree and is_recall.`,
           },
         ],
-        details: { kind: "is-settle", request },
+        details: { kind: "is-cleanup", request },
       };
     },
   });

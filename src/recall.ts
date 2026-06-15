@@ -16,7 +16,7 @@ export type RecallMap = {
     entries: number;
     branchEntries: number;
     compactions: number;
-    settleCompactions: number;
+    cleanupCompactions: number;
     branchSummaries: number;
     labels: number;
     compactedEntries: number;
@@ -36,7 +36,7 @@ type RecallCompaction = {
   id: string;
   timestamp: string;
   firstKeptEntryId: string;
-  settle: boolean;
+  cleanup: boolean;
   checkpointEntryId?: string;
   conversationId?: string;
   captures: string[];
@@ -175,12 +175,12 @@ function capturePaths(value: unknown): string[] {
 function compactionInfo(entry: SessionEntry): RecallCompaction | null {
   if (entry.type !== "compaction") return null;
   const details = detailsRecord(entry);
-  const settle = details?.kind === "is-settle";
+  const cleanup = details?.kind === "is-cleanup" || details?.kind === "is-settle";
   return {
     id: entry.id,
     timestamp: entry.timestamp,
     firstKeptEntryId: entry.firstKeptEntryId,
-    settle,
+    cleanup,
     checkpointEntryId: typeof details?.checkpointEntryId === "string" ? details.checkpointEntryId : undefined,
     conversationId: typeof details?.conversationId === "string" ? details.conversationId : undefined,
     captures: capturePaths(details?.captures),
@@ -241,7 +241,7 @@ function formatCompactions(compactions: RecallCompaction[]): string {
   if (!compactions.length) return "- (none)";
   return compactions
     .map((c) => {
-      const bits = [`- ${c.id}`, c.settle ? "settle" : "compact", c.timestamp, `firstKept=${c.firstKeptEntryId}`];
+      const bits = [`- ${c.id}`, c.cleanup ? "cleanup" : "compact", c.timestamp, `firstKept=${c.firstKeptEntryId}`];
       if (c.checkpointEntryId) bits.push(`checkpoint=${c.checkpointEntryId}`);
       if (c.captures.length) bits.push(`captures=${c.captures.join(",")}`);
       return `${bits.join(" · ")}\n  ${c.summary}`;
@@ -285,7 +285,7 @@ export function buildRecallMap(ctx: ExtensionContext, conversation: Conversation
       entries: entries.length,
       branchEntries: branch.length,
       compactions: compactions.length,
-      settleCompactions: compactions.filter((c) => c.settle).length,
+      cleanupCompactions: compactions.filter((c) => c.cleanup).length,
       branchSummaries: branchSummaries.length,
       labels: labels.length,
       compactedEntries: compacted.size,
@@ -319,7 +319,7 @@ export function formatRecallMap(map: RecallMap): string {
     "## Counts",
     `entries: ${map.counts.entries}`,
     `branch entries: ${map.counts.branchEntries}`,
-    `compactions: ${map.counts.compactions} (${map.counts.settleCompactions} settle)`,
+    `compactions: ${map.counts.compactions} (${map.counts.cleanupCompactions} cleanup)`,
     `branch summaries: ${map.counts.branchSummaries}`,
     `labels: ${map.counts.labels}`,
     `compacted entries on active branch: ${map.counts.compactedEntries}`,
