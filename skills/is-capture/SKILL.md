@@ -5,7 +5,7 @@ description: >
   remember, save this, write this into the space, or when a decision/finding has
   crystallized. The skill chooses the mechanism: `is_write` for Notes, native
   edits for existing docs/specs, then `is_commit` for the agreement boundary.
-allowed-tools: "is_write is_status is_commit is_sync read edit write bash"
+allowed-tools: "is_write is_status is_commit is_sync is_settle read edit write bash"
 user-invocable: false
 ---
 
@@ -57,6 +57,9 @@ If yes:
 4. Show what changed when useful. The user confirms the capture boundary.
 5. Commit with `is_commit({ message, all: true })` for staged knowledge, or explicit `paths` for native edits. Never sweep unrelated staged work.
 6. Optionally use **is-sync** / `is_sync` to align with remote.
+7. After a meaningful capture, offer to settle active context when the raw discussion is now represented by captured state:
+   > "We captured this. Want to settle context now — keep a checkpoint and drop the raw discussion from active context?"
+   If the user agrees, call `is_settle` with the checkpoint, what remains active, what can be dropped, and captured paths. The extension auto-remembers only the most recent captures as a safety bound; pass explicit `captures` when the checkpoint represents older or native-file captures.
 
 If the user runs `/is-commit`, treat that as confirmation and don't re-ask. If the user says no, drop it and don't re-ask.
 

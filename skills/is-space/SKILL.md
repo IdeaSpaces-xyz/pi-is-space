@@ -5,7 +5,7 @@ description: >
   Two Roles convention, and Pi tool surface. Use as a compatibility/reference
   entrypoint when the user asks how an ideaspace works. For active intents,
   prefer the loop skills: is-orient, is-capture, is-sync, is-reflect, is-shape.
-allowed-tools: "is_write is_status is_commit is_sync is_auth read edit write bash"
+allowed-tools: "is_write is_status is_commit is_sync is_conversation is_settle is_auth read edit write bash"
 ---
 
 # Working in an Ideaspace
@@ -29,7 +29,7 @@ Pi handles **arrive** automatically with session-start awareness. For active wor
 You have two sets of tools:
 
 - **Native** — `read`, `edit`, `write`, `bash`. Default for navigation, search, source-code work, and ordinary doc edits.
-- **`is_*` primitives** — capture/sync support (`is_status`, `is_write`, `is_commit`, `is_sync`, `is_auth`). Skills choose these mechanisms; don't make backend choice the user's problem.
+- **`is_*` primitives** — capture/sync/context support (`is_status`, `is_write`, `is_commit`, `is_sync`, `is_conversation`, `is_settle`, `is_auth`). Skills choose these mechanisms; don't make backend choice the user's problem.
 
 ## Start here
 
@@ -130,6 +130,25 @@ It never sweeps unrelated staged user work into the capture commit.
 ### `is_sync` — push committed captures
 
 Use **is-sync** for the outer intent. `is_sync` integrates remote changes and pushes committed captures. It refuses while staged IdeaSpaces knowledge remains uncommitted. Use `dry_run: true` to preview.
+
+### `is_conversation` — name the local flow
+
+`is_conversation` shows or updates the current local conversation flow metadata. It indexes Pi's existing JSONL session with a stable conversation ID, name, and description; it does not move or sync raw conversation logs.
+
+### `is_settle` — slide active context after capture
+
+After meaningful capture and explicit user agreement, `is_settle` records a conversation checkpoint and compacts prior raw discussion out of active context. The full Pi JSONL session remains recoverable via `/tree`; `is_settle` only changes the active context window.
+
+Use it when captured state now replaces verbose process:
+
+```
+is_settle checkpoint="What we now believe..."
+          keep="Open implementation questions..."
+          drop="Raw debate now represented by roadmap/foo.md"
+          captures=["roadmap/foo.md"]
+```
+
+Do not call `is_settle` automatically after every capture. Ask first.
 
 **`cwd` matters when you've `cd`-ed inside `bash`.** A `cd subdir` in a `bash` invocation changes that subprocess's cwd; it doesn't propagate back to Pi's extension process. If you've worked in a subdir during the session and then call `is_write` with a relative `path`, `is_write` resolves it against the Pi session cwd — likely the wrong tree.
 

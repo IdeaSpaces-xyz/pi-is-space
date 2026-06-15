@@ -24,6 +24,8 @@ IdeaSpaces-aware primitives:
 - `is_write` — capture primitive for frontmatter-aware Note writes; stages, tracks, and returns `sha`
 - `is_commit` — capture primitive; commits only tracked or explicit capture paths
 - `is_sync` — sync primitive; integrates remote changes and pushes committed captures
+- `is_conversation` — conversation-flow primitive; show/name/describe the current local flow over Pi's existing JSONL session
+- `is_settle` — conversation-window primitive; after explicit agreement, records a checkpoint and compacts raw prior turns out of active context while JSONL remains recoverable
 - `is_auth` — login/logout for optional sync
 
 Keep agent-facing language intent-first: orient, capture, sync, reflect. Do not make agents choose between equivalent backends at the top level.
@@ -34,6 +36,8 @@ Pi-native commands for human-facing flow:
 - `/is-status` — show capture/sync state and refresh UI
 - `/is-commit` — review staged captures, collect a message, confirm, commit staged knowledge
 - `/is-sync` — dry-run, confirm, sync committed captures
+- `/is-conversation` — show/name/describe the current local conversation flow over Pi's existing JSONL session
+- `/is-settle` — show/cancel a pending active-context settle
 - `/is-publish` — check scaffold/branch state, confirm destination, publish remotely, retry through login if needed
 
 Runtime guardrails:
@@ -55,12 +59,13 @@ On session start, walk up from `cwd` looking for `_agent/`, use `@ideaspaces/sdk
 Use-case layer shipped in `skills/`:
 
 - Loop skills: is-orient, is-capture, is-sync, is-reflect, is-shape
+- Conversation skills: is-conversation, is-settle
 - Lifecycle/setup skills: is-setup, is-publish
 - Reference skills: is-space, is-writing
 
 Shared protocol content lives in `reference/`, generated from the SDK canonical skill catalog with `npm run build:reference`. Keep Pi entrypoint skills surface-specific; update shared capture/writing/awareness/shaping protocols in the SDK, then regenerate `reference/`.
 
-Capture flow: user intent → `is-capture` → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-sync`.
+Capture flow: user intent → `is-capture` → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-sync`. After meaningful capture, offer `is_settle` when captured state can replace raw discussion in active context.
 
 ## Development
 
