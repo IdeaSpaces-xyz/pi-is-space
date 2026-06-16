@@ -26,7 +26,7 @@ IdeaSpaces-aware primitives:
 - `is_sync` — sync primitive; integrates remote changes and pushes committed captures
 - `is_conversation` — conversation-flow primitive; show/name/describe the current local flow over Pi's existing JSONL session
 - `is_recall` — conversation-retrieval primitive; map/search/excerpt the local session tree, including compacted entries, without raw JSONL spelunking
-- `is_cleanup` — conversation-window primitive; previews/applies active-context cleanup by keeping a checkpoint, compacting raw prior turns, and leaving JSONL recoverable
+- `is_cleanup` — conversation-window primitive; previews/applies active-window cleanup by keeping a checkpoint, compacting raw prior turns, and leaving JSONL recoverable
 - `is_auth` — login/logout for optional sync
 
 Keep agent-facing language intent-first: orient, capture, sync, reflect. Do not make agents choose between equivalent backends at the top level.
@@ -69,7 +69,7 @@ Keep the layering clear: skills express user intent, tools are primitives, comma
 
 Shared protocol content lives in `reference/`, generated from the SDK canonical skill catalog with `npm run build:reference`. Keep Pi entrypoint skills surface-specific; update shared capture/writing/awareness/shaping protocols in the SDK, then regenerate `reference/`.
 
-Capture flow: user intent → `is-capture` → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-sync`. Reflect and shape use the same capture boundary when they change shared agreement. Cleanup is a separate workshop-hygiene loop: when active context is cluttered, preview with `is_cleanup action="preview"`, get confirmation, then apply with `action="apply"`.
+Capture flow: user intent → `is-capture` → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-sync`. Reflect and shape use the same capture boundary when they change shared agreement. Cleanup is a separate workshop-hygiene loop: when active context is cluttered, preview with `is_cleanup action="preview" scope="active-window"`, get confirmation, then apply with `action="apply"`. Pi `/tree` branch summaries are adjacent branch cleanup; arbitrary middle-range cleanup is not first-class yet.
 
 ## Development
 

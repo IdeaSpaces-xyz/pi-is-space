@@ -37,6 +37,7 @@ type RecallCompaction = {
   timestamp: string;
   firstKeptEntryId: string;
   cleanup: boolean;
+  scope?: string;
   checkpointEntryId?: string;
   conversationId?: string;
   captures: string[];
@@ -181,6 +182,7 @@ function compactionInfo(entry: SessionEntry): RecallCompaction | null {
     timestamp: entry.timestamp,
     firstKeptEntryId: entry.firstKeptEntryId,
     cleanup,
+    scope: typeof details?.scope === "string" ? details.scope : cleanup ? "active-window" : undefined,
     checkpointEntryId: typeof details?.checkpointEntryId === "string" ? details.checkpointEntryId : undefined,
     conversationId: typeof details?.conversationId === "string" ? details.conversationId : undefined,
     captures: capturePaths(details?.captures),
@@ -242,6 +244,7 @@ function formatCompactions(compactions: RecallCompaction[]): string {
   return compactions
     .map((c) => {
       const bits = [`- ${c.id}`, c.cleanup ? "cleanup" : "compact", c.timestamp, `firstKept=${c.firstKeptEntryId}`];
+      if (c.scope) bits.push(`scope=${c.scope}`);
       if (c.checkpointEntryId) bits.push(`checkpoint=${c.checkpointEntryId}`);
       if (c.captures.length) bits.push(`captures=${c.captures.join(",")}`);
       return `${bits.join(" · ")}\n  ${c.summary}`;

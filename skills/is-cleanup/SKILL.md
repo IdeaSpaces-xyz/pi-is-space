@@ -12,14 +12,16 @@ allowed-tools: "is_cleanup"
 
 Cleanup is workshop cleanup for the active conversation window. It does not change shared understanding. **Capture** is the agreement moment; **cleanup** keeps the bench usable.
 
-The current implementation is sliding-window compaction: prior raw turns leave active context, while the checkpoint/keep/drop plan stays live. Exact old turns remain recoverable through `/tree` and **is-recall**.
+The current implementation is **active-window cleanup**: sliding-window compaction where prior raw turns leave active context, while the checkpoint/keep/drop plan stays live. Exact old turns remain recoverable through `/tree` and **is-recall**.
+
+Pi also has branch summaries when navigating with `/tree`; treat that as adjacent branch cleanup, not the current `is_cleanup` implementation. Arbitrary middle-range/chunk cleanup is not first-class yet.
 
 ## Commands
 
 - Preview a cleanup plan:
-  `is_cleanup({ action: "preview", checkpoint: "...", keep: "...", drop: "..." })`
+  `is_cleanup({ action: "preview", scope: "active-window", checkpoint: "...", keep: "...", drop: "..." })`
 - Apply after the user confirms:
-  `is_cleanup({ action: "apply", checkpoint: "...", keep: "...", drop: "..." })`
+  `is_cleanup({ action: "apply", scope: "active-window", checkpoint: "...", keep: "...", drop: "..." })`
 - `/is-cleanup` or `/is-cleanup status` — show the pending cleanup, if any.
 - `/is-cleanup cancel` — clear a pending cleanup if compaction did not run or the user changed their mind.
 
@@ -29,7 +31,7 @@ Prefer preview before apply. The preview should say:
 
 - what will stay live as checkpoint / bench items
 - what will leave active context
-- rough current context and branch-entry count
+- rough current context and branch-entry count at preview time
 - that raw history remains recallable
 - that post-cleanup footer usage is known after compaction / next model response
 

@@ -153,10 +153,13 @@ It is deterministic in the current MVP: no generated summaries, only maps, match
 
 `is_cleanup` is workshop cleanup for the active conversation window. It does not change shared understanding; capture does that. Cleanup keeps a checkpoint live, compacts prior raw discussion out of active context, and leaves the full Pi JSONL session recoverable via `/tree` and `is_recall`.
 
+The current scope is `active-window`: sliding-window compaction of prior active-branch context. Pi's `/tree` branch summaries are adjacent branch cleanup; arbitrary middle-range cleanup is not first-class yet.
+
 Prefer preview before apply:
 
 ```
 is_cleanup action="preview"
+          scope="active-window"
           checkpoint="What stays live..."
           keep="Open implementation questions..."
           drop="Tool noise and resolved debate..."
@@ -167,6 +170,7 @@ After the user confirms:
 
 ```
 is_cleanup action="apply"
+          scope="active-window"
           checkpoint="What stays live..."
           keep="Open implementation questions..."
           drop="Tool noise and resolved debate..."
