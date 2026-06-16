@@ -6,7 +6,7 @@ description: >
   repeatable thinking pattern). Use when the user wants to make how the agent
   works in a situation repeatable, or to define an evaluation/analysis they
   apply often.
-allowed-tools: "is_write is_status read write edit bash"
+allowed-tools: "is_write is_status is_commit read write edit bash"
 user-invocable: true
 ---
 
@@ -30,3 +30,9 @@ Primitives and perspectives live in `_agent/` at the level where they apply; eve
 Use native `write` / `edit` for `_agent/skills/*`, `_agent/perspectives/*`, and other agent-context primitives because they use `name` + `description` frontmatter, not Note `name` + `summary` frontmatter. Use `is_write` only when shaping ordinary Notes such as `_agent/purpose.md` or `_agent/now.md` that should carry Note-style summary frontmatter.
 
 Nothing writes without agreement — preview, confirm, then write.
+
+Shaping changes the agent agreement, so finish with the capture boundary:
+
+- For ordinary Note-style files written with `is_write`, commit staged knowledge with `is_commit` after confirmation.
+- For native `_agent/` edits, commit the explicit changed paths with `is_commit` after confirmation.
+- If the user only wanted a draft, say that it remains local/uncommitted.

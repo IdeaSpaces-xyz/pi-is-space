@@ -28,7 +28,13 @@ pi -e /path/to/pi-is-space
 
 ## Tools
 
-Pi's native `read`, `edit`, `write`, and `bash` cover navigation, inspection, and ordinary edits. `pi-is-space` adds IdeaSpaces-aware primitives used by the capture and sync flows:
+The package has three surfaces:
+
+- **Skills** — agent procedures for user intent (`is-capture`, `is-sync`, `is-cleanup`).
+- **Tools** — low-level primitives the skills call (`is_write`, `is_commit`, `is_recall`).
+- **Commands** — human-triggered Pi UI flows (`/is-sync`, `/is-cleanup`).
+
+Pi's native `read`, `edit`, `write`, and `bash` cover navigation, inspection, and ordinary edits. `pi-is-space` adds IdeaSpaces-aware primitives used by the skills and commands:
 
 | Tool | What |
 |---|---|
@@ -83,20 +89,27 @@ To host a local space remotely, use `/is-publish`. It checks scaffold/branch sta
 
 ## Skills and reference
 
-Pi ships surface-specific entrypoint skills mapped to the inhabitation loop:
+Pi ships surface-specific entrypoint skills in four tiers:
 
-- `is-orient` — understand where you are and what's active
-- `is-capture` — preserve agreed understanding
-- `is-sync` — align committed captures with remote
-- `is-reflect` — check drift after meaningful change
-- `is-shape` — change the `_agent/` agreement or reusable agent behavior
-- `is-conversation` — name/describe the current local conversation flow
-- `is-recall` — retrieve compacted or prior local conversation context by map/search/excerpt
-- `is-cleanup` — preview/apply context cleanup, or inspect/cancel a pending cleanup
-- `is-setup` — scaffold a space
-- `is-publish` — host a local space remotely
-- `is-space` — compatibility/reference entrypoint
-- `is-writing` — writing quality reference
+**Daily loop**
+- `is-orient` — understand where you are and what's active.
+- `is-capture` — preserve agreed understanding.
+- `is-sync` — align committed captures with remote.
+- `is-reflect` — check whether declared direction still matches reality.
+
+**Space lifecycle**
+- `is-setup` — create the seed `_agent/` contract.
+- `is-publish` — host a local space remotely for the first time.
+- `is-shape` — evolve the `_agent/` agreement or reusable agent behavior.
+
+**Conversation hygiene**
+- `is-conversation` — name/describe the current local conversation flow.
+- `is-cleanup` — preview/apply active-context cleanup.
+- `is-recall` — retrieve compacted or prior local conversation context by map/search/excerpt.
+
+**Reference**
+- `is-space` — compatibility/reference entrypoint; use when the user asks how IdeaSpaces works.
+- `is-writing` — writing quality reference loaded by capture/writing tasks.
 
 Shared protocol content lives in `reference/`, generated from the SDK canonical skill catalog with `npm run build:reference`. Entry skills stay Pi-specific while reading SDK-backed references such as `reference/capture.md`, `reference/writing.md`, and `reference/awareness.md` on demand.
 

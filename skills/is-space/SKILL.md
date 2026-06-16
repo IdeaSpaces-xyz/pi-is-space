@@ -18,18 +18,20 @@ An ideaspace is inhabited through a simple loop:
 arrive → orient → inspect → act → capture → sync → reflect
 ```
 
-Pi handles **arrive** automatically with session-start awareness. For active work, pick the intent skill:
+Pi handles **arrive** automatically with session-start awareness. For active work, pick the intent skill by tier:
 
-- **is-orient** — where are we, what is active, what changed?
-- **is-capture** — preserve agreed understanding.
-- **is-sync** — align committed captures with remote.
-- **is-reflect** — check drift after meaningful change.
-- **is-shape** — change the `_agent/` agreement or reusable agent behavior.
+**Daily loop** — `is-orient`, `is-capture`, `is-sync`, `is-reflect`.
+**Space lifecycle** — `is-setup`, `is-publish`, `is-shape`.
+**Conversation hygiene** — `is-conversation`, `is-cleanup`, `is-recall`.
+**Reference** — `is-space`, `is-writing`.
 
-You have two sets of tools:
+You have three surfaces:
 
-- **Native** — `read`, `edit`, `write`, `bash`. Default for navigation, search, source-code work, and ordinary doc edits.
-- **`is_*` primitives** — capture/sync/context support (`is_status`, `is_write`, `is_commit`, `is_sync`, `is_conversation`, `is_recall`, `is_cleanup`, `is_auth`). Skills choose these mechanisms; don't make backend choice the user's problem.
+- **Skills** — agent procedures for user intent. Use these first.
+- **Tools** — low-level primitives (`is_status`, `is_write`, `is_commit`, `is_sync`, `is_conversation`, `is_recall`, `is_cleanup`, `is_auth`). Skills choose these mechanisms; don't make backend choice the user's problem.
+- **Commands** — human-triggered Pi UI flows (`/is-setup`, `/is-sync`, `/is-cleanup`). If the user invokes one, treat it as the confirmation path.
+
+Native `read`, `edit`, `write`, and `bash` remain the default for navigation, search, source-code work, and ordinary doc edits.
 
 ## Start here
 
