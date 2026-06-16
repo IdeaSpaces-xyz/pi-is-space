@@ -6,7 +6,7 @@ description: >
   structure outgrown. Offered as a readiness check (both sides decide whether
   to reflect now). Triggers at natural breaks or after state updates, not
   mid-task.
-allowed-tools: "is_write is_status read bash"
+allowed-tools: "is_write is_status is_commit read write edit bash"
 user-invocable: false
 ---
 
@@ -38,7 +38,13 @@ Before asserting that something "shipped", "is implemented", or "is pending" bas
 
 Be specific: "The Now says 'build skill packages.' We've defined three. Update the bullets?" Not "should we update Now?"
 
-Propose the update. Let the user confirm. Write with `is_write`.
+Propose the update. Let the user confirm. Then use the right capture mechanism:
+
+- Purpose / Now / Note-style markdown → `is_write` with safe-update `sha` when refining.
+- README / existing docs / `_agent/` contract files → native `edit`/`write`, then `is_commit` with explicit paths.
+- Directory moves or deletes → `bash` (`git mv`, `rm`), then `is_commit` with explicit paths.
+
+Do not leave reflection edits uncommitted unless the user explicitly wants local draft state.
 
 ## What to Update
 

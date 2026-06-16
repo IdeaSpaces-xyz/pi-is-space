@@ -58,16 +58,18 @@ On session start, walk up from `cwd` looking for `_agent/`, use `@ideaspaces/sdk
 
 ## Skills
 
-Use-case layer shipped in `skills/`:
+Use-case layer shipped in `skills/`, grouped by role:
 
-- Loop skills: is-orient, is-capture, is-sync, is-reflect, is-shape
-- Conversation skills: is-conversation, is-recall, is-cleanup
-- Lifecycle/setup skills: is-setup, is-publish
-- Reference skills: is-space, is-writing
+- Daily loop: is-orient, is-capture, is-sync, is-reflect
+- Space lifecycle: is-setup, is-publish, is-shape
+- Conversation hygiene: is-conversation, is-cleanup, is-recall
+- Reference: is-space, is-writing
+
+Keep the layering clear: skills express user intent, tools are primitives, commands are human-triggered Pi UI flows.
 
 Shared protocol content lives in `reference/`, generated from the SDK canonical skill catalog with `npm run build:reference`. Keep Pi entrypoint skills surface-specific; update shared capture/writing/awareness/shaping protocols in the SDK, then regenerate `reference/`.
 
-Capture flow: user intent → `is-capture` → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-sync`. Cleanup is a separate workshop-hygiene loop: when active context is cluttered, preview with `is_cleanup action="preview"`, get confirmation, then apply with `action="apply"`.
+Capture flow: user intent → `is-capture` → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-sync`. Reflect and shape use the same capture boundary when they change shared agreement. Cleanup is a separate workshop-hygiene loop: when active context is cluttered, preview with `is_cleanup action="preview"`, get confirmation, then apply with `action="apply"`.
 
 ## Development
 

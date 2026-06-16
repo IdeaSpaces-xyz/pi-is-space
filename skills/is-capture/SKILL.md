@@ -32,11 +32,12 @@ Canonical protocols: read [capture](../../reference/capture.md) and [writing](..
 | Situation | Use |
 |---|---|
 | New or updated knowledge Note | `is_write` — it creates frontmatter, stages, tracks, and returns `sha` |
-| Existing spec/doc/README/agent contract edit | native `edit` / `write`, then commit the agreed paths |
-| File move/delete | native `bash` (`git mv`, `rm`) |
+| Purpose / Now / Note-style markdown refinement | `is_write` with safe-update `sha` |
+| Existing spec/doc/README/agent contract edit | native `edit` / `write`, then `is_commit` with explicit paths |
+| File move/delete | native `bash` (`git mv`, `rm`), then `is_commit` with explicit paths |
 | User asks to sync/share after capture | `is-sync` / `is_sync` |
 
-`is_write` is a capture primitive, not the outer intent. Reach for it inside this skill when the target is a Note that should carry Layer 1 frontmatter (`name`, `summary`) and optional Layer 2 fields (`tags`, `attached_to`).
+`is_write` is a capture primitive, not the outer intent. Reach for it inside this skill when the target is a Note that should carry Layer 1 frontmatter (`name`, `summary`) and optional Layer 2 fields (`tags`, `attached_to`). Use native edits for README/spec/docs and `_agent/` primitives that are not Note-style files; still end at the same capture boundary with `is_commit` unless the user explicitly wants local draft state.
 
 ## How
 
@@ -48,8 +49,9 @@ If yes:
 
 1. Search first (`bash` with `find`/`rg`) to avoid duplicates; `read` the target area for context.
 2. Choose the mechanism:
-   - Note capture → `is_write`.
-   - Existing doc/spec/contract refinement → native `edit` / `write`.
+   - Note capture or Note-style refinement → `is_write`.
+   - Existing README/doc/spec/contract refinement → native `edit` / `write`.
+   - Moves/deletes → `bash` (`git mv`, `rm`).
 3. For `is_write` refinements, use safe updates:
    - first update to an existing file: `is_status({ path })` → use returned `sha` as `if_match`
    - refinement of a file just written: use the prior `is_write` response `sha`
