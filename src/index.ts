@@ -115,8 +115,11 @@ type ContextUsageSnapshot = {
   contextWindow?: number;
 };
 
+type CleanupScope = "active-window";
+
 type CleanupRequest = {
   id: string;
+  scope: CleanupScope;
   conversation: ConversationMeta;
   checkpoint: string;
   keep?: string;
@@ -157,10 +160,13 @@ const ContextUsageSnapshotSchema = Type.Object({
   contextWindow: Type.Optional(Type.Number()),
 });
 
+const CleanupScopeSchema = Type.Literal("active-window");
+
 const CleanupDetailsSchema = Type.Object({
   kind: Type.Literal("is-cleanup"),
   request: Type.Object({
     id: Type.String(),
+    scope: Type.Optional(CleanupScopeSchema),
     conversation: ConversationMetaSchema,
     checkpoint: Type.String(),
     keep: Type.Optional(Type.String()),
@@ -522,6 +528,7 @@ function formatCleanupCheckpoint(request: CleanupRequest): string {
     "",
     `Conversation: ${request.conversation.name ?? "(unnamed)"}`,
     `Conversation-Id: ${request.conversation.id}`,
+    `Cleanup-Scope: ${request.scope}`,
     "",
     "Context state now:",
     request.checkpoint.trim(),
@@ -539,13 +546,14 @@ function formatCleanupPreview(request: CleanupRequest): string {
     "",
     `conversation: ${request.conversation.name ?? "(unnamed)"}`,
     `conversation id: ${request.conversation.id}`,
+    `scope: ${request.scope}`,
     "",
     "## Current context",
     formatContextUsage(request.usageBefore),
-    `- branch entries before cleanup request: ${compactedEntries.toLocaleString()}`,
+    `- branch entries at preview time: ${compactedEntries.toLocaleString()}`,
     "",
     "## Cleanup plan",
-    "- compact prior raw conversation before the cleanup checkpoint (sliding-window cleanup)",
+    `- ${request.scope} cleanup: compact prior raw conversation before the cleanup checkpoint`,
     "- preserve selected live state in the checkpoint below",
     "- keep full raw history recoverable through /tree and is_recall",
     "",
@@ -570,6 +578,7 @@ function formatCleanupSummary(request: CleanupRequest): string {
     "",
     `Conversation: ${request.conversation.name ?? "(unnamed)"}`,
     `Conversation-Id: ${request.conversation.id}`,
+    `Cleanup-Scope: ${request.scope}`,
     "",
     "Checkpoint:",
     request.checkpoint.trim(),
@@ -583,7 +592,8 @@ function formatCleanupSummary(request: CleanupRequest): string {
 
 function cleanupRequestFromDetails(details: unknown): CleanupRequest | null {
   if (!Check(CleanupDetailsSchema, details)) return null;
-  return (details as CleanupDetails).request;
+  const request = (details as CleanupDetails).request;
+  return { ...request, scope: request.scope ?? "active-window" };
 }
 
 function isCleanupToolResultEntry(entry: SessionEntry, requestId?: string): entry is CleanupToolResultEntry {
@@ -1166,6 +1176,7 @@ export default function (pi: ExtensionAPI) {
         tokensBefore: event.preparation.tokensBefore,
         details: {
           kind: "is-cleanup",
+          scope: request.scope,
           conversationId: request.conversation.id,
           checkpointEntryId: cleanupEntry.id,
           firstKeptEntryId: firstKeptEntry.id,
@@ -1796,6 +1807,7 @@ export default function (pi: ExtensionAPI) {
       keep: Type.Optional(Type.String({ description: "What should remain live in active context" })),
       drop: Type.Optional(Type.String({ description: "What raw discussion/tool noise can leave active context" })),
       captures: Type.Optional(Type.Array(Type.String({ description: "Captured IdeaSpaces paths/refs represented by this checkpoint, if any" }))),
+      scope: Type.Optional(Type.Literal("active-window", { description: "Cleanup scope. Current implementation supports active-window cleanup only." })),
     }),
     async execute(toolCallId, params, _signal, _onUpdate, ctx) {
       const conversation = await upsertConversation(ctx);
@@ -1804,6 +1816,7 @@ export default function (pi: ExtensionAPI) {
       const captures = dedupeCaptures([...explicitCaptures, ...recentCaptures]);
       const request: CleanupRequest = {
         id: toolCallId,
+        scope: params.scope ?? "active-window",
         conversation,
         checkpoint: params.checkpoint,
         keep: params.keep,
