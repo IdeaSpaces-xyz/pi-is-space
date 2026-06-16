@@ -5,7 +5,7 @@ description: >
   Two Roles convention, and Pi tool surface. Use as a compatibility/reference
   entrypoint when the user asks how an ideaspace works. For active intents,
   prefer the loop skills: is-orient, is-capture, is-sync, is-reflect, is-shape.
-allowed-tools: "is_write is_status is_commit is_sync is_conversation is_recall is_settle is_auth read edit write bash"
+allowed-tools: "is_write is_status is_commit is_sync is_conversation is_recall is_cleanup is_auth read edit write bash"
 ---
 
 # Working in an Ideaspace
@@ -29,7 +29,7 @@ Pi handles **arrive** automatically with session-start awareness. For active wor
 You have two sets of tools:
 
 - **Native** — `read`, `edit`, `write`, `bash`. Default for navigation, search, source-code work, and ordinary doc edits.
-- **`is_*` primitives** — capture/sync/context support (`is_status`, `is_write`, `is_commit`, `is_sync`, `is_conversation`, `is_recall`, `is_settle`, `is_auth`). Skills choose these mechanisms; don't make backend choice the user's problem.
+- **`is_*` primitives** — capture/sync/context support (`is_status`, `is_write`, `is_commit`, `is_sync`, `is_conversation`, `is_recall`, `is_cleanup`, `is_auth`). Skills choose these mechanisms; don't make backend choice the user's problem.
 
 ## Start here
 
@@ -147,20 +147,31 @@ is_recall action="excerpt" entryId="abc12345"
 
 It is deterministic in the current MVP: no generated summaries, only maps, matches, and excerpts from session state.
 
-### `is_settle` — slide active context after capture
+### `is_cleanup` — clean active context
 
-After meaningful capture and explicit user agreement, `is_settle` records a conversation checkpoint and compacts prior raw discussion out of active context. The full Pi JSONL session remains recoverable via `/tree`; `is_settle` only changes the active context window.
+`is_cleanup` is workshop cleanup for the active conversation window. It does not change shared understanding; capture does that. Cleanup keeps a checkpoint live, compacts prior raw discussion out of active context, and leaves the full Pi JSONL session recoverable via `/tree` and `is_recall`.
 
-Use it when captured state now replaces verbose process:
+Prefer preview before apply:
 
 ```
-is_settle checkpoint="What we now believe..."
+is_cleanup action="preview"
+          checkpoint="What stays live..."
           keep="Open implementation questions..."
-          drop="Raw debate now represented by roadmap/foo.md"
+          drop="Tool noise and resolved debate..."
           captures=["roadmap/foo.md"]
 ```
 
-Do not call `is_settle` automatically after every capture. Ask first.
+After the user confirms:
+
+```
+is_cleanup action="apply"
+          checkpoint="What stays live..."
+          keep="Open implementation questions..."
+          drop="Tool noise and resolved debate..."
+          captures=["roadmap/foo.md"]
+```
+
+This is sliding-window compaction, not surgical raw-turn editing. `keep` preserves selected state in the checkpoint; exact prior turns are pulled back with recall when needed.
 
 **`cwd` matters when you've `cd`-ed inside `bash`.** A `cd subdir` in a `bash` invocation changes that subprocess's cwd; it doesn't propagate back to Pi's extension process. If you've worked in a subdir during the session and then call `is_write` with a relative `path`, `is_write` resolves it against the Pi session cwd — likely the wrong tree.
 

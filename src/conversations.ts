@@ -15,7 +15,7 @@ export const ConversationMetaSchema = Type.Object({
   spaceRoot: Type.Optional(Type.String()),
   createdAt: Type.String(),
   updatedAt: Type.String(),
-  lastSettledAt: Type.Optional(Type.String()),
+  lastCleanedAt: Type.Optional(Type.String()),
 });
 
 export type ConversationMeta = Static<typeof ConversationMetaSchema>;
@@ -29,7 +29,7 @@ export type ConversationUpdate = {
   name?: string;
   description?: string;
   spaceRoot?: string | null;
-  settledAt?: string;
+  cleanedAt?: string;
 };
 
 export const CONVERSATION_INDEX_PATH = join(homedir(), ".ideaspaces", "pi", "conversations.json");
@@ -58,7 +58,7 @@ function readConversationMeta(value: unknown): ConversationMeta | null {
     spaceRoot: stringField(value, "spaceRoot"),
     createdAt,
     updatedAt,
-    lastSettledAt: stringField(value, "lastSettledAt"),
+    lastCleanedAt: stringField(value, "lastCleanedAt") ?? stringField(value, "lastSettledAt"),
   };
 }
 
@@ -110,7 +110,7 @@ function buildConversationMeta(
     spaceRoot: update.spaceRoot === null ? undefined : update.spaceRoot ?? existing?.spaceRoot,
     createdAt: existing?.createdAt ?? now,
     updatedAt: write ? now : existing?.updatedAt ?? now,
-    lastSettledAt: update.settledAt ?? existing?.lastSettledAt,
+    lastCleanedAt: update.cleanedAt ?? existing?.lastCleanedAt,
   };
 }
 
@@ -145,7 +145,7 @@ export function formatConversationMeta(meta: ConversationMeta): string {
     `space root:   ${meta.spaceRoot ?? "(none detected)"}`,
     `session id:   ${meta.sessionId}`,
     `session file: ${meta.sessionFile ?? "(ephemeral)"}`,
-    `last settled: ${meta.lastSettledAt ?? "(never)"}`,
+    `last cleaned: ${meta.lastCleanedAt ?? "(never)"}`,
     `index:        ${CONVERSATION_INDEX_PATH}`,
   ].join("\n");
 }

@@ -21,6 +21,6 @@ A conversation is the local flow where understanding forms before some of it bec
 
 Keep names short and human. Descriptions should say what this flow is for and what kind of work is happening here, not summarize every turn.
 
-For settled understanding, use **is-capture**. After meaningful capture, consider **is_settle** only with explicit user agreement.
+For settled understanding, use **is-capture**. When active context gets cluttered, use **is-cleanup** to preview and apply context cleanup.
 
 When prior or compacted turns from a named flow become relevant, switch to **is-recall** to map, search, or excerpt the local conversation tree.

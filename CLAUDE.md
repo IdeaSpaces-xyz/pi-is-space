@@ -26,7 +26,7 @@ IdeaSpaces-aware primitives:
 - `is_sync` — sync primitive; integrates remote changes and pushes committed captures
 - `is_conversation` — conversation-flow primitive; show/name/describe the current local flow over Pi's existing JSONL session
 - `is_recall` — conversation-retrieval primitive; map/search/excerpt the local session tree, including compacted entries, without raw JSONL spelunking
-- `is_settle` — conversation-window primitive; after explicit agreement, records a checkpoint and compacts raw prior turns out of active context while JSONL remains recoverable
+- `is_cleanup` — conversation-window primitive; previews/applies active-context cleanup by keeping a checkpoint, compacting raw prior turns, and leaving JSONL recoverable
 - `is_auth` — login/logout for optional sync
 
 Keep agent-facing language intent-first: orient, capture, sync, reflect. Do not make agents choose between equivalent backends at the top level.
@@ -39,7 +39,7 @@ Pi-native commands for human-facing flow:
 - `/is-sync` — dry-run, confirm, sync committed captures
 - `/is-conversation` — show/name/describe the current local conversation flow over Pi's existing JSONL session
 - `/is-recall` — map/search/excerpt the current local conversation tree
-- `/is-settle` — show/cancel a pending active-context settle
+- `/is-cleanup` — show/cancel a pending active-context cleanup
 - `/is-publish` — check scaffold/branch state, confirm destination, publish remotely, retry through login if needed
 
 Runtime guardrails:
@@ -61,13 +61,13 @@ On session start, walk up from `cwd` looking for `_agent/`, use `@ideaspaces/sdk
 Use-case layer shipped in `skills/`:
 
 - Loop skills: is-orient, is-capture, is-sync, is-reflect, is-shape
-- Conversation skills: is-conversation, is-recall, is-settle
+- Conversation skills: is-conversation, is-recall, is-cleanup
 - Lifecycle/setup skills: is-setup, is-publish
 - Reference skills: is-space, is-writing
 
 Shared protocol content lives in `reference/`, generated from the SDK canonical skill catalog with `npm run build:reference`. Keep Pi entrypoint skills surface-specific; update shared capture/writing/awareness/shaping protocols in the SDK, then regenerate `reference/`.
 
-Capture flow: user intent → `is-capture` → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-sync`. After meaningful capture, offer `is_settle` when captured state can replace raw discussion in active context.
+Capture flow: user intent → `is-capture` → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-sync`. Cleanup is a separate workshop-hygiene loop: when active context is cluttered, preview with `is_cleanup action="preview"`, get confirmation, then apply with `action="apply"`.
 
 ## Development
 
