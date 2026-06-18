@@ -30,6 +30,9 @@ export type CleanupRequest = {
   leafIdAtRequest?: string;
   usageBefore?: ContextUsageSnapshot;
   entriesBeforeCleanup?: number;
+  tailTurns?: number;
+  tailEntriesBeforeCleanup?: number;
+  tailTurnsAvailableBeforeCleanup?: number;
 };
 
 export const CLEANUP_LABEL = "is-cleanup";
@@ -46,6 +49,8 @@ export type CleanupCompactionDetails = {
   captures: CaptureRef[];
   usageBefore?: ContextUsageSnapshot;
   entriesBeforeCleanup?: number;
+  tailTurns?: number;
+  tailTurnsKept?: number;
 };
 
 export function dedupeCaptures(captures: CaptureRef[]): CaptureRef[] {
@@ -84,13 +89,34 @@ export function formatContextUsage(usage: ContextUsageSnapshot | undefined): str
   return `- current context: ${parts.length ? parts.join(" / ") : "unknown"}`;
 }
 
+export function formatTailDescription(request: CleanupRequest): string | null {
+  const requested = request.tailTurns ?? 0;
+  if (requested <= 0) return null;
+  const kept = request.tailTurnsAvailableBeforeCleanup ?? requested;
+  if (kept <= 0) return `no user-started conversation turns available (${requested.toLocaleString()} requested)`;
+  const turnLabel = kept === 1 ? "turn" : "turns";
+  const requestedSuffix = kept < requested ? ` (${requested.toLocaleString()} requested)` : "";
+  return `last ${kept.toLocaleString()} user-started conversation ${turnLabel}${requestedSuffix}`;
+}
+
+function formatTailPlan(request: CleanupRequest): string {
+  const description = formatTailDescription(request);
+  if (!description) return "- exact tail kept live: none requested; only the cleanup checkpoint/current result stays live";
+  const entryEstimate = request.tailEntriesBeforeCleanup !== undefined
+    ? ` (${request.tailEntriesBeforeCleanup.toLocaleString()} current branch entries at preview time)`
+    : "";
+  return `- exact tail kept live: ${description}${entryEstimate}`;
+}
+
 export function formatCleanupCheckpoint(request: CleanupRequest): string {
+  const tailDescription = formatTailDescription(request);
   const lines = [
     "[IdeaSpaces context checkpoint]",
     "",
     `Conversation: ${request.conversation.name ?? "(unnamed)"}`,
     `Conversation-Id: ${request.conversation.id}`,
     `Cleanup-Scope: ${request.scope}`,
+    ...(tailDescription ? [`Exact-Tail: ${tailDescription}`] : []),
     "",
     "Context state now:",
     request.checkpoint.trim(),
@@ -116,13 +142,14 @@ export function formatCleanupPreview(request: CleanupRequest): string {
     "",
     "## Cleanup plan",
     `- ${request.scope} cleanup: compact prior raw conversation before the cleanup checkpoint`,
-    "- preserve selected live state in the checkpoint below",
+    ...(request.tailTurns ? [formatTailPlan(request)] : []),
+    "- preserve selected state in the checkpoint below",
     "- label cleanup anchors for /tree navigation",
     "- keep full raw history recoverable through /tree and is_recall",
     "",
     "## Estimated savings",
-    `- will compact roughly ${compactedEntries.toLocaleString()} current branch entries before the cleanup checkpoint`,
-    "- expected to remove most current conversation/process tokens from active context",
+    `- will compact roughly ${compactedEntries.toLocaleString()} current branch entries before the cleanup checkpoint${request.tailTurns ? ", except the requested exact tail" : ""}`,
+    "- expected to remove most older conversation/process tokens from active context",
     "- exact post-cleanup footer usage is known after compaction and the next model response",
     "",
     "## Keep live",
@@ -136,12 +163,14 @@ export function formatCleanupPreview(request: CleanupRequest): string {
 }
 
 export function formatCleanupSummary(request: CleanupRequest): string {
+  const tailDescription = formatTailDescription(request);
   const lines = [
     "Prior conversation process was cleaned out of active context. This is context cleanup, not a shared-state capture.",
     "",
     `Conversation: ${request.conversation.name ?? "(unnamed)"}`,
     `Conversation-Id: ${request.conversation.id}`,
     `Cleanup-Scope: ${request.scope}`,
+    ...(tailDescription ? [`Exact-Tail: ${tailDescription}`] : []),
     "",
     "Checkpoint:",
     request.checkpoint.trim(),
@@ -170,6 +199,8 @@ export function cleanupDetailsFromEntry(entry: SessionEntry): CleanupCompactionD
     captures: capturePathsToRefs(details.captures),
     usageBefore: isContextUsageSnapshot(details.usageBefore) ? details.usageBefore : undefined,
     entriesBeforeCleanup: typeof details.entriesBeforeCleanup === "number" ? details.entriesBeforeCleanup : undefined,
+    tailTurns: typeof details.tailTurns === "number" ? details.tailTurns : undefined,
+    tailTurnsKept: typeof details.tailTurnsKept === "number" ? details.tailTurnsKept : undefined,
   };
 }
 

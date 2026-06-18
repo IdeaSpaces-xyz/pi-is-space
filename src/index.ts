@@ -45,6 +45,7 @@ import {
   formatCleanupCheckpoint,
   formatCleanupPreview,
   formatCleanupSummary,
+  formatTailDescription,
 } from "./cleanup";
 import { isRecord } from "./utils";
 
@@ -147,6 +148,7 @@ const ContextUsageSnapshotSchema = Type.Object({
   contextWindow: Type.Optional(Type.Number()),
 });
 
+const MAX_CLEANUP_TAIL_TURNS = 20;
 const CleanupScopeSchema = Type.Literal("active-window");
 
 const CleanupDetailsSchema = Type.Object({
@@ -164,6 +166,8 @@ const CleanupDetailsSchema = Type.Object({
     leafIdAtRequest: Type.Optional(Type.String()),
     usageBefore: Type.Optional(ContextUsageSnapshotSchema),
     entriesBeforeCleanup: Type.Optional(Type.Number()),
+    tailTurns: Type.Optional(Type.Integer({ minimum: 0, maximum: MAX_CLEANUP_TAIL_TURNS, description: `Capped at ${MAX_CLEANUP_TAIL_TURNS}; 0 is equivalent to omitting the field, and requesting more turns than exist uses what is available.` })),
+    tailTurnsKept: Type.Optional(Type.Integer({ minimum: 0, maximum: MAX_CLEANUP_TAIL_TURNS, description: "Actual user-started turns kept after cleanup resolves the tail at apply time." })),
   }),
 });
 
@@ -496,6 +500,49 @@ function assistantEntryForToolCall(entries: SessionEntry[], toolCallId: string):
     }
   }
   return null;
+}
+
+function isUserMessageEntry(entry: SessionEntry): entry is SessionMessageEntry {
+  return entry.type === "message" && entry.message.role === "user";
+}
+
+// This stays in the Pi adapter because it depends on Pi's SessionEntry tree shape.
+// TODO: migrate this to the SDK if/when it grows a Pi conversation-session helper layer.
+type TailWindow = {
+  firstEntry: SessionEntry;
+  entryCount: number;
+  turnCount: number;
+};
+
+function activeContextStartIndex(entries: SessionEntry[]): number {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    if (entry.type !== "compaction") continue;
+    const firstKeptIndex = entries.findIndex((candidate) => candidate.id === entry.firstKeptEntryId);
+    // If the saved kept boundary is missing, start after the compaction entry; when
+    // the compaction is the leaf this correctly means there is no active tail yet.
+    return firstKeptIndex >= 0 ? firstKeptIndex : Math.min(i + 1, entries.length);
+  }
+  return 0;
+}
+
+function tailWindowForTurns(entries: SessionEntry[], tailTurns: number | undefined): TailWindow | null {
+  if (!tailTurns || tailTurns <= 0) return null;
+  const startIndex = activeContextStartIndex(entries);
+  let firstIndex = -1;
+  let turnCount = 0;
+  for (let i = entries.length - 1; i >= startIndex; i--) {
+    if (!isUserMessageEntry(entries[i])) continue;
+    firstIndex = i;
+    turnCount += 1;
+    if (turnCount >= tailTurns) break;
+  }
+  if (firstIndex < 0) return null;
+  return {
+    firstEntry: entries[firstIndex],
+    entryCount: entries.length - firstIndex,
+    turnCount,
+  };
 }
 
 function latestCleanupToolResult(entries: SessionEntry[], requestId?: string): CleanupToolResultEntry | null {
@@ -1051,10 +1098,19 @@ export default function (pi: ExtensionAPI) {
     const cleanupEntry = latestCleanupToolResult(event.branchEntries, request.id);
     if (!cleanupEntry) return undefined;
 
-    const firstKeptEntry = assistantEntryForToolCall(event.branchEntries, cleanupEntry.message.toolCallId) ?? cleanupEntry;
+    const fallbackFirstKeptEntry = assistantEntryForToolCall(event.branchEntries, cleanupEntry.message.toolCallId) ?? cleanupEntry;
+    const tailWindow = tailWindowForTurns(event.branchEntries, request.tailTurns);
+    const firstKeptEntry = tailWindow?.firstEntry ?? fallbackFirstKeptEntry;
+    // Refresh summary wording with the apply-time tail. If no tail window exists,
+    // formatTailDescription returns null, so any preview-time availability is not shown.
+    const requestForSummary = tailWindow
+      ? { ...request, tailTurnsAvailableBeforeCleanup: tailWindow.turnCount }
+      : request.tailTurns
+        ? { ...request, tailTurnsAvailableBeforeCleanup: 0 }
+        : request;
     return {
       compaction: {
-        summary: formatCleanupSummary(request),
+        summary: formatCleanupSummary(requestForSummary),
         firstKeptEntryId: firstKeptEntry.id,
         tokensBefore: event.preparation.tokensBefore,
         details: {
@@ -1066,6 +1122,8 @@ export default function (pi: ExtensionAPI) {
           captures: request.captures,
           usageBefore: request.usageBefore,
           entriesBeforeCleanup: request.entriesBeforeCleanup,
+          tailTurns: request.tailTurns,
+          tailTurnsKept: tailWindow?.turnCount ?? (request.tailTurns ? 0 : undefined),
         },
       },
     };
@@ -1687,7 +1745,8 @@ export default function (pi: ExtensionAPI) {
       "Cleanup is workshop cleanup for active context; capture is the separate agreement that changes shared state.",
       "Prefer action=preview first: show what will be kept, what will leave active context, and the rough context savings.",
       "Use action=apply only after the user confirms the cleanup plan or explicitly asks to clean up now.",
-      "Be clear that cleanup is sliding-window compaction: keep/drop are preserved in the checkpoint, not exact old turns kept verbatim.",
+      "When recent wording/continuity matters, agree on tailTurns and keep that many recent user-started turns exact.",
+      "Be clear that cleanup is sliding-window compaction: tailTurns preserves exact recent turns; checkpoint/keep/drop preserve older state semantically.",
     ],
     parameters: Type.Object({
       action: Type.Optional(
@@ -1699,6 +1758,7 @@ export default function (pi: ExtensionAPI) {
       keep: Type.Optional(Type.String({ description: "What should remain live in active context" })),
       drop: Type.Optional(Type.String({ description: "What raw discussion/tool noise can leave active context" })),
       captures: Type.Optional(Type.Array(Type.String({ description: "Captured IdeaSpaces paths/refs represented by this checkpoint, if any" }))),
+      tailTurns: Type.Optional(Type.Integer({ minimum: 0, maximum: MAX_CLEANUP_TAIL_TURNS, description: `Number of recent user-started conversation turns to keep exactly live after cleanup. Capped at ${MAX_CLEANUP_TAIL_TURNS}; 0 is equivalent to omitting the field, and requesting more turns than exist uses what is available. Older context is represented by the checkpoint.` })),
       scope: Type.Optional(Type.Literal("active-window", { description: "Cleanup scope. Current implementation supports active-window cleanup only." })),
     }),
     async execute(toolCallId, params, _signal, _onUpdate, ctx) {
@@ -1706,6 +1766,8 @@ export default function (pi: ExtensionAPI) {
       const branch = ctx.sessionManager.getBranch();
       const explicitCaptures = params.captures?.length ? captureRefsFromPaths(params.captures) : [];
       const captures = dedupeCaptures([...explicitCaptures, ...recentCaptures]);
+      const tailTurns = params.tailTurns && params.tailTurns > 0 ? params.tailTurns : undefined;
+      const tailWindow = tailWindowForTurns(branch, tailTurns);
       const request: CleanupRequest = {
         id: toolCallId,
         scope: params.scope ?? "active-window",
@@ -1719,6 +1781,9 @@ export default function (pi: ExtensionAPI) {
         leafIdAtRequest: ctx.sessionManager.getLeafId() ?? undefined,
         usageBefore: contextUsageSnapshot(ctx),
         entriesBeforeCleanup: branch.length,
+        tailTurns,
+        tailEntriesBeforeCleanup: tailWindow?.entryCount,
+        tailTurnsAvailableBeforeCleanup: tailTurns ? (tailWindow?.turnCount ?? 0) : undefined,
       };
 
       const action = params.action ?? "preview";
@@ -1730,11 +1795,13 @@ export default function (pi: ExtensionAPI) {
       }
 
       pendingCleanup = request;
+      const tailDescription = formatTailDescription(request);
+      const tailClause = tailDescription ? ` while keeping ${tailDescription} exact` : "";
       return {
         content: [
           {
             type: "text",
-            text: `${formatCleanupCheckpoint(request)}\n\nContext cleanup scheduled: after this response finishes, prior raw conversation will be compacted out of active context. The full JSONL session remains recoverable via /tree and is_recall.`,
+            text: `${formatCleanupCheckpoint(request)}\n\nContext cleanup scheduled: after this response finishes, prior raw conversation will be compacted out of active context${tailClause}. The full JSONL session remains recoverable via /tree and is_recall.`,
           },
         ],
         details: { kind: "is-cleanup", request },

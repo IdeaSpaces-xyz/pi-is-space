@@ -44,7 +44,7 @@ Pi's native `read`, `edit`, `write`, and `bash` cover navigation, inspection, an
 | `is_sync` | Sync primitive: integrate remote changes and push committed captures; refuses while staged knowledge remains uncommitted. |
 | `is_conversation` | Show or update the current named local conversation flow over Pi's existing JSONL session. |
 | `is_recall` | Map, search, or excerpt the current local conversation tree, including compacted entries recoverable from Pi session state. |
-| `is_cleanup` | Preview/apply active-window context cleanup: keep a checkpoint, compact prior raw discussion out of active context, and keep JSONL history recallable. |
+| `is_cleanup` | Preview/apply active-window context cleanup: keep a checkpoint, optionally keep an exact recent tail, compact older raw discussion out of active context, and keep JSONL history recallable. |
 | `is_auth` | Log in / out for optional remote sync. |
 
 ## Commands
@@ -113,6 +113,6 @@ Pi ships surface-specific entrypoint skills in four tiers:
 
 Shared protocol content lives in `reference/`, generated from the SDK canonical skill catalog with `npm run build:reference`. Entry skills stay Pi-specific while reading SDK-backed references such as `reference/capture.md`, `reference/writing.md`, and `reference/awareness.md` on demand.
 
-Capture flow: user intent → `is-capture` skill → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-sync`. Cleanup is separate workshop hygiene: when context is cluttered, `is_cleanup action="preview" scope="active-window"` shows what stays live, what leaves active context, and rough savings; after confirmation, `action="apply"` records the checkpoint and slides active context past raw discussion while leaving the full Pi session tree recoverable through `/tree` and `is_recall`. Cleanup stays Pi-native: normal compaction entries, `/tree` labels for anchors, and deterministic cleanup-aware branch summaries when navigating away from cleaned branches. Arbitrary middle-range cleanup is not first-class yet.
+Capture flow: user intent → `is-capture` skill → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-sync`. Cleanup is separate workshop hygiene: when context is cluttered, `is_cleanup action="preview" scope="active-window" tailTurns=...` shows what stays live, what exact recent tail remains, what leaves active context, and rough savings; after confirmation, `action="apply"` records the checkpoint and slides active context past older raw discussion while leaving the full Pi session tree recoverable through `/tree` and `is_recall`. Cleanup stays Pi-native: normal compaction entries, `/tree` labels for anchors, and deterministic cleanup-aware branch summaries when navigating away from cleaned branches. Arbitrary middle-range cleanup is not first-class yet; tail turns are the simple continuity knob.
 
 See `MIGRATION.md` for mapping from legacy `pi-sw-space`.
