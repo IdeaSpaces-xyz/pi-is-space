@@ -14,7 +14,7 @@ Cleanup is workshop cleanup for the active conversation window. It does not chan
 
 The current implementation is **active-window cleanup**: sliding-window compaction where prior raw turns leave active context, while the checkpoint/keep/drop plan stays live. Exact old turns remain recoverable through `/tree` and **is-recall**.
 
-Pi also has branch summaries when navigating with `/tree`; treat that as adjacent branch cleanup, not the current `is_cleanup` implementation. Arbitrary middle-range/chunk cleanup is not first-class yet.
+Cleanup builds on Pi-native session primitives: it writes a normal compaction entry, labels cleanup anchors for `/tree`, and provides deterministic cleanup-aware branch summaries when `/tree` navigation leaves a cleaned branch. Arbitrary middle-range/chunk cleanup is still not first-class yet.
 
 ## Commands
 
@@ -33,6 +33,7 @@ Prefer preview before apply. The preview should say:
 - what will leave active context
 - rough current context and branch-entry count at preview time
 - that raw history remains recallable
+- that cleanup anchors will be labeled in `/tree`
 - that post-cleanup footer usage is known after compaction / next model response
 
 Apply only after the user confirms the cleanup plan or explicitly asks to clean up now.

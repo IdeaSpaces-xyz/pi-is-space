@@ -29,6 +29,23 @@ import {
   formatRecallSearch,
   searchRecall,
 } from "./recall";
+import {
+  CLEANUP_BRANCH_SUMMARY_LABEL,
+  CLEANUP_CHECKPOINT_LABEL,
+  CLEANUP_FIRST_KEPT_LABEL,
+  CLEANUP_LABEL,
+  type CaptureRef,
+  type CleanupRequest,
+  type CleanupScope,
+  type ContextUsageSnapshot,
+  captureRefsFromPaths,
+  cleanupDetailsFromEntry,
+  dedupeCaptures,
+  formatCleanupBranchSummary,
+  formatCleanupCheckpoint,
+  formatCleanupPreview,
+  formatCleanupSummary,
+} from "./cleanup";
 import { isRecord } from "./utils";
 
 type CliResult = { out: string; err: string; code: number };
@@ -100,36 +117,6 @@ type FileSuggestion = {
   path: string;
   isDirectory: boolean;
   score: number;
-};
-
-type CaptureRef = {
-  path: string;
-  name?: string;
-  summary?: string;
-  sha?: string;
-};
-
-type ContextUsageSnapshot = {
-  tokens?: number;
-  percent?: number;
-  contextWindow?: number;
-};
-
-type CleanupScope = "active-window";
-
-type CleanupRequest = {
-  id: string;
-  scope: CleanupScope;
-  conversation: ConversationMeta;
-  checkpoint: string;
-  keep?: string;
-  drop?: string;
-  captures: CaptureRef[];
-  requestedAt: string;
-  firstEntryId?: string;
-  leafIdAtRequest?: string;
-  usageBefore?: ContextUsageSnapshot;
-  entriesBeforeCleanup?: number;
 };
 
 type IsWriteOutput = {
@@ -472,33 +459,6 @@ function parseIsWriteOutput(text: string): IsWriteOutput | null {
   }
 }
 
-function dedupeCaptures(captures: CaptureRef[]): CaptureRef[] {
-  const seen = new Set<string>();
-  const result: CaptureRef[] = [];
-  for (const capture of captures) {
-    const key = capture.path;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push(capture);
-  }
-  return result;
-}
-
-function captureRefsFromPaths(paths: string[]): CaptureRef[] {
-  return paths.map((path) => ({ path }));
-}
-
-function formatCaptureRefs(captures: CaptureRef[]): string {
-  if (!captures.length) return "- (none recorded)";
-  return captures
-    .map((capture) => {
-      const suffix = capture.summary ? ` — ${capture.summary}` : "";
-      const sha = capture.sha ? ` (${capture.sha.slice(0, 12)})` : "";
-      return `- ${capture.path}${suffix}${sha}`;
-    })
-    .join("\n");
-}
-
 function finiteNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
@@ -511,83 +471,6 @@ function contextUsageSnapshot(ctx: ExtensionContext): ContextUsageSnapshot | und
   const contextWindow = finiteNumber(usage.contextWindow);
   if (tokens === undefined && percent === undefined && contextWindow === undefined) return undefined;
   return { tokens, percent, contextWindow };
-}
-
-function formatContextUsage(usage: ContextUsageSnapshot | undefined): string {
-  if (!usage) return "- current context: unknown";
-  const parts: string[] = [];
-  if (usage.tokens !== undefined) parts.push(`${Math.round(usage.tokens).toLocaleString()} tokens`);
-  if (usage.percent !== undefined) parts.push(`${usage.percent.toFixed(1)}%`);
-  if (usage.contextWindow !== undefined) parts.push(`window ${Math.round(usage.contextWindow).toLocaleString()}`);
-  return `- current context: ${parts.length ? parts.join(" / ") : "unknown"}`;
-}
-
-function formatCleanupCheckpoint(request: CleanupRequest): string {
-  const lines = [
-    "[IdeaSpaces context checkpoint]",
-    "",
-    `Conversation: ${request.conversation.name ?? "(unnamed)"}`,
-    `Conversation-Id: ${request.conversation.id}`,
-    `Cleanup-Scope: ${request.scope}`,
-    "",
-    "Context state now:",
-    request.checkpoint.trim(),
-  ];
-  if (request.keep?.trim()) lines.push("", "Keep active:", request.keep.trim());
-  if (request.drop?.trim()) lines.push("", "Dropped from active context:", request.drop.trim());
-  if (request.captures.length) lines.push("", "Durable captures represented:", formatCaptureRefs(request.captures));
-  return lines.join("\n");
-}
-
-function formatCleanupPreview(request: CleanupRequest): string {
-  const compactedEntries = request.entriesBeforeCleanup ?? 0;
-  const lines = [
-    "# Cleanup preview",
-    "",
-    `conversation: ${request.conversation.name ?? "(unnamed)"}`,
-    `conversation id: ${request.conversation.id}`,
-    `scope: ${request.scope}`,
-    "",
-    "## Current context",
-    formatContextUsage(request.usageBefore),
-    `- branch entries at preview time: ${compactedEntries.toLocaleString()}`,
-    "",
-    "## Cleanup plan",
-    `- ${request.scope} cleanup: compact prior raw conversation before the cleanup checkpoint`,
-    "- preserve selected live state in the checkpoint below",
-    "- keep full raw history recoverable through /tree and is_recall",
-    "",
-    "## Estimated savings",
-    `- will compact roughly ${compactedEntries.toLocaleString()} current branch entries before the cleanup checkpoint`,
-    "- expected to remove most current conversation/process tokens from active context",
-    "- exact post-cleanup footer usage is known after compaction and the next model response",
-    "",
-    "## Keep live",
-    request.checkpoint.trim(),
-  ];
-  if (request.keep?.trim()) lines.push("", request.keep.trim());
-  lines.push("", "## Drop from active context", request.drop?.trim() || "- (not specified; fill this before applying cleanup if anything specific should leave)");
-  if (request.captures.length) lines.push("", "## Durable captures represented", formatCaptureRefs(request.captures));
-  lines.push("", "Apply only after the user confirms this cleanup plan.");
-  return lines.join("\n");
-}
-
-function formatCleanupSummary(request: CleanupRequest): string {
-  const lines = [
-    "Prior conversation process was cleaned out of active context. This is context cleanup, not a shared-state capture.",
-    "",
-    `Conversation: ${request.conversation.name ?? "(unnamed)"}`,
-    `Conversation-Id: ${request.conversation.id}`,
-    `Cleanup-Scope: ${request.scope}`,
-    "",
-    "Checkpoint:",
-    request.checkpoint.trim(),
-  ];
-  if (request.keep?.trim()) lines.push("", "Still active:", request.keep.trim());
-  if (request.drop?.trim()) lines.push("", "Intentionally omitted from active context:", request.drop.trim());
-  if (request.captures.length) lines.push("", "Durable captures represented:", formatCaptureRefs(request.captures));
-  lines.push("", "The raw process remains in the local Pi JSONL session tree and can be revisited via /tree or is_recall.");
-  return lines.join("\n");
 }
 
 function cleanupRequestFromDetails(details: unknown): CleanupRequest | null {
@@ -1188,10 +1071,19 @@ export default function (pi: ExtensionAPI) {
     };
   });
 
+  pi.on("session_before_tree", async (event) => {
+    if (!event.preparation.userWantsSummary) return undefined;
+    const summary = formatCleanupBranchSummary(event.preparation.entriesToSummarize);
+    return summary ? { summary: { summary, details: { kind: "is-cleanup-branch-summary" } }, label: CLEANUP_BRANCH_SUMMARY_LABEL } : undefined;
+  });
+
   pi.on("session_compact", async (event, ctx) => {
-    const details = event.compactionEntry.details;
-    if (isRecord(details) && details.kind === "is-cleanup") {
+    const details = cleanupDetailsFromEntry(event.compactionEntry);
+    if (details) {
       await upsertConversation(ctx, { cleanedAt: event.compactionEntry.timestamp });
+      pi.setLabel(event.compactionEntry.id, CLEANUP_LABEL);
+      if (details.checkpointEntryId) pi.setLabel(details.checkpointEntryId, CLEANUP_CHECKPOINT_LABEL);
+      if (details.firstKeptEntryId) pi.setLabel(details.firstKeptEntryId, CLEANUP_FIRST_KEPT_LABEL);
       pendingCleanup = null;
       recentCaptures = [];
     }
