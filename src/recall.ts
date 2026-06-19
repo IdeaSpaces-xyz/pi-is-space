@@ -40,6 +40,8 @@ type RecallCompaction = {
   scope?: string;
   checkpointEntryId?: string;
   conversationId?: string;
+  tailTurns?: number;
+  tailTurnsKept?: number;
   captures: string[];
   summary: string;
 };
@@ -185,6 +187,8 @@ function compactionInfo(entry: SessionEntry): RecallCompaction | null {
     scope: typeof details?.scope === "string" ? details.scope : cleanup ? "active-window" : undefined,
     checkpointEntryId: typeof details?.checkpointEntryId === "string" ? details.checkpointEntryId : undefined,
     conversationId: typeof details?.conversationId === "string" ? details.conversationId : undefined,
+    tailTurns: typeof details?.tailTurns === "number" ? details.tailTurns : undefined,
+    tailTurnsKept: typeof details?.tailTurnsKept === "number" ? details.tailTurnsKept : undefined,
     captures: capturePaths(details?.captures),
     summary: oneLine(entry.summary, 260),
   };
@@ -246,6 +250,10 @@ function formatCompactions(compactions: RecallCompaction[]): string {
       const bits = [`- ${c.id}`, c.cleanup ? "cleanup" : "compact", c.timestamp, `firstKept=${c.firstKeptEntryId}`];
       if (c.scope) bits.push(`scope=${c.scope}`);
       if (c.checkpointEntryId) bits.push(`checkpoint=${c.checkpointEntryId}`);
+      if (c.tailTurns != null && c.tailTurns > 0) {
+        const kept = c.tailTurnsKept !== undefined && c.tailTurnsKept !== c.tailTurns ? `${c.tailTurnsKept}/` : "";
+        bits.push(`tailTurns=${kept}${c.tailTurns}`);
+      }
       if (c.captures.length) bits.push(`captures=${c.captures.join(",")}`);
       return `${bits.join(" · ")}\n  ${c.summary}`;
     })
