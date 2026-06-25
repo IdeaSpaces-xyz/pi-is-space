@@ -1,6 +1,5 @@
-import type { ExtensionAPI, ExtensionContext, SessionEntry, SessionMessageEntry } from "@earendil-works/pi-coding-agent";
-import { Type, type Static } from "typebox";
-import { Check } from "typebox/value";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -14,40 +13,6 @@ import {
   spaceRootLevel,
   currentBranchLevel,
 } from "@ideaspaces/sdk";
-import {
-  type ConversationMeta,
-  ConversationMetaSchema,
-  formatConversationMeta,
-  readCurrentConversation,
-  upsertCurrentConversation,
-} from "./conversations";
-import {
-  buildRecallMap,
-  cleanRecallScope,
-  excerptRecall,
-  formatRecallMap,
-  formatRecallSearch,
-  searchRecall,
-} from "./recall";
-import {
-  CLEANUP_BRANCH_SUMMARY_LABEL,
-  CLEANUP_CHECKPOINT_LABEL,
-  CLEANUP_FIRST_KEPT_LABEL,
-  CLEANUP_LABEL,
-  type CaptureRef,
-  type CleanupRequest,
-  type CleanupScope,
-  type ContextUsageSnapshot,
-  captureRefsFromPaths,
-  cleanupDetailsFromEntry,
-  dedupeCaptures,
-  formatCleanupBranchSummary,
-  formatCleanupCheckpoint,
-  formatCleanupPreview,
-  formatCleanupSummary,
-  formatTailDescription,
-} from "./cleanup";
-import { isRecord } from "./utils";
 
 type CliResult = { out: string; err: string; code: number };
 
@@ -119,59 +84,6 @@ type FileSuggestion = {
   isDirectory: boolean;
   score: number;
 };
-
-type IsWriteOutput = {
-  path?: string;
-  sha?: string;
-  commit_sha?: string;
-};
-
-type CleanupToolResultEntry = SessionMessageEntry & {
-  message: {
-    role: "toolResult";
-    toolCallId: string;
-    toolName: string;
-    details?: unknown;
-  };
-};
-
-const CaptureRefSchema = Type.Object({
-  path: Type.String(),
-  name: Type.Optional(Type.String()),
-  summary: Type.Optional(Type.String()),
-  sha: Type.Optional(Type.String()),
-});
-
-const ContextUsageSnapshotSchema = Type.Object({
-  tokens: Type.Optional(Type.Number()),
-  percent: Type.Optional(Type.Number()),
-  contextWindow: Type.Optional(Type.Number()),
-});
-
-const MAX_CLEANUP_TAIL_TURNS = 20;
-const CleanupScopeSchema = Type.Literal("active-window");
-
-const CleanupDetailsSchema = Type.Object({
-  kind: Type.Literal("is-cleanup"),
-  request: Type.Object({
-    id: Type.String(),
-    scope: Type.Optional(CleanupScopeSchema),
-    conversation: ConversationMetaSchema,
-    checkpoint: Type.String(),
-    keep: Type.Optional(Type.String()),
-    drop: Type.Optional(Type.String()),
-    captures: Type.Array(CaptureRefSchema),
-    requestedAt: Type.String(),
-    firstEntryId: Type.Optional(Type.String()),
-    leafIdAtRequest: Type.Optional(Type.String()),
-    usageBefore: Type.Optional(ContextUsageSnapshotSchema),
-    entriesBeforeCleanup: Type.Optional(Type.Number()),
-    tailTurns: Type.Optional(Type.Integer({ minimum: 0, maximum: MAX_CLEANUP_TAIL_TURNS, description: `Capped at ${MAX_CLEANUP_TAIL_TURNS}; 0 is equivalent to omitting the field, and requesting more turns than exist uses what is available.` })),
-    tailTurnsKept: Type.Optional(Type.Integer({ minimum: 0, maximum: MAX_CLEANUP_TAIL_TURNS, description: "Actual user-started turns kept after cleanup resolves the tail at apply time." })),
-  }),
-});
-
-type CleanupDetails = Static<typeof CleanupDetailsSchema>;
 
 const AUTOCOMPLETE_LIMIT = 20;
 const AUTOCOMPLETE_FD_LIMIT = 1000;
@@ -445,114 +357,6 @@ function formatPathList(paths: string[], max = 8): string {
   return head.join("\n");
 }
 
-function isWriteOutputFromUnknown(value: unknown): IsWriteOutput | null {
-  if (!isRecord(value)) return null;
-  return {
-    path: typeof value.path === "string" ? value.path : undefined,
-    sha: typeof value.sha === "string" ? value.sha : undefined,
-    commit_sha: typeof value.commit_sha === "string" ? value.commit_sha : undefined,
-  };
-}
-
-function parseIsWriteOutput(text: string): IsWriteOutput | null {
-  // CLI-backed tools return text today; prefer structured details when present and keep this parser as a fallback.
-  try {
-    return isWriteOutputFromUnknown(JSON.parse(text));
-  } catch {
-    return null;
-  }
-}
-
-function finiteNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-function contextUsageSnapshot(ctx: ExtensionContext): ContextUsageSnapshot | undefined {
-  const usage = ctx.getContextUsage();
-  if (!usage) return undefined;
-  const tokens = finiteNumber(usage.tokens);
-  const percent = finiteNumber(usage.percent);
-  const contextWindow = finiteNumber(usage.contextWindow);
-  if (tokens === undefined && percent === undefined && contextWindow === undefined) return undefined;
-  return { tokens, percent, contextWindow };
-}
-
-function cleanupRequestFromDetails(details: unknown): CleanupRequest | null {
-  if (!Check(CleanupDetailsSchema, details)) return null;
-  const request = (details as CleanupDetails).request;
-  return { ...request, scope: request.scope ?? "active-window" };
-}
-
-function isCleanupToolResultEntry(entry: SessionEntry, requestId?: string): entry is CleanupToolResultEntry {
-  if (entry.type !== "message" || entry.message.role !== "toolResult") return false;
-  if (entry.message.toolName !== "is_cleanup") return false;
-  const request = cleanupRequestFromDetails(entry.message.details);
-  if (!request) return false;
-  return requestId ? request.id === requestId : true;
-}
-
-function assistantEntryForToolCall(entries: SessionEntry[], toolCallId: string): SessionMessageEntry | null {
-  for (let i = entries.length - 1; i >= 0; i--) {
-    const entry = entries[i];
-    if (entry.type !== "message" || entry.message.role !== "assistant") continue;
-    for (const block of entry.message.content) {
-      if (block.type === "toolCall" && block.id === toolCallId) return entry;
-    }
-  }
-  return null;
-}
-
-function isUserMessageEntry(entry: SessionEntry): entry is SessionMessageEntry {
-  return entry.type === "message" && entry.message.role === "user";
-}
-
-// This stays in the Pi adapter because it depends on Pi's SessionEntry tree shape.
-// TODO: migrate this to the SDK if/when it grows a Pi conversation-session helper layer.
-type TailWindow = {
-  firstEntry: SessionEntry;
-  entryCount: number;
-  turnCount: number;
-};
-
-function activeContextStartIndex(entries: SessionEntry[]): number {
-  for (let i = entries.length - 1; i >= 0; i--) {
-    const entry = entries[i];
-    if (entry.type !== "compaction") continue;
-    const firstKeptIndex = entries.findIndex((candidate) => candidate.id === entry.firstKeptEntryId);
-    // If the saved kept boundary is missing, start after the compaction entry; when
-    // the compaction is the leaf this correctly means there is no active tail yet.
-    return firstKeptIndex >= 0 ? firstKeptIndex : Math.min(i + 1, entries.length);
-  }
-  return 0;
-}
-
-function tailWindowForTurns(entries: SessionEntry[], tailTurns: number | undefined): TailWindow | null {
-  if (!tailTurns || tailTurns <= 0) return null;
-  const startIndex = activeContextStartIndex(entries);
-  let firstIndex = -1;
-  let turnCount = 0;
-  for (let i = entries.length - 1; i >= startIndex; i--) {
-    if (!isUserMessageEntry(entries[i])) continue;
-    firstIndex = i;
-    turnCount += 1;
-    if (turnCount >= tailTurns) break;
-  }
-  if (firstIndex < 0) return null;
-  return {
-    firstEntry: entries[firstIndex],
-    entryCount: entries.length - firstIndex,
-    turnCount,
-  };
-}
-
-function latestCleanupToolResult(entries: SessionEntry[], requestId?: string): CleanupToolResultEntry | null {
-  for (let i = entries.length - 1; i >= 0; i--) {
-    const entry = entries[i];
-    if (isCleanupToolResultEntry(entry, requestId)) return entry;
-  }
-  return null;
-}
-
 function formatCaptureStatus(status: CaptureStatus): string {
   const lines = [
     `repo:    ${status.repoRoot}`,
@@ -790,9 +594,6 @@ export default function (pi: ExtensionAPI) {
   const fdCommand = resolveFdCommand();
   const gitRootCache = new Map<string, string | null>();
   let autocompleteFailureShown = false;
-  let recentCaptures: CaptureRef[] = [];
-  let pendingCleanup: CleanupRequest | null = null;
-  let cleanupCompactTimer: ReturnType<typeof setTimeout> | undefined;
 
   async function refreshAwareness(cwd: string): Promise<void> {
     try {
@@ -823,21 +624,6 @@ export default function (pi: ExtensionAPI) {
     const status = await readCaptureStatus(cwd);
     updateSpaceUi(ctx, status);
     return status;
-  }
-
-  async function readConversation(ctx: ExtensionContext): Promise<ConversationMeta> {
-    return readCurrentConversation(ctx, { spaceRoot: cachedRoot });
-  }
-
-  async function upsertConversation(
-    ctx: ExtensionContext,
-    update: { name?: string; description?: string; cleanedAt?: string } = {},
-  ): Promise<ConversationMeta> {
-    return upsertCurrentConversation(ctx, { ...update, spaceRoot: cachedRoot });
-  }
-
-  function recordCapture(capture: CaptureRef): void {
-    recentCaptures = dedupeCaptures([capture, ...recentCaptures]).slice(0, 20);
   }
 
   async function commitTrackedCaptures(ctx: ExtensionContext, status: CaptureStatus): Promise<boolean> {
@@ -915,17 +701,7 @@ export default function (pi: ExtensionAPI) {
     return { cancel: true };
   }
 
-  function guardPendingCleanup(ctx: ExtensionContext, action: string): { cancel: true } | undefined {
-    if (!pendingCleanup) return undefined;
-    const message = `IdeaSpaces: ${action} cancelled — context cleanup is still pending. Wait for compaction to finish or run /is-cleanup cancel.`;
-    if (ctx.hasUI) ctx.ui.notify(message, "warning");
-    else console.warn(message);
-    return { cancel: true };
-  }
-
   pi.on("session_start", async (_event, ctx) => {
-    recentCaptures = [];
-    pendingCleanup = null;
     await refreshAwareness(ctx.cwd);
     await refreshSpaceUi(ctx);
 
@@ -1029,135 +805,14 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_before_switch", async (event, ctx) => {
     const action = event.reason === "new" ? "starting a new session" : "switching sessions";
-    return guardPendingCleanup(ctx, action) ?? guardPendingCaptures(ctx, action);
+    return guardPendingCaptures(ctx, action);
   });
 
   pi.on("session_before_fork", async (_event, ctx) => {
-    return guardPendingCleanup(ctx, "forking this session") ?? guardPendingCaptures(ctx, "forking this session");
+    return guardPendingCaptures(ctx, "forking this session");
   });
 
-  pi.on("agent_end", async (_event, ctx) => {
-    const request = pendingCleanup;
-    if (!request) return;
-    // Defer until Pi finishes draining agent_end handlers; compacting synchronously here can re-enter the session lifecycle.
-    if (cleanupCompactTimer) clearTimeout(cleanupCompactTimer);
-    cleanupCompactTimer = setTimeout(() => {
-      cleanupCompactTimer = undefined;
-      if (pendingCleanup?.id !== request.id) return;
-      let idle: boolean;
-      try {
-        idle = ctx.isIdle();
-      } catch {
-        pendingCleanup = null;
-        ctx.ui.notify("Context cleanup cancelled — session state check failed. Run is_cleanup again if needed.", "warning");
-        return;
-      }
-      if (!idle) {
-        pendingCleanup = null;
-        ctx.ui.notify("Context cleanup cancelled — session was not idle after agent end. Run is_cleanup again if needed.", "warning");
-        return;
-      }
-      try {
-        ctx.compact({
-          customInstructions: "Clean up IdeaSpaces conversation context using the provided checkpoint.",
-          onComplete: () => {
-            pendingCleanup = null;
-            ctx.ui.notify("Cleaned up active context", "info");
-          },
-          onError: (error) => {
-            pendingCleanup = null;
-            try {
-              ctx.ui.notify(`Context cleanup compaction failed: ${error.message}`, "warning");
-            } catch {
-              // Best-effort: the session may already be shutting down.
-            }
-            try {
-              pi.sendMessage({
-                customType: "is-cleanup-status",
-                content: `[IdeaSpaces cleanup failed]\n${error.message}`,
-                display: true,
-                details: { kind: "is-cleanup-error", requestId: request.id },
-              });
-            } catch {
-              // Best-effort: the session may already be shutting down.
-            }
-          },
-        });
-      } catch (error) {
-        pendingCleanup = null;
-        const message = error instanceof Error ? error.message : String(error);
-        ctx.ui.notify(`Context cleanup could not start: ${message}`, "warning");
-      }
-    }, 0);
-  });
-
-  pi.on("session_before_compact", async (event) => {
-    const request = pendingCleanup;
-    if (!request) return undefined;
-
-    const cleanupEntry = latestCleanupToolResult(event.branchEntries, request.id);
-    if (!cleanupEntry) return undefined;
-
-    const fallbackFirstKeptEntry = assistantEntryForToolCall(event.branchEntries, cleanupEntry.message.toolCallId) ?? cleanupEntry;
-    const tailWindow = tailWindowForTurns(event.branchEntries, request.tailTurns);
-    const firstKeptEntry = tailWindow?.firstEntry ?? fallbackFirstKeptEntry;
-    // Refresh summary wording with the apply-time tail. If no tail window exists,
-    // formatTailDescription returns null, so any preview-time availability is not shown.
-    const requestForSummary = tailWindow
-      ? { ...request, tailTurnsAvailableBeforeCleanup: tailWindow.turnCount }
-      : request.tailTurns
-        ? { ...request, tailTurnsAvailableBeforeCleanup: 0 }
-        : request;
-    return {
-      compaction: {
-        summary: formatCleanupSummary(requestForSummary),
-        firstKeptEntryId: firstKeptEntry.id,
-        tokensBefore: event.preparation.tokensBefore,
-        details: {
-          kind: "is-cleanup",
-          scope: request.scope,
-          conversationId: request.conversation.id,
-          checkpointEntryId: cleanupEntry.id,
-          firstKeptEntryId: firstKeptEntry.id,
-          captures: request.captures,
-          usageBefore: request.usageBefore,
-          entriesBeforeCleanup: request.entriesBeforeCleanup,
-          tailTurns: request.tailTurns,
-          tailTurnsKept: tailWindow?.turnCount ?? (request.tailTurns ? 0 : undefined),
-        },
-      },
-    };
-  });
-
-  pi.on("session_before_tree", async (event) => {
-    if (!event.preparation.userWantsSummary) return undefined;
-    const summary = formatCleanupBranchSummary(event.preparation.entriesToSummarize);
-    return summary ? { summary: { summary, details: { kind: "is-cleanup-branch-summary" } }, label: CLEANUP_BRANCH_SUMMARY_LABEL } : undefined;
-  });
-
-  pi.on("session_compact", async (event, ctx) => {
-    const details = cleanupDetailsFromEntry(event.compactionEntry);
-    if (details) {
-      await upsertConversation(ctx, { cleanedAt: event.compactionEntry.timestamp });
-      pi.setLabel(event.compactionEntry.id, CLEANUP_LABEL);
-      if (details.checkpointEntryId) pi.setLabel(details.checkpointEntryId, CLEANUP_CHECKPOINT_LABEL);
-      if (details.firstKeptEntryId) pi.setLabel(details.firstKeptEntryId, CLEANUP_FIRST_KEPT_LABEL);
-      pendingCleanup = null;
-      recentCaptures = [];
-    }
-  });
-
-  pi.on("session_shutdown", async (_event, ctx) => {
-    if (pendingCleanup) {
-      const message = "Context cleanup cancelled — session is shutting down. Run is_cleanup again if needed.";
-      if (ctx.hasUI) ctx.ui.notify(message, "warning");
-      else console.warn(message);
-    }
-    pendingCleanup = null;
-    if (cleanupCompactTimer) {
-      clearTimeout(cleanupCompactTimer);
-      cleanupCompactTimer = undefined;
-    }
+  pi.on("session_shutdown", async (_event, _ctx) => {
     // Lifecycle write, not awareness assembly: persist the last-seen commit so
     // the next session can render "Since last session" from git history.
     if (!cachedRepoRoot) return;
@@ -1345,116 +1000,6 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerCommand("is-conversation", {
-    description: "Show or update the current IdeaSpaces conversation flow name/description",
-    handler: async (args, ctx) => {
-      await refreshAwareness(ctx.cwd);
-      const trimmed = args.trim();
-      if (!trimmed || trimmed === "status" || trimmed === "show") {
-        ctx.ui.notify(formatConversationMeta(await readConversation(ctx)), "info");
-        return;
-      }
-
-      if (trimmed === "name" || trimmed.startsWith("name ")) {
-        const provided = trimmed === "name" ? undefined : trimmed.slice("name ".length).trim();
-        const name = provided || (await ctx.ui.input("Conversation name", ctx.sessionManager.getSessionName() ?? ""));
-        const nextName = name?.trim();
-        if (!nextName) {
-          ctx.ui.notify("Conversation name unchanged", "info");
-          return;
-        }
-        pi.setSessionName(nextName);
-        ctx.ui.notify(formatConversationMeta(await upsertConversation(ctx, { name: nextName })), "info");
-        return;
-      }
-
-      if (trimmed === "describe" || trimmed.startsWith("describe ")) {
-        const current = await readConversation(ctx);
-        const provided = trimmed === "describe" ? undefined : trimmed.slice("describe ".length).trim();
-        const description = provided || (await ctx.ui.editor("Conversation description", current.description ?? ""));
-        const nextDescription = description?.trim();
-        if (!nextDescription) {
-          ctx.ui.notify("Conversation description unchanged", "info");
-          return;
-        }
-        ctx.ui.notify(formatConversationMeta(await upsertConversation(ctx, { description: nextDescription })), "info");
-        return;
-      }
-
-      ctx.ui.notify("Usage: /is-conversation [status|name <name>|describe <description>]", "warning");
-    },
-  });
-
-  pi.registerCommand("is-recall", {
-    description: "Map or search the current IdeaSpaces conversation tree",
-    handler: async (args, ctx) => {
-      const trimmed = args.trim();
-      if (!trimmed || trimmed === "map") {
-        ctx.ui.notify(formatRecallMap(buildRecallMap(ctx, await readConversation(ctx))), "info");
-        return;
-      }
-
-      if (trimmed.startsWith("search ")) {
-        const rawSearch = trimmed.slice("search ".length).trim();
-        const scopeMatch = rawSearch.match(/(?:^|\s)scope=(branch|all|compacted)(?=\s|$)/);
-        const scope = cleanRecallScope(scopeMatch?.[1]);
-        const query = rawSearch.replace(/(?:^|\s)scope=(branch|all|compacted)(?=\s|$)/, " ").trim();
-        if (!query) {
-          ctx.ui.notify("Usage: /is-recall search [scope=branch|all|compacted] <query>", "warning");
-          return;
-        }
-        const hits = searchRecall(ctx, query, scope);
-        ctx.ui.notify(formatRecallSearch(query, scope, hits), "info");
-        return;
-      }
-
-      if (trimmed.startsWith("excerpt ")) {
-        const target = trimmed.slice("excerpt ".length).trim();
-        const separator = target.indexOf("..");
-        const hasSingleRangeSeparator = separator > 0 && target.indexOf("..", separator + 2) === -1;
-        const excerpt = hasSingleRangeSeparator
-          ? excerptRecall(ctx, undefined, target.slice(0, separator).trim(), target.slice(separator + 2).trim())
-          : excerptRecall(ctx, target);
-        ctx.ui.notify(excerpt ?? `No recall entry/range found for ${target}`, excerpt ? "info" : "warning");
-        return;
-      }
-
-      ctx.ui.notify("Usage: /is-recall [map|search [scope=branch|all|compacted] <query>|excerpt <entryId>|excerpt <fromId>..<toId>]", "warning");
-    },
-  });
-
-  pi.registerCommand("is-cleanup", {
-    description: "Show or cancel a pending IdeaSpaces context cleanup",
-    handler: async (args, ctx) => {
-      const action = args.trim() || "status";
-      if (action === "cancel") {
-        if (!pendingCleanup) {
-          ctx.ui.notify("No context cleanup is pending", "info");
-          return;
-        }
-        pendingCleanup = null;
-        if (cleanupCompactTimer) {
-          clearTimeout(cleanupCompactTimer);
-          cleanupCompactTimer = undefined;
-        }
-        ctx.ui.notify("Cancelled pending context cleanup", "info");
-        return;
-      }
-      if (action === "status" || action === "show") {
-        if (!pendingCleanup) {
-          ctx.ui.notify("No context cleanup is pending", "info");
-          return;
-        }
-        ctx.ui.notify(
-          `${formatCleanupCheckpoint(pendingCleanup)}\n\nCleanup is pending; compaction will run after the current response finishes. Raw history remains recallable via /tree and is_recall.`,
-          "info",
-        );
-        return;
-      }
-      ctx.ui.notify("Usage: /is-cleanup [status|cancel]", "warning");
-    },
-  });
-
   pi.registerCommand("is-status", {
     description: "Show IdeaSpaces capture and sync state",
     handler: async (_args, ctx) => {
@@ -1600,17 +1145,8 @@ export default function (pi: ExtensionAPI) {
 
       const result = await run(args, params.content, cwd);
       if (!isErrorResult(result)) {
-        const text = result.content.map((item) => item.text).join("\n");
-        const output = isWriteOutputFromUnknown(result.details) ?? parseIsWriteOutput(text);
-        recordCapture({
-          path: output?.path ?? params.path,
-          name: params.name,
-          summary: params.summary,
-          sha: output?.sha ?? output?.commit_sha,
-        });
         await refreshAwareness(cwd);
         await refreshSpaceUi(ctx, cwd);
-        if (cachedRoot) await upsertConversation(ctx);
       }
       return result;
     },
@@ -1647,165 +1183,6 @@ export default function (pi: ExtensionAPI) {
       if (!result.ok) return fail(result.error);
       updateSpaceUi(ctx, result.data);
       return ok(JSON.stringify(result.data, null, 2));
-    },
-  });
-
-  pi.registerTool({
-    name: "is_conversation",
-    label: "IS Conversation",
-    description:
-      "Show or update the current local conversation flow metadata. This indexes Pi's existing JSONL session; it does not relocate or sync raw conversation logs.",
-    promptSnippet: "Show/name/describe the current local conversation flow",
-    parameters: Type.Object({
-      action: Type.Optional(Type.Union([Type.Literal("status"), Type.Literal("name"), Type.Literal("describe")])),
-      name: Type.Optional(Type.String({ description: "Conversation name when action=name" })),
-      description: Type.Optional(Type.String({ description: "Conversation description when action=describe" })),
-    }),
-    async execute(_id, params, _signal, _onUpdate, ctx) {
-      await refreshAwareness(ctx.cwd);
-      const action = params.action ?? "status";
-      if (action === "name") {
-        const name = params.name?.trim();
-        if (!name) return fail("is_conversation action=name requires name");
-        pi.setSessionName(name);
-        const meta = await upsertConversation(ctx, { name });
-        return { content: [{ type: "text", text: formatConversationMeta(meta) }], details: { meta } };
-      }
-      if (action === "describe") {
-        const description = params.description?.trim();
-        if (!description) return fail("is_conversation action=describe requires description");
-        const meta = await upsertConversation(ctx, { description });
-        return { content: [{ type: "text", text: formatConversationMeta(meta) }], details: { meta } };
-      }
-      const meta = await readConversation(ctx);
-      return { content: [{ type: "text", text: formatConversationMeta(meta) }], details: { meta } };
-    },
-  });
-
-  pi.registerTool({
-    name: "is_recall",
-    label: "IS Recall",
-    description:
-      "Map, search, or excerpt the current local conversation tree, including compacted entries recoverable from Pi session state. Deterministic: no summarization.",
-    promptSnippet: "Map/search/excerpt the current local conversation tree",
-    promptGuidelines: [
-      "Use is_recall when compacted or prior conversation context may be relevant, instead of manually reading Pi JSONL files.",
-      "Use is_recall action=map first when you need handles for checkpoints, compactions, branch summaries, or entry ids.",
-    ],
-    parameters: Type.Object({
-      action: Type.Optional(
-        Type.Union([
-          Type.Literal("map", { description: "Return a structural map of the conversation tree" }),
-          Type.Literal("search", { description: "Search entries by text query" }),
-          Type.Literal("excerpt", { description: "Return the full text of one entry or a range" }),
-        ]),
-      ),
-      query: Type.Optional(Type.String({ description: "Search text when action=search" })),
-      scope: Type.Optional(
-        Type.Union([
-          Type.Literal("branch", { description: "Search only the active branch" }),
-          Type.Literal("all", { description: "Search all entries in the session file" }),
-          Type.Literal("compacted", { description: "Search entries before the active compaction window" }),
-        ]),
-      ),
-      limit: Type.Optional(Type.Number({ description: "Maximum search hits to return, capped internally" })),
-      entryId: Type.Optional(Type.String({ description: "Entry id to excerpt when action=excerpt" })),
-      fromId: Type.Optional(Type.String({ description: "Start entry id for a branch range excerpt" })),
-      toId: Type.Optional(Type.String({ description: "End entry id for a branch range excerpt" })),
-    }),
-    async execute(_id, params, _signal, _onUpdate, ctx) {
-      const action = params.action ?? "map";
-      if (action === "map") {
-        const map = buildRecallMap(ctx, await readConversation(ctx));
-        return { content: [{ type: "text", text: formatRecallMap(map) }], details: { map } };
-      }
-
-      if (action === "search") {
-        const query = params.query?.trim();
-        if (!query) return fail("is_recall action=search requires query");
-        const scope = cleanRecallScope(params.scope);
-        const hits = searchRecall(ctx, query, scope, params.limit);
-        return { content: [{ type: "text", text: formatRecallSearch(query, scope, hits) }], details: { hits, scope, query } };
-      }
-
-      if (action !== "excerpt") return fail(`Unknown is_recall action: ${String(action)}`);
-      const excerpt = excerptRecall(ctx, params.entryId, params.fromId, params.toId);
-      if (!excerpt) return fail("is_recall action=excerpt requires entryId or a valid fromId/toId range on the active branch");
-      return { content: [{ type: "text", text: excerpt }], details: { entryId: params.entryId, fromId: params.fromId, toId: params.toId } };
-    },
-  });
-
-  pi.registerTool({
-    name: "is_cleanup",
-    label: "IS Cleanup",
-    description:
-      "Preview or apply active-context cleanup: keep a checkpoint, compact prior raw discussion out of active context, and leave the full JSONL session history recoverable.",
-    promptSnippet: "Preview/apply active-context cleanup with keep/drop plan",
-    promptGuidelines: [
-      "Cleanup is workshop cleanup for active context; capture is the separate agreement that changes shared state.",
-      "Prefer action=preview first: show what will be kept, what will leave active context, and the rough context savings.",
-      "Use action=apply only after the user confirms the cleanup plan or explicitly asks to clean up now.",
-      "When recent wording/continuity matters, agree on tailTurns and keep that many recent user-started turns exact.",
-      "Be clear that cleanup is sliding-window compaction: tailTurns preserves exact recent turns; checkpoint/keep/drop preserve older state semantically.",
-    ],
-    parameters: Type.Object({
-      action: Type.Optional(
-        Type.Union([Type.Literal("preview"), Type.Literal("apply")], {
-          description: "preview (default) or apply; preview first, apply only after the user confirms the cleanup plan",
-        }),
-      ),
-      checkpoint: Type.String({ description: "Current conversation state to keep as the cleanup checkpoint" }),
-      keep: Type.Optional(Type.String({ description: "What should remain live in active context" })),
-      drop: Type.Optional(Type.String({ description: "What raw discussion/tool noise can leave active context" })),
-      captures: Type.Optional(Type.Array(Type.String({ description: "Captured IdeaSpaces paths/refs represented by this checkpoint, if any" }))),
-      tailTurns: Type.Optional(Type.Integer({ minimum: 0, maximum: MAX_CLEANUP_TAIL_TURNS, description: `Number of recent user-started conversation turns to keep exactly live after cleanup. Capped at ${MAX_CLEANUP_TAIL_TURNS}; 0 is equivalent to omitting the field, and requesting more turns than exist uses what is available. Older context is represented by the checkpoint.` })),
-      scope: Type.Optional(Type.Literal("active-window", { description: "Cleanup scope. Current implementation supports active-window cleanup only." })),
-    }),
-    async execute(toolCallId, params, _signal, _onUpdate, ctx) {
-      const conversation = await upsertConversation(ctx);
-      const branch = ctx.sessionManager.getBranch();
-      const explicitCaptures = params.captures?.length ? captureRefsFromPaths(params.captures) : [];
-      const captures = dedupeCaptures([...explicitCaptures, ...recentCaptures]);
-      const tailTurns = params.tailTurns && params.tailTurns > 0 ? params.tailTurns : undefined;
-      const tailWindow = tailWindowForTurns(branch, tailTurns);
-      const request: CleanupRequest = {
-        id: toolCallId,
-        scope: params.scope ?? "active-window",
-        conversation,
-        checkpoint: params.checkpoint,
-        keep: params.keep,
-        drop: params.drop,
-        captures,
-        requestedAt: new Date().toISOString(),
-        firstEntryId: branch[0]?.id,
-        leafIdAtRequest: ctx.sessionManager.getLeafId() ?? undefined,
-        usageBefore: contextUsageSnapshot(ctx),
-        entriesBeforeCleanup: branch.length,
-        tailTurns,
-        tailEntriesBeforeCleanup: tailWindow?.entryCount,
-        tailTurnsAvailableBeforeCleanup: tailTurns ? (tailWindow?.turnCount ?? 0) : undefined,
-      };
-
-      const action = params.action ?? "preview";
-      if (action === "preview") {
-        return {
-          content: [{ type: "text", text: formatCleanupPreview(request) }],
-          details: { kind: "is-cleanup-preview", request },
-        };
-      }
-
-      pendingCleanup = request;
-      const tailDescription = formatTailDescription(request);
-      const tailClause = tailDescription ? ` while keeping ${tailDescription} exact` : "";
-      return {
-        content: [
-          {
-            type: "text",
-            text: `${formatCleanupCheckpoint(request)}\n\nContext cleanup scheduled: after this response finishes, prior raw conversation will be compacted out of active context${tailClause}. The full JSONL session remains recoverable via /tree and is_recall.`,
-          },
-        ],
-        details: { kind: "is-cleanup", request },
-      };
     },
   });
 

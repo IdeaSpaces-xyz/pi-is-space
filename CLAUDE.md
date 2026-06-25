@@ -24,9 +24,6 @@ IdeaSpaces-aware primitives:
 - `is_write` — capture primitive for frontmatter-aware Note writes; stages, tracks, and returns `sha`
 - `is_commit` — capture primitive; commits only tracked or explicit capture paths
 - `is_sync` — sync primitive; integrates remote changes and pushes committed captures
-- `is_conversation` — **legacy local-context compatibility**; prefer `context_conversation` from `pi-local-context`
-- `is_recall` — **legacy local-context compatibility**; prefer `context_recall` from `pi-local-context`
-- `is_cleanup` — **legacy local-context compatibility**; prefer `context_cleanup` from `pi-local-context`
 - `is_auth` — login/logout for optional sync
 
 Keep agent-facing language intent-first: orient, capture, sync, reflect. Do not make agents choose between equivalent backends at the top level.
@@ -37,9 +34,6 @@ Pi-native commands for human-facing flow:
 - `/is-status` — show capture/sync state and refresh UI
 - `/is-commit` — review staged captures, collect a message, confirm, commit staged knowledge
 - `/is-sync` — dry-run, confirm, sync committed captures
-- `/is-conversation` — legacy local-context compatibility; prefer `/context-conversation`
-- `/is-recall` — legacy local-context compatibility; prefer `/context-recall`
-- `/is-cleanup` — legacy local-context compatibility; prefer `/context-cleanup`
 - `/is-publish` — check scaffold/branch state, confirm destination, publish remotely, retry through login if needed
 
 Runtime guardrails:
@@ -62,14 +56,15 @@ Use-case layer shipped in `skills/`, grouped by role:
 
 - Daily loop: is-orient, is-capture, is-sync, is-reflect
 - Space lifecycle: is-setup, is-publish, is-shape
-- Conversation hygiene: legacy only here; prefer context-conversation, context-cleanup, context-recall from `pi-local-context`
 - Reference: is-space, is-writing
+
+Conversation hygiene lives in `pi-local-context` (`context-conversation`, `context-cleanup`, `context-recall`), not this Space connector.
 
 Keep the layering clear: skills express user intent, tools are primitives, commands are human-triggered Pi UI flows.
 
 Shared protocol content lives in `reference/`, generated from the SDK canonical skill catalog with `npm run build:reference`. Keep Pi entrypoint skills surface-specific; update shared capture/writing/awareness/shaping protocols in the SDK, then regenerate `reference/`.
 
-Capture flow: user intent → `is-capture` → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-sync`. Reflect and shape use the same capture boundary when they change shared agreement. Cleanup is local conversation hygiene, not Space connector behavior; prefer `context_cleanup` from `pi-local-context`. The legacy `is_cleanup` / `is_recall` / `is_conversation` surfaces remain here only until compatibility cleanup removes duplicated local-session machinery.
+Capture flow: user intent → `is-capture` → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-sync`. Reflect and shape use the same capture boundary when they change shared agreement. Cleanup is local conversation hygiene, not Space connector behavior; use `context_cleanup` from `pi-local-context` when that package is installed.
 
 ## Development
 
