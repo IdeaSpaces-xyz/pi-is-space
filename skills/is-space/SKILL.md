@@ -5,7 +5,7 @@ description: >
   Two Roles convention, and Pi tool surface. Use as a compatibility/reference
   entrypoint when the user asks how an ideaspace works. For active intents,
   prefer the loop skills: is-orient, is-capture, is-sync, is-reflect, is-shape.
-allowed-tools: "is_write is_status is_commit is_sync is_conversation is_recall is_cleanup is_auth read edit write bash"
+allowed-tools: "is_write is_status is_commit is_sync is_auth read edit write bash"
 ---
 
 # Working in an Ideaspace
@@ -22,14 +22,15 @@ Pi handles **arrive** automatically with session-start awareness. For active wor
 
 **Daily loop** — `is-orient`, `is-capture`, `is-sync`, `is-reflect`.
 **Space lifecycle** — `is-setup`, `is-publish`, `is-shape`.
-**Conversation hygiene** — `is-conversation`, `is-cleanup`, `is-recall`.
 **Reference** — `is-space`, `is-writing`.
+
+Local conversation hygiene (`context-conversation`, `context-cleanup`, `context-recall`) lives in `pi-local-context`, not this Space connector.
 
 You have three surfaces:
 
 - **Skills** — agent procedures for user intent. Use these first.
-- **Tools** — low-level primitives (`is_status`, `is_write`, `is_commit`, `is_sync`, `is_conversation`, `is_recall`, `is_cleanup`, `is_auth`). Skills choose these mechanisms; don't make backend choice the user's problem.
-- **Commands** — human-triggered Pi UI flows (`/is-setup`, `/is-sync`, `/is-cleanup`). If the user invokes one, treat it as the confirmation path.
+- **Tools** — low-level primitives (`is_status`, `is_write`, `is_commit`, `is_sync`, `is_auth`). Skills choose these mechanisms; don't make backend choice the user's problem.
+- **Commands** — human-triggered Pi UI flows (`/is-setup`, `/is-sync`, `/is-commit`, `/is-publish`). If the user invokes one, treat it as the confirmation path.
 
 Native `read`, `edit`, `write`, and `bash` remain the default for navigation, search, source-code work, and ordinary doc edits.
 
@@ -133,51 +134,9 @@ It never sweeps unrelated staged user work into the capture commit.
 
 Use **is-sync** for the outer intent. `is_sync` integrates remote changes and pushes committed captures. It refuses while staged IdeaSpaces knowledge remains uncommitted. Use `dry_run: true` to preview.
 
-### `is_conversation` — name the local flow
+### Local conversation context
 
-`is_conversation` shows or updates the current local conversation flow metadata. It indexes Pi's existing JSONL session with a stable conversation ID, name, and description; it does not move or sync raw conversation logs.
-
-### `is_recall` — retrieve prior local context
-
-`is_recall` maps, searches, or excerpts the current Pi conversation tree without requiring raw JSONL reads. Use it when compacted or prior turns may matter:
-
-```
-is_recall action="map"
-is_recall action="search" query="review blockers" scope="compacted"
-is_recall action="excerpt" entryId="abc12345"
-```
-
-It is deterministic in the current MVP: no generated summaries, only maps, matches, and excerpts from session state.
-
-### `is_cleanup` — clean active context
-
-`is_cleanup` is workshop cleanup for the active conversation window. It does not change shared understanding; capture does that. Cleanup keeps a checkpoint live, compacts prior raw discussion out of active context, and leaves the full Pi JSONL session recoverable via `/tree` and `is_recall`.
-
-The current scope is `active-window`: sliding-window compaction of prior active-branch context. Pi's `/tree` branch summaries are adjacent branch cleanup; arbitrary middle-range cleanup is not first-class yet.
-
-Prefer preview before apply:
-
-```
-is_cleanup action="preview"
-          scope="active-window"
-          checkpoint="What stays live..."
-          keep="Open implementation questions..."
-          drop="Tool noise and resolved debate..."
-          captures=["roadmap/foo.md"]
-```
-
-After the user confirms:
-
-```
-is_cleanup action="apply"
-          scope="active-window"
-          checkpoint="What stays live..."
-          keep="Open implementation questions..."
-          drop="Tool noise and resolved debate..."
-          captures=["roadmap/foo.md"]
-```
-
-This is sliding-window compaction, not surgical raw-turn editing. `keep` preserves selected state in the checkpoint; exact prior turns are pulled back with recall when needed.
+Conversation metadata, recall, and active-context cleanup are owned by `pi-local-context` through the neutral `context_conversation`, `context_recall`, and `context_cleanup` surfaces. Use that package when local Pi session history or compaction matters.
 
 **`cwd` matters when you've `cd`-ed inside `bash`.** A `cd subdir` in a `bash` invocation changes that subprocess's cwd; it doesn't propagate back to Pi's extension process. If you've worked in a subdir during the session and then call `is_write` with a relative `path`, `is_write` resolves it against the Pi session cwd — likely the wrong tree.
 

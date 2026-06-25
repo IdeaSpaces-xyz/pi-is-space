@@ -24,6 +24,9 @@ const FORBIDDEN = [
   { re: /Co-authored-by/i, why: "trailer format lives in SPEC.md / the commit skill" },
   { re: /\bideaspaces id\b/, why: "removed command (identity-in-the-map)" },
   { re: /\bid --fix\b/, why: "removed command flag (identity-in-the-map)" },
+  { re: /\bis_conversation\b|\bis-conversation\b/, why: "local conversation metadata moved to pi-local-context (context_conversation)" },
+  { re: /\bis_recall\b|\bis-recall\b/, why: "local recall moved to pi-local-context (context_recall)" },
+  { re: /\bis_cleanup\b|\bis-cleanup\b/, why: "local cleanup moved to pi-local-context (context_cleanup)" },
 ];
 
 const violations = [];

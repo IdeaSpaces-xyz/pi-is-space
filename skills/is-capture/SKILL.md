@@ -5,7 +5,7 @@ description: >
   remember, save this, write this into the space, or when a decision/finding has
   crystallized. The skill chooses the mechanism: `is_write` for Notes, native
   edits for existing docs/specs, then `is_commit` for the agreement boundary.
-allowed-tools: "is_write is_status is_commit is_sync is_cleanup read edit write bash"
+allowed-tools: "is_write is_status is_commit is_sync context_cleanup read edit write bash"
 user-invocable: false
 ---
 
@@ -59,9 +59,7 @@ If yes:
 4. Show what changed when useful. The user confirms the capture boundary.
 5. Commit with `is_commit({ message, all: true })` for staged knowledge, or explicit `paths` for native edits. Never sweep unrelated staged work.
 6. Optionally use **is-sync** / `is_sync` to align with remote.
-7. Cleanup is separate from capture. After a meaningful capture or any natural boundary where context is cluttered, offer a cleanup preview:
-   > "Want a cleanup preview — what stays live, what leaves active context, and rough savings?"
-   Call `is_cleanup` with `action: "preview"`. If the user confirms the plan, call `is_cleanup` again with `action: "apply"`, passing the checkpoint, what remains active, what can be dropped, and captured paths. The extension auto-remembers only the most recent captures as a safety bound; pass explicit `captures` when the checkpoint represents older or native-file captures.
+7. Cleanup is separate from capture and is owned by `pi-local-context`. After a meaningful capture or any natural boundary where context is cluttered, offer a cleanup preview and use the `context-cleanup` skill / `context_cleanup` tool if it appears in your available tools. If `context_cleanup` is not available, skip the cleanup offer.
 
 If the user runs `/is-commit`, treat that as confirmation and don't re-ask. If the user says no, drop it and don't re-ask.
 
