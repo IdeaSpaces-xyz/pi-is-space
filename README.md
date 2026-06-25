@@ -30,9 +30,11 @@ pi -e /path/to/pi-is-space
 
 The package has three surfaces:
 
-- **Skills** — agent procedures for user intent (`is-capture`, `is-sync`, `is-cleanup`).
-- **Tools** — low-level primitives the skills call (`is_write`, `is_commit`, `is_recall`).
-- **Commands** — human-triggered Pi UI flows (`/is-sync`, `/is-cleanup`).
+- **Skills** — agent procedures for user intent (`is-capture`, `is-sync`).
+- **Tools** — low-level primitives the skills call (`is_write`, `is_commit`).
+- **Commands** — human-triggered Pi UI flows (`/is-sync`, `/is-commit`).
+
+Local conversation/session hygiene is being extracted to `pi-local-context`. During the transition this package still ships legacy `is_conversation`, `is_recall`, and `is_cleanup` surfaces for compatibility; prefer the neutral `context_conversation`, `context_recall`, and `context_cleanup` surfaces when both packages are installed.
 
 Pi's native `read`, `edit`, `write`, and `bash` cover navigation, inspection, and ordinary edits. `pi-is-space` adds IdeaSpaces-aware primitives used by the skills and commands:
 
@@ -42,9 +44,9 @@ Pi's native `read`, `edit`, `write`, and `bash` cover navigation, inspection, an
 | `is_write` | Capture primitive: create/update a markdown Note with Layer 1 frontmatter, stage it in git, and return a content `sha`. Normally reached through the `is-capture` skill. |
 | `is_commit` | Capture primitive: commit only explicit paths or all staged knowledge after confirmation; never sweep unrelated staged work. |
 | `is_sync` | Sync primitive: integrate remote changes and push committed captures; refuses while staged knowledge remains uncommitted. |
-| `is_conversation` | Show or update the current named local conversation flow over Pi's existing JSONL session. |
-| `is_recall` | Map, search, or excerpt the current local conversation tree, including compacted entries recoverable from Pi session state. |
-| `is_cleanup` | Preview/apply active-window context cleanup: keep a checkpoint, optionally keep an exact recent tail, compact older raw discussion out of active context, and keep JSONL history recallable. |
+| `is_conversation` | **Legacy local-context compatibility.** Prefer `context_conversation` from `pi-local-context`. |
+| `is_recall` | **Legacy local-context compatibility.** Prefer `context_recall` from `pi-local-context`. |
+| `is_cleanup` | **Legacy local-context compatibility.** Prefer `context_cleanup` from `pi-local-context`. |
 | `is_auth` | Log in / out for optional remote sync. |
 
 ## Commands
@@ -57,9 +59,9 @@ Human-facing IdeaSpaces actions are Pi-native commands:
 | `/is-status` | Show git/capture state and refresh the footer/widget. |
 | `/is-commit` | Review staged captures, enter a commit message, confirm, then commit them. |
 | `/is-sync` | Run `sync --dry-run`, confirm the plan, then sync committed captures. |
-| `/is-conversation` | Show or name/describe the current local conversation flow (an index over Pi's existing session JSONL). |
-| `/is-recall` | Map/search/excerpt the current local conversation tree without reading raw JSONL directly. |
-| `/is-cleanup` | Show or cancel a pending context cleanup. |
+| `/is-conversation` | **Legacy local-context compatibility.** Prefer `/context-conversation` from `pi-local-context`. |
+| `/is-recall` | **Legacy local-context compatibility.** Prefer `/context-recall` from `pi-local-context`. |
+| `/is-cleanup` | **Legacy local-context compatibility.** Prefer `/context-cleanup` from `pi-local-context`. |
 | `/is-publish` | Confirm destination, retry through login if needed, then publish the space remotely. |
 
 When captures await commit, the extension shows a small widget near the editor so state stays visible without reminder spam.
@@ -102,10 +104,10 @@ Pi ships surface-specific entrypoint skills in four tiers:
 - `is-publish` — host a local space remotely for the first time.
 - `is-shape` — evolve the `_agent/` agreement or reusable agent behavior.
 
-**Conversation hygiene**
-- `is-conversation` — name/describe the current local conversation flow.
-- `is-cleanup` — preview/apply active-window context cleanup.
-- `is-recall` — retrieve compacted or prior local conversation context by map/search/excerpt.
+**Conversation hygiene — legacy compatibility**
+- `is-conversation` — prefer `context-conversation` from `pi-local-context`.
+- `is-cleanup` — prefer `context-cleanup` from `pi-local-context`.
+- `is-recall` — prefer `context-recall` from `pi-local-context`.
 
 **Reference**
 - `is-space` — compatibility/reference entrypoint; use when the user asks how IdeaSpaces works.
@@ -113,6 +115,6 @@ Pi ships surface-specific entrypoint skills in four tiers:
 
 Shared protocol content lives in `reference/`, generated from the SDK canonical skill catalog with `npm run build:reference`. Entry skills stay Pi-specific while reading SDK-backed references such as `reference/capture.md`, `reference/writing.md`, and `reference/awareness.md` on demand.
 
-Capture flow: user intent → `is-capture` skill → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-sync`. Cleanup is separate workshop hygiene: when context is cluttered, `is_cleanup action="preview" scope="active-window" tailTurns=...` shows what stays live, what exact recent tail remains, what leaves active context, and rough savings; after confirmation, `action="apply"` records the checkpoint and slides active context past older raw discussion while leaving the full Pi session tree recoverable through `/tree` and `is_recall`. Cleanup stays Pi-native: normal compaction entries, `/tree` labels for anchors, and deterministic cleanup-aware branch summaries when navigating away from cleaned branches. Arbitrary middle-range cleanup is not first-class yet; tail turns are the simple continuity knob.
+Capture flow: user intent → `is-capture` skill → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-sync`. Cleanup is separate local-context hygiene now owned by `pi-local-context`: when context is cluttered, prefer `context_cleanup action="preview" scope="active-window" tailTurns=...`, then apply after confirmation. The legacy `is_cleanup` / `is_recall` surfaces remain here only until compatibility cleanup removes the duplicated local-session machinery.
 
 See `MIGRATION.md` for mapping from legacy `pi-sw-space`.
