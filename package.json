@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@ideaspaces/cli": "git+https://github.com/IdeaSpaces-xyz/cli.git#a4f80379667eeca165c2965c8e58c234a25880cc",
-    "@ideaspaces/sdk": "git+https://github.com/IdeaSpaces-xyz/sdk.git#70586e40d97351763792da9ba32fb6fec81aefdf"
+    "@ideaspaces/sdk": "git+https://github.com/IdeaSpaces-xyz/sdk.git#69d147d557c7fb2c50ce0821016165b19ec0258a"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
