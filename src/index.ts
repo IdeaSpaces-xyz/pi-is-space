@@ -7,6 +7,7 @@ import { basename, dirname, join, relative, resolve as resolvePath, sep } from "
 import { fileURLToPath } from "node:url";
 import {
   findSpaceRoot,
+  composeContractAlongPath,
   assembleAwareness,
   gitState,
   walkPathContext,
@@ -537,15 +538,20 @@ async function readCaptureStatus(cwd: string): Promise<CaptureStatus | null> {
   return result.ok ? result.data : null;
 }
 
-async function buildAwareness(cwd: string): Promise<{ root: string | null; repoRoot: string | null; text: string | null }> {
-  const space = await findSpaceRoot(cwd);
-  if (space.source === "none" || !space.root) return { root: null, repoRoot: null, text: null };
+// Awareness is rooted at a *position* — the place the agent's orientation is
+// focused — not necessarily the session cwd. `navigate` moves this position;
+// when unset, callers pass `ctx.cwd` so behaviour is unchanged.
+async function buildAwareness(effectivePosition: string): Promise<{ root: string | null; repoRoot: string | null; text: string | null }> {
+  // Compose the effective fractal contract along the path to the position:
+  // `foundation` from the space root, deepest-present guide/purpose/now/next.
+  const composed = await composeContractAlongPath(effectivePosition);
+  if (!composed.spaceRoot) return { root: null, repoRoot: null, text: null };
 
-  const status = await readCaptureStatus(cwd);
+  const status = await readCaptureStatus(effectivePosition);
   let repoRoot = status?.repoRoot ?? null;
   if (!repoRoot) {
     try {
-      repoRoot = (await gitState(cwd)).repoRoot;
+      repoRoot = (await gitState(effectivePosition)).repoRoot;
     } catch {
       // No git repo available. Do not substitute the ideaspace root here:
       // space root and git root are different concepts.
@@ -560,44 +566,57 @@ async function buildAwareness(cwd: string): Promise<{ root: string | null; repoR
   }
   const [block, pathContext] = await Promise.all([
     assembleAwareness({
-      root: space.root,
-      contract: space.contract,
+      root: effectivePosition,
+      contract: composed.contract,
       lastSha,
     }),
-    repoRoot ? walkPathContext(repoRoot, cwd) : Promise.resolve(null),
+    repoRoot ? walkPathContext(repoRoot, effectivePosition) : Promise.resolve(null),
   ]);
   const drift: string[] = [];
-  if (!space.contract.purpose) {
+  if (!composed.contract.purpose) {
     drift.push(
       "⚠ `_agent/purpose.md` not yet captured. The contract names it; suggest capturing in conversation when there's a natural moment.",
     );
   }
-  if (!space.contract.now) {
+  if (!composed.contract.now) {
     drift.push(
       "⚠ `_agent/now.md` not yet captured. Suggest capturing what's currently active.",
     );
   }
 
   const parts = [
-    pathContext && repoRoot ? formatPositionSection(cwd, repoRoot, pathContext) : null,
+    pathContext && repoRoot ? formatPositionSection(effectivePosition, repoRoot, pathContext) : null,
     formatStateSection(status),
     block.trim(),
     ...drift,
   ].filter(Boolean);
-  return { root: space.root, repoRoot, text: parts.length ? parts.join("\n\n") : null };
+  return { root: composed.spaceRoot, repoRoot, text: parts.length ? parts.join("\n\n") : null };
 }
 
 export default function (pi: ExtensionAPI) {
   let cachedAwareness: string | null = null;
   let cachedRoot: string | null = null;
   let cachedRepoRoot: string | null = null;
+  // Session-persistent orientation focus. Unset → awareness roots at ctx.cwd.
+  // `navigate` moves this; it never touches the session cwd or file-op paths.
+  let position: string | null = null;
   const fdCommand = resolveFdCommand();
   const gitRootCache = new Map<string, string | null>();
   let autocompleteFailureShown = false;
 
+  // The position awareness is rooted at: the navigated focus, or the cwd.
+  function effectivePosition(cwd: string): string {
+    return position ?? cwd;
+  }
+
+  async function setPosition(next: string | null, cwd: string): Promise<void> {
+    position = next;
+    await refreshAwareness(cwd);
+  }
+
   async function refreshAwareness(cwd: string): Promise<void> {
     try {
-      const awareness = await buildAwareness(cwd);
+      const awareness = await buildAwareness(effectivePosition(cwd));
       cachedAwareness = awareness.text;
       cachedRoot = awareness.root;
       cachedRepoRoot = awareness.repoRoot;
@@ -1074,6 +1093,50 @@ export default function (pi: ExtensionAPI) {
       await refreshAwareness(ctx.cwd);
       await refreshSpaceUi(ctx);
       ctx.ui.notify(`Synced: integrated ${result.data.integrated} commit(s), pushed ${result.data.pushed} commit(s).`, "info");
+    },
+  });
+
+  pi.registerTool({
+    name: "is_navigate",
+    label: "IS Navigate",
+    description:
+      "Move your awareness focus to a position in the space — re-derives orientation (purpose/now/guide/tree) for that branch using the fractal-composed contract. Does not change the working directory; read/edit/bash still take explicit paths.",
+    promptSnippet: "Re-root orientation at a branch of the space (orientation only; cwd unchanged)",
+    parameters: Type.Object({
+      path: Type.String({
+        description:
+          "Target position: relative to the repo root, or absolute. \"\" or \".\" focuses the repo root.",
+      }),
+    }),
+    async execute(_id, params, _signal, _onUpdate, ctx) {
+      // Resolve against the repo root, falling back to the current awareness
+      // root or cwd so navigate works before the first awareness build.
+      const repoRoot = cachedRepoRoot ?? cachedRoot ?? ctx.cwd;
+      const raw = params.path.trim();
+      const target = raw === "" || raw === "." ? repoRoot : resolvePath(repoRoot, raw);
+
+      let stats: ReturnType<typeof statSync>;
+      try {
+        stats = statSync(target);
+      } catch {
+        return fail(`No such path: ${target}`);
+      }
+      if (!stats.isDirectory()) {
+        return fail(`Not a directory: ${target}`);
+      }
+      if (!isPathInside(target, repoRoot)) {
+        return fail(`Refusing to navigate outside the repo root (${repoRoot}): ${target}`);
+      }
+
+      await setPosition(target, ctx.cwd);
+
+      const rel = relative(repoRoot, target) || ".";
+      const lines = [`Awareness focus moved to ${rel} (working directory unchanged).`];
+      if (cachedRoot) lines.push(`space root: ${cachedRoot}`);
+      const nowLine = cachedAwareness?.split("\n").find((line) => line.startsWith("Now:"));
+      if (nowLine) lines.push(nowLine);
+      else if (cachedAwareness === null) lines.push("No _agent/ contract resolves at this position.");
+      return ok(lines.join("\n"));
     },
   });
 
