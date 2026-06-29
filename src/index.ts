@@ -2,6 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Type } from "typebox";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
+import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve as resolvePath, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +14,7 @@ import {
   walkPathContext,
   spaceRootLevel,
   currentBranchLevel,
+  extractSummary,
 } from "@ideaspaces/sdk";
 
 type CliResult = { out: string; err: string; code: number };
@@ -538,10 +540,80 @@ async function readCaptureStatus(cwd: string): Promise<CaptureStatus | null> {
   return result.ok ? result.data : null;
 }
 
+// A single working-set handle: a root, a one-line summary, and a top-level dir
+// count. Mounts surface as thin handles — orientation, not full trees.
+type RootHandle = { summary: string | null; dirCount: number | null };
+
+// First line of a file's content (frontmatter stripped via extractSummary), or
+// null. Kept to a single line so working-set handles stay terse.
+function firstContentLine(content: string): string | null {
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith("---")) return trimmed;
+  }
+  return null;
+}
+
+// Read a one-line summary for a root: prefer `_agent/now.md`, then `README.md`.
+// Use the Layer 1 frontmatter summary when present, else the first content line.
+async function readRootSummary(root: string): Promise<string | null> {
+  const candidates = [join(root, "_agent", "now.md"), join(root, "README.md")];
+  for (const candidate of candidates) {
+    try {
+      const content = await readFile(candidate, "utf-8");
+      const summary = extractSummary(content) ?? firstContentLine(content);
+      if (summary) return summary.replace(/\s+/g, " ").trim();
+    } catch {
+      // Missing or unreadable candidate — try the next.
+    }
+  }
+  return null;
+}
+
+// Count top-level directories under a root, excluding noise dirs. Best-effort.
+async function countTopLevelDirs(root: string): Promise<number | null> {
+  try {
+    const entries = await readdir(root, { withFileTypes: true });
+    return entries.filter(
+      (entry) => entry.isDirectory() && !AUTOCOMPLETE_EXCLUDES.includes(entry.name),
+    ).length;
+  } catch {
+    return null;
+  }
+}
+
+async function readRootHandle(root: string): Promise<RootHandle> {
+  const [summary, dirCount] = await Promise.all([readRootSummary(root), countTopLevelDirs(root)]);
+  return { summary, dirCount };
+}
+
+function formatRootHandleLine(label: string, display: string, handle: RootHandle): string {
+  const parts = [`  ${label}: ${display}`];
+  if (handle.summary) parts.push(` — ${handle.summary}`);
+  if (handle.dirCount != null) parts.push(` (${handle.dirCount} dirs)`);
+  return parts.join("");
+}
+
+// The working-set section: the home root (authority frame) plus read-only
+// content mounts, each as a thin handle. Progressive disclosure — handles only,
+// never full trees; deepen a mount on demand via is_navigate({ root }).
+async function formatWorkingSetSection(homeRoot: string, mounts: string[]): Promise<string | null> {
+  const lines = ["Working set:"];
+  const homeHandle = await readRootHandle(homeRoot);
+  lines.push(formatRootHandleLine("home", basename(homeRoot) || homeRoot, homeHandle));
+
+  const mountHandles = await Promise.all(mounts.map((mount) => readRootHandle(mount)));
+  mounts.forEach((mount, index) => {
+    lines.push(formatRootHandleLine("mount", mount, mountHandles[index]));
+  });
+
+  return lines.join("\n");
+}
+
 // Awareness is rooted at a *position* — the place the agent's orientation is
 // focused — not necessarily the session cwd. `navigate` moves this position;
 // when unset, callers pass `ctx.cwd` so behaviour is unchanged.
-async function buildAwareness(effectivePosition: string): Promise<{ root: string | null; repoRoot: string | null; text: string | null }> {
+async function buildAwareness(effectivePosition: string, mounts: string[] = []): Promise<{ root: string | null; repoRoot: string | null; text: string | null }> {
   // Compose the effective fractal contract along the path to the position:
   // `foundation` from the space root, deepest-present guide/purpose/now/next.
   const composed = await composeContractAlongPath(effectivePosition);
@@ -584,10 +656,16 @@ async function buildAwareness(effectivePosition: string): Promise<{ root: string
     );
   }
 
+  // Working set: the home root (authority frame, above) plus read-only content
+  // mounts, surfaced as thin handles. Anchored on the space root so "home"
+  // names the authority frame, not a deep position within it.
+  const workingSet = await formatWorkingSetSection(composed.spaceRoot, mounts);
+
   const parts = [
     pathContext && repoRoot ? formatPositionSection(effectivePosition, repoRoot, pathContext) : null,
     formatStateSection(status),
     block.trim(),
+    workingSet,
     ...drift,
   ].filter(Boolean);
   return { root: composed.spaceRoot, repoRoot, text: parts.length ? parts.join("\n\n") : null };
@@ -600,6 +678,10 @@ export default function (pi: ExtensionAPI) {
   // Session-persistent orientation focus. Unset → awareness roots at ctx.cwd.
   // `navigate` moves this; it never touches the session cwd or file-op paths.
   let position: string | null = null;
+  // The conversation's working set beyond home: mounted roots (absolute, deduped).
+  // Mounts are content, never authority — read-only reference surfaced as thin
+  // handles. Mounting never changes `position`/authority, cwd, or file-op paths.
+  let mounts: string[] = [];
   const fdCommand = resolveFdCommand();
   const gitRootCache = new Map<string, string | null>();
   let autocompleteFailureShown = false;
@@ -614,9 +696,86 @@ export default function (pi: ExtensionAPI) {
     await refreshAwareness(cwd);
   }
 
+  // Add a mounted root (absolute, deduped). Returns false if already mounted.
+  function addMount(root: string): boolean {
+    const abs = resolvePath(root);
+    if (mounts.includes(abs)) return false;
+    mounts.push(abs);
+    return true;
+  }
+
+  // Remove a mount matching by resolved absolute path or basename. Returns the
+  // removed root, or null when nothing matched.
+  function removeMount(query: string): string | null {
+    const abs = resolvePath(query);
+    const name = basename(query);
+    const match = mounts.find((mount) => mount === abs || basename(mount) === name);
+    if (!match) return null;
+    mounts = mounts.filter((mount) => mount !== match);
+    return match;
+  }
+
+  // Resolve a `root` arg (absolute path or basename) to a mounted root, or null.
+  function resolveMount(query: string): string | null {
+    const abs = resolvePath(query);
+    const name = basename(query);
+    return mounts.find((mount) => mount === abs || basename(mount) === name) ?? null;
+  }
+
+  // Look into a mount: compose its view at `subPath` and return it as read-only
+  // content. Never changes `position`/authority — the mount's _agent/ is
+  // reference, not the operating contract. Returns the view in the tool result,
+  // not the persistent awareness.
+  async function navigateMount(rootArg: string, rawPath: string): Promise<ToolResult> {
+    const mountRoot = resolveMount(rootArg);
+    if (!mountRoot) {
+      const available = mounts.length ? mounts.join(", ") : "(none mounted)";
+      return fail(`No mounted root matches "${rootArg}". Mounted roots: ${available}. Use is_mount to add one.`);
+    }
+
+    const subPath = rawPath === "" || rawPath === "." ? mountRoot : resolvePath(mountRoot, rawPath);
+    if (!isPathInside(subPath, mountRoot)) {
+      return fail(`Refusing to look outside the mounted root (${mountRoot}): ${subPath}`);
+    }
+
+    let stats: ReturnType<typeof statSync>;
+    try {
+      stats = statSync(subPath);
+    } catch {
+      return fail(`No such path in mount: ${subPath}`);
+    }
+    if (!stats.isDirectory()) {
+      return fail(`Not a directory: ${subPath}`);
+    }
+
+    let composed: Awaited<ReturnType<typeof composeContractAlongPath>>;
+    let block: string;
+    try {
+      composed = await composeContractAlongPath(subPath);
+      block = await assembleAwareness({
+        root: subPath,
+        contract: composed.contract,
+        lastSha: undefined,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return fail(`Failed to read mounted content at ${subPath}: ${message}`);
+    }
+
+    const rel = relative(mountRoot, subPath) || ".";
+    const header = [
+      "Mounted content (read-only) — its `_agent/` is reference, not your operating contract.",
+      `mount: ${mountRoot}`,
+      `position: ${rel}`,
+    ];
+    if (composed.spaceRoot) header.push(`mount space root: ${composed.spaceRoot}`);
+    const body = block.trim();
+    return ok([header.join("\n"), body].filter(Boolean).join("\n\n"));
+  }
+
   async function refreshAwareness(cwd: string): Promise<void> {
     try {
-      const awareness = await buildAwareness(effectivePosition(cwd));
+      const awareness = await buildAwareness(effectivePosition(cwd), mounts);
       cachedAwareness = awareness.text;
       cachedRoot = awareness.root;
       cachedRepoRoot = awareness.repoRoot;
@@ -1100,15 +1259,26 @@ export default function (pi: ExtensionAPI) {
     name: "is_navigate",
     label: "IS Navigate",
     description:
-      "Move your awareness focus to a position in the space — re-derives orientation (purpose/now/guide/tree) for that branch using the fractal-composed contract. Does not change the working directory; read/edit/bash still take explicit paths.",
-    promptSnippet: "Re-root orientation at a branch of the space (orientation only; cwd unchanged)",
+      "Move your awareness focus to a position in the space — re-derives orientation (purpose/now/guide/tree) for that branch using the fractal-composed contract. Does not change the working directory; read/edit/bash still take explicit paths. Pass `root` with a mounted root (from is_mount) to look into that mount instead: returns its composed view at `path` as read-only content — a mount's _agent/ is reference, never your operating contract — and never changes your authority position.",
+    promptSnippet: "Re-root orientation at a branch of home (orientation only; cwd unchanged), or look into a mounted root as read-only content",
     parameters: Type.Object({
       path: Type.String({
         description:
-          "Target position: relative to the repo root, or absolute. \"\" or \".\" focuses the repo root.",
+          "Target position: relative to the repo root (or the mounted root when `root` is set), or absolute. \"\" or \".\" focuses the root.",
       }),
+      root: Type.Optional(
+        Type.String({
+          description:
+            "Omit or \"home\" to move your home awareness focus (authority re-roots). Pass a mounted root (absolute path or basename) to look into that mount as read-only content without changing authority.",
+        }),
+      ),
     }),
     async execute(_id, params, _signal, _onUpdate, ctx) {
+      const rootArg = params.root?.trim();
+      if (rootArg && rootArg !== "home") {
+        return navigateMount(rootArg, params.path.trim());
+      }
+
       // Resolve against the repo root, falling back to the current awareness
       // root or cwd so navigate works before the first awareness build.
       const repoRoot = cachedRepoRoot ?? cachedRoot ?? ctx.cwd;
@@ -1137,6 +1307,75 @@ export default function (pi: ExtensionAPI) {
       if (nowLine) lines.push(nowLine);
       else if (cachedAwareness === null) lines.push("No _agent/ contract resolves at this position.");
       return ok(lines.join("\n"));
+    },
+  });
+
+  pi.registerTool({
+    name: "is_mount",
+    label: "IS Mount",
+    description:
+      "Add a repo to this conversation's working set as a read-only content mount. Home stays your authority frame; a mount is reference only — its `_agent/` is never your operating contract. Surfaced as a thin handle in awareness; look inside it with is_navigate({ root }). Use when you need a second repo's context alongside home.",
+    promptSnippet: "Mount another repo as read-only content in the working set (home stays authority)",
+    parameters: Type.Object({
+      path: Type.String({
+        description: "Repo to mount: relative to the home repo root, or absolute.",
+      }),
+    }),
+    async execute(_id, params, _signal, _onUpdate, ctx) {
+      const homeRoot = cachedRepoRoot ?? cachedRoot ?? ctx.cwd;
+      const raw = params.path.trim();
+      if (!raw) return fail("Provide a path to mount.");
+      const target = resolvePath(homeRoot, raw);
+
+      let stats: ReturnType<typeof statSync>;
+      try {
+        stats = statSync(target);
+      } catch {
+        return fail(`No such path: ${target}`);
+      }
+      if (!stats.isDirectory()) {
+        return fail(`Not a directory: ${target}`);
+      }
+      if (isPathInside(target, homeRoot)) {
+        return fail(`Already reachable from home (${homeRoot}); no mount needed: ${target}`);
+      }
+      if (!addMount(target)) {
+        return fail(`Already mounted: ${target}`);
+      }
+
+      await refreshAwareness(ctx.cwd);
+
+      const handle = await readRootHandle(target);
+      const lines = [`Mounted (read-only): ${target}`];
+      if (handle.summary) lines.push(`  ${handle.summary}`);
+      lines.push("Surfaced as a working-set handle. Look inside with is_navigate({ root, path }). It is content, not authority.");
+      return ok(lines.join("\n"));
+    },
+  });
+
+  pi.registerTool({
+    name: "is_unmount",
+    label: "IS Unmount",
+    description:
+      "Remove a repo from this conversation's working set. Matches by absolute path or basename. Home is never affected.",
+    promptSnippet: "Remove a mounted repo from the working set",
+    parameters: Type.Object({
+      path: Type.String({
+        description: "Mounted root to remove: absolute path or basename, as shown in the working set.",
+      }),
+    }),
+    async execute(_id, params, _signal, _onUpdate, ctx) {
+      const raw = params.path.trim();
+      if (!raw) return fail("Provide a mounted root to remove.");
+
+      const removed = removeMount(raw);
+      if (!removed) {
+        const available = mounts.length ? mounts.join(", ") : "(none mounted)";
+        return fail(`Not mounted: ${raw}. Mounted roots: ${available}.`);
+      }
+
+      await refreshAwareness(ctx.cwd);
+      return ok(`Unmounted: ${removed}`);
     },
   });
 
