@@ -3,10 +3,18 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Pi extension for IdeaSpaces — local-first CLI-backed tools and skills",
-  "keywords": ["pi-package", "ideaspaces", "agent-skills"],
+  "keywords": [
+    "pi-package",
+    "ideaspaces",
+    "agent-skills"
+  ],
   "pi": {
-    "extensions": ["./src/index.ts"],
-    "skills": ["./skills"]
+    "extensions": [
+      "./src/index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
   },
   "scripts": {
     "build:reference": "node reference.mjs",
@@ -15,7 +23,7 @@
   },
   "dependencies": {
     "@ideaspaces/cli": "git+https://github.com/IdeaSpaces-xyz/cli.git#a4f80379667eeca165c2965c8e58c234a25880cc",
-    "@ideaspaces/sdk": "git+https://github.com/IdeaSpaces-xyz/sdk.git#69d147d557c7fb2c50ce0821016165b19ec0258a"
+    "@ideaspaces/sdk": "github:IdeaSpaces-xyz/sdk#56f8880581423982faa1680de11a5478906aee01"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
