@@ -15,7 +15,11 @@ import {
   spaceRootLevel,
   currentBranchLevel,
   extractSummary,
+  mintChangeId,
+  appendTrailers,
+  isValidChangeId,
 } from "@ideaspaces/sdk";
+import type { Trailers } from "@ideaspaces/sdk";
 
 type CliResult = { out: string; err: string; code: number };
 
@@ -682,6 +686,10 @@ export default function (pi: ExtensionAPI) {
   // Mounts are content, never authority — read-only reference surfaced as thin
   // handles. Mounting never changes `position`/authority, cwd, or file-op paths.
   let mounts: string[] = [];
+  // The active Change — an idea-snapshot coordinate stamped as a Change-Id
+  // trailer on every commit of one decision, across repos. Unset → commits carry
+  // no Change-Id. Opened with `is_change_open`, cleared with `is_change_close`.
+  let currentChangeId: string | null = null;
   const fdCommand = resolveFdCommand();
   const gitRootCache = new Map<string, string | null>();
   let autocompleteFailureShown = false;
@@ -1502,6 +1510,19 @@ export default function (pi: ExtensionAPI) {
       all: Type.Optional(
         Type.Boolean({ description: "Commit all staged IdeaSpaces knowledge (markdown + _agent/) instead of explicit paths" }),
       ),
+      op: Type.Optional(
+        Type.Union(
+          [
+            Type.Literal("create"),
+            Type.Literal("update"),
+            Type.Literal("move"),
+            Type.Literal("delete"),
+            Type.Literal("restructure"),
+            Type.Literal("capture"),
+          ],
+          { description: "Optional Op trailer — the kind of change (the meaning lives in the message body)" },
+        ),
+      ),
       cwd: Type.Optional(
         Type.String({
           description:
@@ -1510,7 +1531,19 @@ export default function (pi: ExtensionAPI) {
       ),
     }),
     async execute(_id, params, _signal, _onUpdate, ctx) {
-      const args = ["commit", "-m", params.message];
+      // Stamp the Change layer via the shared lib: the active Change-Id (if one is
+      // open) plus an optional Op. `appendTrailers` merges into the message; git
+      // `-m` preserves the block and parses the trailers. Author stays the person
+      // (set by the CLI); the message enrichment is additive.
+      const trailers: Trailers = {};
+      if (params.op) trailers.op = params.op;
+      if (currentChangeId) trailers.changeId = currentChangeId;
+      const message =
+        trailers.op || trailers.changeId
+          ? appendTrailers(params.message, trailers)
+          : params.message;
+
+      const args = ["commit", "-m", message];
       if (params.all) args.push("--all");
       else if (params.paths?.length) args.push(...params.paths);
       const result = await run(args, undefined, params.cwd || ctx.cwd);
@@ -1519,6 +1552,54 @@ export default function (pi: ExtensionAPI) {
         await refreshSpaceUi(ctx, params.cwd || ctx.cwd);
       }
       return result;
+    },
+  });
+
+  pi.registerTool({
+    name: "is_change_open",
+    label: "IS Change Open",
+    description:
+      "Open a Change — an idea-snapshot coordinate stamped as a Change-Id trailer on every commit of one decision, in any repo. Use when a decision will span multiple commits, files, or repos; skip it for a single ordinary commit (there it just duplicates the conversation). Pass `handle` to mint a fresh id, or `id` to continue an existing Change (e.g. recovered from its Note) across sessions.",
+    promptSnippet: "Open a Change-Id for a decision spanning multiple commits/repos",
+    parameters: Type.Object({
+      handle: Type.Optional(
+        Type.String({
+          description: "Short kebab-ish handle for a new Change, e.g. 'token-bucket'. Ignored if `id` is given.",
+        }),
+      ),
+      id: Type.Optional(
+        Type.String({
+          description: "Existing Change-Id (chg_…) to continue across sessions — reuse the id recorded in the Change's Note.",
+        }),
+      ),
+    }),
+    async execute(_id, params) {
+      if (params.id) {
+        if (!isValidChangeId(params.id)) return fail(`Not a valid Change-Id: ${params.id}`);
+        currentChangeId = params.id;
+      } else if (params.handle?.trim()) {
+        currentChangeId = mintChangeId(params.handle);
+      } else {
+        return fail("Provide `handle` to mint a new Change, or `id` to continue one.");
+      }
+      return ok(
+        `Change open: ${currentChangeId}. It stamps every is_commit until is_change_close. Find its arc later with: git log --grep="Change-Id: ${currentChangeId}"`,
+      );
+    },
+  });
+
+  pi.registerTool({
+    name: "is_change_close",
+    label: "IS Change Close",
+    description:
+      "Close the active Change so later commits no longer carry its Change-Id. The decision's arc stays queryable in git history.",
+    promptSnippet: "Close the active Change-Id",
+    parameters: Type.Object({}),
+    async execute() {
+      if (!currentChangeId) return ok("No Change is open.");
+      const closed = currentChangeId;
+      currentChangeId = null;
+      return ok(`Change closed: ${closed}.`);
     },
   });
 
