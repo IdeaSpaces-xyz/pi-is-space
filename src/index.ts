@@ -675,6 +675,40 @@ async function buildAwareness(effectivePosition: string, mounts: string[] = []):
   return { root: composed.spaceRoot, repoRoot, text: parts.length ? parts.join("\n\n") : null };
 }
 
+/** Wrap a bare id or principal into `agent:<id>@ideaspaces` (domain platform-set). */
+function agentPrincipalFromId(id: string): string {
+  const bare = id.replace(/^agent:/, "").replace(/@.*$/, "").trim();
+  return `agent:${bare}@ideaspaces`;
+}
+
+/** Local git `user.email` for the repo at `cwd`, or null. Offline, read-only. */
+function gitConfigUserEmail(cwd: string): string | null {
+  try {
+    const r = spawnSync("git", ["config", "user.email"], { cwd, encoding: "utf-8" });
+    const v = (r.stdout ?? "").trim();
+    return v || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve the local agent's signing principal, offline: an explicit
+ * `IDEASPACES_AGENT_ID` override wins; otherwise derive `agent:<username>-pi`
+ * from the person identity the CLI writes to git `user.email`
+ * (`person:<username>@ideaspaces`). Returns null when neither is available yet
+ * (e.g. a fresh clone before its first identity-bearing commit) — the caller
+ * simply omits `Co-authored-by`, which is additive.
+ */
+function resolveAgentPrincipal(cwd: string): string | null {
+  const override = process.env.IDEASPACES_AGENT_ID?.trim();
+  if (override) return agentPrincipalFromId(override);
+  const email = gitConfigUserEmail(cwd);
+  const m = email?.match(/^person:(.+)@ideaspaces$/);
+  if (m) return `agent:${m[1]}-pi@ideaspaces`;
+  return null;
+}
+
 export default function (pi: ExtensionAPI) {
   let cachedAwareness: string | null = null;
   let cachedRoot: string | null = null;
@@ -690,6 +724,10 @@ export default function (pi: ExtensionAPI) {
   // trailer on every commit of one decision, across repos. Unset → commits carry
   // no Change-Id. Opened with `is_change_open`, cleared with `is_change_close`.
   let currentChangeId: string | null = null;
+  // The local agent's signing principal (`agent:<id>@ideaspaces`), resolved once
+  // and cached: `IDEASPACES_AGENT_ID` override, else derived from the person
+  // identity in git `user.email`. Null until resolved (retried each commit).
+  let agentPrincipal: string | null = null;
   const fdCommand = resolveFdCommand();
   const gitRootCache = new Map<string, string | null>();
   let autocompleteFailureShown = false;
@@ -1531,25 +1569,31 @@ export default function (pi: ExtensionAPI) {
       ),
     }),
     async execute(_id, params, _signal, _onUpdate, ctx) {
-      // Stamp the Change layer via the shared lib: the active Change-Id (if one is
-      // open) plus an optional Op. `appendTrailers` merges into the message; git
-      // `-m` preserves the block and parses the trailers. Author stays the person
-      // (set by the CLI); the message enrichment is additive.
+      // Stamp the Change layer via the shared lib. Per-commit provenance rides
+      // every agent-driven commit: Co-authored-by (the agent that assisted) and
+      // Conversation (the pi session id). Change-Id + Op ride only when set.
+      // `appendTrailers` merges into the message; git `-m` preserves the block;
+      // author stays the person (CLI-set). All additive.
+      const cwd = params.cwd || ctx.cwd;
       const trailers: Trailers = {};
       if (params.op) trailers.op = params.op;
       if (currentChangeId) trailers.changeId = currentChangeId;
+      if (!agentPrincipal) agentPrincipal = resolveAgentPrincipal(cwd);
+      if (agentPrincipal) trailers.coAuthoredBy = [`Pi <${agentPrincipal}>`];
+      const sessionId = ctx.sessionManager.getSessionId();
+      if (sessionId) trailers.conversation = sessionId;
       const message =
-        trailers.op || trailers.changeId
+        trailers.op || trailers.changeId || trailers.coAuthoredBy || trailers.conversation
           ? appendTrailers(params.message, trailers)
           : params.message;
 
       const args = ["commit", "-m", message];
       if (params.all) args.push("--all");
       else if (params.paths?.length) args.push(...params.paths);
-      const result = await run(args, undefined, params.cwd || ctx.cwd);
+      const result = await run(args, undefined, cwd);
       if (!isErrorResult(result)) {
-        await refreshAwareness(params.cwd || ctx.cwd);
-        await refreshSpaceUi(ctx, params.cwd || ctx.cwd);
+        await refreshAwareness(cwd);
+        await refreshSpaceUi(ctx, cwd);
       }
       return result;
     },
