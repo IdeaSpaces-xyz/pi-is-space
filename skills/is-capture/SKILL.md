@@ -5,7 +5,7 @@ description: >
   remember, save this, write this into the space, or when a decision/finding has
   crystallized. The skill chooses the mechanism: `is_write` for Notes, native
   edits for existing docs/specs, then `is_commit` for the agreement boundary.
-allowed-tools: "is_write is_status is_commit is_sync context_cleanup read edit write bash"
+allowed-tools: "is_write is_status is_commit is_push context_cleanup read edit write bash"
 user-invocable: false
 ---
 
@@ -35,7 +35,7 @@ Canonical protocols: read [capture](../../reference/capture.md) and [writing](..
 | Purpose / Now / Note-style markdown refinement | `is_write` with safe-update `sha` |
 | Existing spec/doc/README/agent contract edit | native `edit` / `write`, then `is_commit` with explicit paths |
 | File move/delete | native `bash` (`git mv`, `rm`), then `is_commit` with explicit paths |
-| User asks to sync/share after capture | `is-sync` / `is_sync` |
+| User asks to share/push after capture | `is-push` / `is_push` |
 
 `is_write` is a capture primitive, not the outer intent. Reach for it inside this skill when the target is a Note that should carry Layer 1 frontmatter (`name`, `summary`) and optional Layer 2 fields (`tags`, `attached_to`). Use native edits for README/spec/docs and `_agent/` primitives that are not Note-style files; still end at the same capture boundary with `is_commit` unless the user explicitly wants local draft state.
 
@@ -58,7 +58,7 @@ If yes:
    - `force: true` only after re-reading and reconciling divergent content
 4. Show what changed when useful. The user confirms the capture boundary.
 5. Commit with `is_commit({ message, all: true })` for staged knowledge, or explicit `paths` for native edits. Never sweep unrelated staged work.
-6. Optionally use **is-sync** / `is_sync` to align with remote.
+6. Optionally use **is-push** / `is_push` to share with the remote (or **is-pull** first to get the latest).
 7. Cleanup is separate from capture and is owned by `pi-local-context`. After a meaningful capture or any natural boundary where context is cluttered, offer a cleanup preview and use the `context-cleanup` skill / `context_cleanup` tool if it appears in your available tools. If `context_cleanup` is not available, skip the cleanup offer.
 
 If the user runs `/is-commit`, treat that as confirmation and don't re-ask. If the user says no, drop it and don't re-ask.

@@ -30,11 +30,11 @@ pi -e /path/to/pi-is-space
 
 The package has three surfaces:
 
-- **Skills** — agent procedures for user intent (`is-capture`, `is-sync`).
+- **Skills** — agent procedures for user intent (`is-capture`, `is-push`, `is-pull`).
 - **Tools** — low-level primitives the skills call (`is_write`, `is_commit`).
-- **Commands** — human-triggered Pi UI flows (`/is-sync`, `/is-commit`).
+- **Commands** — human-triggered Pi UI flows (`/is-push`, `/is-pull`, `/is-commit`).
 
-Local conversation/session hygiene lives in `pi-local-context` (`context_conversation`, `context_recall`, `context_cleanup`). This package stays focused on Space state: awareness, capture, commit, sync, auth, setup, publish.
+Local conversation/session hygiene lives in `pi-local-context` (`context_conversation`, `context_recall`, `context_cleanup`). This package stays focused on Space state: awareness, capture, commit, push, pull, auth, setup, publish.
 
 Pi's native `read`, `edit`, `write`, and `bash` cover navigation, inspection, and ordinary edits. `pi-is-space` adds IdeaSpaces-aware primitives used by the skills and commands:
 
@@ -43,7 +43,8 @@ Pi's native `read`, `edit`, `write`, and `bash` cover navigation, inspection, an
 | `is_status` | Inspect git/capture state, or return a file `sha` for safe Note updates. |
 | `is_write` | Capture primitive: create/update a markdown Note with Layer 1 frontmatter, stage it in git, and return a content `sha`. Normally reached through the `is-capture` skill. |
 | `is_commit` | Capture primitive: commit only explicit paths or all staged knowledge after confirmation; never sweep unrelated staged work. |
-| `is_sync` | Sync primitive: integrate remote changes and push committed captures; refuses while staged knowledge remains uncommitted. |
+| `is_pull` | Pull primitive: integrate remote changes into the local space; never pushes; refuses to integrate on staged/dirty tree. |
+| `is_push` | Push primitive: send committed captures to the remote; refuses on uncommitted captures, and when behind — pull first. |
 | `is_auth` | Log in / out for optional remote sync. |
 
 ## Commands
@@ -55,7 +56,8 @@ Human-facing IdeaSpaces actions are Pi-native commands:
 | `/is-setup` | Preview and scaffold the `_agent/` seed contract with Pi UI confirmation. |
 | `/is-status` | Show git/capture state and refresh the footer/widget. |
 | `/is-commit` | Review staged captures, enter a commit message, confirm, then commit them. |
-| `/is-sync` | Run `sync --dry-run`, confirm the plan, then sync committed captures. |
+| `/is-pull` | Run `pull --dry-run`, confirm the plan, then integrate remote changes. |
+| `/is-push` | Run `push --dry-run`, confirm the plan, then push committed captures. |
 | `/is-publish` | Confirm destination, retry through login if needed, then publish the space remotely. |
 
 When captures await commit, the extension shows a small widget near the editor so state stays visible without reminder spam.
@@ -90,7 +92,8 @@ Pi ships surface-specific entrypoint skills:
 **Daily loop**
 - `is-orient` — understand where you are and what's active.
 - `is-capture` — preserve agreed understanding.
-- `is-sync` — align committed captures with remote.
+- `is-push` — send committed captures to the remote.
+- `is-pull` — integrate remote changes into the local space.
 - `is-reflect` — check whether declared direction still matches reality.
 
 **Space lifecycle**
@@ -106,6 +109,6 @@ Conversation hygiene is intentionally out of scope here; install `pi-local-conte
 
 Shared protocol content lives in `reference/`, generated from the SDK canonical skill catalog with `npm run build:reference`. Entry skills stay Pi-specific while reading SDK-backed references such as `reference/capture.md`, `reference/writing.md`, and `reference/awareness.md` on demand.
 
-Capture flow: user intent → `is-capture` skill → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-sync`. Cleanup is separate local-context hygiene owned by `pi-local-context`; use `context_cleanup` from that package when available.
+Capture flow: user intent → `is-capture` skill → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-push` (or `is-pull` first). Cleanup is separate local-context hygiene owned by `pi-local-context`; use `context_cleanup` from that package when available.
 
 See `MIGRATION.md` for mapping from legacy `pi-sw-space`.
