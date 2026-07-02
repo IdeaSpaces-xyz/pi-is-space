@@ -387,17 +387,6 @@ function formatCaptureStatus(status: CaptureStatus): string {
   return lines.join("\n");
 }
 
-function formatSyncDryRun(sync: SyncDryRun): string {
-  if (!sync.upstream) return "No upstream configured — nothing to sync.\n(dry run — nothing fetched or pushed)";
-
-  const lines = [`upstream: ${sync.upstream} (ahead ${sync.ahead}, behind ${sync.behind})`];
-  if (sync.behind) lines.push("would integrate remote changes (requires clean tree)");
-  if (sync.ahead) lines.push(`would push ${sync.ahead} commit(s)`);
-  if (!sync.ahead && !sync.behind) lines.push("up to date");
-  lines.push("(dry run — nothing fetched or pushed)");
-  return lines.join("\n");
-}
-
 function createArgs(name: string | undefined, shared: boolean, apply: boolean): string[] {
   const args = ["create"];
   if (name) args.push(name);
@@ -443,7 +432,7 @@ function buildCaptureWidget(status: CaptureStatus): string[] | undefined {
   return [
     `Captures awaiting save (${status.tracked_captures.length}):`,
     ...formatPathList(status.tracked_captures, 5).split("\n"),
-    "/is-commit to save · /is-sync to push",
+    "/is-commit to save · /is-push to share",
   ];
 }
 
@@ -1249,8 +1238,66 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerCommand("is-sync", {
-    description: "Dry-run then sync committed IdeaSpaces captures",
+  pi.registerCommand("is-pull", {
+    description: "Dry-run then pull remote changes into the local space",
+    handler: async (_args, ctx) => {
+      await refreshAwareness(ctx.cwd);
+      const status = await refreshSpaceUi(ctx);
+      if (!status) {
+        ctx.ui.notify("No git-backed ideaspace status available here", "warning");
+        return;
+      }
+
+      const dryRun = await runJson<SyncDryRun>(["pull", "--dry-run"], ctx.cwd);
+      if (!dryRun.ok) {
+        ctx.ui.notify(`Pull dry-run failed:\n${dryRun.error}`, "error");
+        return;
+      }
+      if (!dryRun.data.upstream) {
+        ctx.ui.notify("No upstream configured — nothing to pull.", "info");
+        return;
+      }
+      if (!dryRun.data.behind) {
+        ctx.ui.notify("Already up to date — nothing to pull.", "info");
+        return;
+      }
+      // Integrating rewrites the tree — require it committed and clean.
+      if (status.tracked_captures.length) {
+        ctx.ui.notify(
+          `Refusing to pull: ${status.tracked_captures.length} capture(s) still await commit. Run /is-commit first.`,
+          "warning",
+        );
+        return;
+      }
+      if (status.dirty) {
+        ctx.ui.notify("Working tree is dirty — commit your changes before pulling remote updates.", "warning");
+        return;
+      }
+
+      const confirmed = await ctx.ui.confirm(
+        "Pull remote changes?",
+        `upstream ${dryRun.data.upstream}: behind ${dryRun.data.behind} commit(s)`,
+      );
+      if (!confirmed) {
+        ctx.ui.notify("Pull cancelled", "info");
+        return;
+      }
+
+      const result = await runJson<{ upstream: string | null; integrated: number }>(["pull"], ctx.cwd);
+      if (!result.ok) {
+        ctx.ui.notify(`Pull failed:\n${result.error}`, "error");
+        await refreshSpaceUi(ctx);
+        return;
+      }
+
+      await refreshAwareness(ctx.cwd);
+      await refreshSpaceUi(ctx);
+      ctx.ui.notify(`Pulled: integrated ${result.data.integrated} commit(s).`, "info");
+    },
+  });
+
+  pi.registerCommand("is-push", {
+    description: "Dry-run then push committed IdeaSpaces captures",
     handler: async (_args, ctx) => {
       await refreshAwareness(ctx.cwd);
       const status = await refreshSpaceUi(ctx);
@@ -1260,44 +1307,52 @@ export default function (pi: ExtensionAPI) {
       }
       if (status.tracked_captures.length) {
         ctx.ui.notify(
-          `Refusing to sync: ${status.tracked_captures.length} capture(s) still await commit. Run /is-commit first.`,
+          `Refusing to push: ${status.tracked_captures.length} capture(s) still await commit. Run /is-commit first.`,
           "warning",
         );
         return;
       }
 
-      const dryRun = await runJson<SyncDryRun>(["sync", "--dry-run"], ctx.cwd);
+      const dryRun = await runJson<SyncDryRun>(["push", "--dry-run"], ctx.cwd);
       if (!dryRun.ok) {
-        ctx.ui.notify(`Sync dry-run failed:\n${dryRun.error}`, "error");
+        ctx.ui.notify(`Push dry-run failed:\n${dryRun.error}`, "error");
         return;
       }
-
-      const plan = formatSyncDryRun(dryRun.data);
       if (!dryRun.data.upstream) {
-        ctx.ui.notify(plan, "info");
+        ctx.ui.notify("No upstream configured — nothing to push.", "info");
         return;
       }
-      if (status.dirty && dryRun.data.behind) {
-        ctx.ui.notify("Working tree is dirty — commit or stash changes before syncing remote updates.", "warning");
+      if (dryRun.data.behind) {
+        ctx.ui.notify(
+          `Behind by ${dryRun.data.behind} commit(s) — run /is-pull first, then push.`,
+          "warning",
+        );
+        return;
+      }
+      if (!dryRun.data.ahead) {
+        ctx.ui.notify("Already up to date — nothing to push.", "info");
         return;
       }
 
-      const confirmed = await ctx.ui.confirm("Run IdeaSpaces sync?", plan);
+      const confirmed = await ctx.ui.confirm(
+        "Push committed captures?",
+        `upstream ${dryRun.data.upstream}: ahead ${dryRun.data.ahead} commit(s)`,
+      );
       if (!confirmed) {
-        ctx.ui.notify("Sync cancelled", "info");
+        ctx.ui.notify("Push cancelled", "info");
         return;
       }
 
-      const result = await runJson<{ upstream: string | null; pushed: number; integrated: number }>(["sync"], ctx.cwd);
+      const result = await runJson<{ upstream: string | null; pushed: number }>(["push"], ctx.cwd);
       if (!result.ok) {
-        ctx.ui.notify(`Sync failed:\n${result.error}`, "error");
+        ctx.ui.notify(`Push failed:\n${result.error}`, "error");
         await refreshSpaceUi(ctx);
         return;
       }
 
       await refreshAwareness(ctx.cwd);
       await refreshSpaceUi(ctx);
-      ctx.ui.notify(`Synced: integrated ${result.data.integrated} commit(s), pushed ${result.data.pushed} commit(s).`, "info");
+      ctx.ui.notify(`Pushed ${result.data.pushed} commit(s).`, "info");
     },
   });
 
@@ -1648,13 +1703,13 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerTool({
-    name: "is_sync",
-    label: "IS Sync",
+    name: "is_pull",
+    label: "IS Pull",
     description:
-      "Sync committed IdeaSpaces state: integrate remote changes and push committed captures. Refuses while staged IdeaSpaces knowledge remains uncommitted. Use through the is-sync skill when the user asks to sync/share/push.",
-    promptSnippet: "Sync committed IdeaSpaces captures; dry-run before mutating when useful",
+      "Integrate remote IdeaSpaces changes into the local space (fetch + rebase/merge). Never pushes. Refuses to integrate while staged captures are uncommitted or the tree is dirty. Use through the is-pull skill when the user asks to pull / get the latest / update from remote.",
+    promptSnippet: "Pull remote changes into the local space; dry-run before mutating when useful",
     parameters: Type.Object({
-      dry_run: Type.Optional(Type.Boolean({ description: "Preview sync state without fetch, rebase/merge, or push" })),
+      dry_run: Type.Optional(Type.Boolean({ description: "Preview pull state without fetch or integrate" })),
       rebase: Type.Optional(Type.Boolean({ description: "Use rebase when integrating remote changes (default true)" })),
       cwd: Type.Optional(
         Type.String({
@@ -1664,9 +1719,36 @@ export default function (pi: ExtensionAPI) {
       ),
     }),
     async execute(_id, params, _signal, _onUpdate, ctx) {
-      const args = ["sync"];
+      const args = ["pull"];
       if (params.dry_run) args.push("--dry-run");
       if (params.rebase === false) args.push("--rebase=false");
+      const result = await run(args, undefined, params.cwd || ctx.cwd);
+      if (!isErrorResult(result) && !params.dry_run) {
+        await refreshAwareness(params.cwd || ctx.cwd);
+        await refreshSpaceUi(ctx, params.cwd || ctx.cwd);
+      }
+      return result;
+    },
+  });
+
+  pi.registerTool({
+    name: "is_push",
+    label: "IS Push",
+    description:
+      "Push committed IdeaSpaces captures to the remote. Refuses while staged captures are uncommitted, and refuses when behind the remote — pull first. Use through the is-push skill when the user asks to push / share / send.",
+    promptSnippet: "Push committed IdeaSpaces captures; dry-run before mutating when useful",
+    parameters: Type.Object({
+      dry_run: Type.Optional(Type.Boolean({ description: "Preview push state without fetch or push" })),
+      cwd: Type.Optional(
+        Type.String({
+          description:
+            "Absolute working directory for path resolution. Pass this if the intended cwd differs from the session start directory.",
+        }),
+      ),
+    }),
+    async execute(_id, params, _signal, _onUpdate, ctx) {
+      const args = ["push"];
+      if (params.dry_run) args.push("--dry-run");
       const result = await run(args, undefined, params.cwd || ctx.cwd);
       if (!isErrorResult(result) && !params.dry_run) {
         await refreshAwareness(params.cwd || ctx.cwd);

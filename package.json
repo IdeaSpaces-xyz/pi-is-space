@@ -22,7 +22,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ideaspaces/cli": "git+https://github.com/IdeaSpaces-xyz/cli.git#a4f80379667eeca165c2965c8e58c234a25880cc",
+    "@ideaspaces/cli": "git+https://github.com/IdeaSpaces-xyz/cli.git#3a01a3a809a135d929e584fc0a301d3ea007ff66",
     "@ideaspaces/sdk": "github:IdeaSpaces-xyz/sdk#56f8880581423982faa1680de11a5478906aee01"
   },
   "peerDependencies": {

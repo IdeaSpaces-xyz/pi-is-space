@@ -4,8 +4,8 @@ description: >
   Reference for working in an ideaspace — the five-file `_agent/` contract,
   Two Roles convention, and Pi tool surface. Use as a compatibility/reference
   entrypoint when the user asks how an ideaspace works. For active intents,
-  prefer the loop skills: is-orient, is-capture, is-sync, is-reflect, is-shape.
-allowed-tools: "is_write is_status is_commit is_sync is_auth read edit write bash"
+  prefer the loop skills: is-orient, is-capture, is-push, is-pull, is-reflect, is-shape.
+allowed-tools: "is_write is_status is_commit is_push is_pull is_auth read edit write bash"
 ---
 
 # Working in an Ideaspace
@@ -15,12 +15,12 @@ Canonical protocols: read [guide](../../reference/guide.md), [capture](../../ref
 An ideaspace is inhabited through a simple loop:
 
 ```text
-arrive → orient → inspect → act → capture → sync → reflect
+arrive → orient → inspect → act → capture → push/pull → reflect
 ```
 
 Pi handles **arrive** automatically with session-start awareness. For active work, pick the intent skill by tier:
 
-**Daily loop** — `is-orient`, `is-capture`, `is-sync`, `is-reflect`.
+**Daily loop** — `is-orient`, `is-capture`, `is-push` / `is-pull`, `is-reflect`.
 **Space lifecycle** — `is-setup`, `is-publish`, `is-shape`.
 **Reference** — `is-space`, `is-writing`.
 
@@ -29,8 +29,8 @@ Local conversation hygiene (`context-conversation`, `context-cleanup`, `context-
 You have three surfaces:
 
 - **Skills** — agent procedures for user intent. Use these first.
-- **Tools** — low-level primitives (`is_status`, `is_write`, `is_commit`, `is_sync`, `is_auth`). Skills choose these mechanisms; don't make backend choice the user's problem.
-- **Commands** — human-triggered Pi UI flows (`/is-setup`, `/is-sync`, `/is-commit`, `/is-publish`). If the user invokes one, treat it as the confirmation path.
+- **Tools** — low-level primitives (`is_status`, `is_write`, `is_commit`, `is_push`, `is_pull`, `is_auth`). Skills choose these mechanisms; don't make backend choice the user's problem.
+- **Commands** — human-triggered Pi UI flows (`/is-setup`, `/is-push`, `/is-pull`, `/is-commit`, `/is-publish`). If the user invokes one, treat it as the confirmation path.
 
 Native `read`, `edit`, `write`, and `bash` remain the default for navigation, search, source-code work, and ordinary doc edits.
 
@@ -130,9 +130,9 @@ Use inside capture after user confirmation. Commit only captured paths:
 
 It never sweeps unrelated staged user work into the capture commit.
 
-### `is_sync` — push committed captures
+### `is_push` / `is_pull` — the two directions
 
-Use **is-sync** for the outer intent. `is_sync` integrates remote changes and pushes committed captures. It refuses while staged IdeaSpaces knowledge remains uncommitted. Use `dry_run: true` to preview.
+Use **is-push** and **is-pull** for the outer intent — the two directions across the agreement boundary. `is_pull` integrates remote changes into the local space (never pushes); `is_push` sends committed captures to the remote (never pulls). Push refuses when behind — pull first. Both refuse while staged knowledge is uncommitted. Use `dry_run: true` to preview.
 
 ### Local conversation context
 

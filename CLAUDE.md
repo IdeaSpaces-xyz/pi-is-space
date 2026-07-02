@@ -23,17 +23,19 @@ IdeaSpaces-aware primitives:
 - `is_status` — inspect capture/git state and file `sha` for safe updates
 - `is_write` — capture primitive for frontmatter-aware Note writes; stages, tracks, and returns `sha`
 - `is_commit` — capture primitive; commits only tracked or explicit capture paths
-- `is_sync` — sync primitive; integrates remote changes and pushes committed captures
+- `is_pull` — pull primitive; integrates remote changes into the local space (never pushes)
+- `is_push` — push primitive; sends committed captures to the remote (refuses when behind — pull first)
 - `is_auth` — login/logout for optional sync
 
-Keep agent-facing language intent-first: orient, capture, sync, reflect. Do not make agents choose between equivalent backends at the top level.
+Keep agent-facing language intent-first: orient, capture, push, pull, reflect. Do not make agents choose between equivalent backends at the top level.
 
 Pi-native commands for human-facing flow:
 
 - `/is-setup` — preview and scaffold the `_agent/` seed contract with confirmation
 - `/is-status` — show capture/sync state and refresh UI
 - `/is-commit` — review staged captures, collect a message, confirm, commit staged knowledge
-- `/is-sync` — dry-run, confirm, sync committed captures
+- `/is-pull` — dry-run, confirm, integrate remote changes into the local space
+- `/is-push` — dry-run, confirm, push committed captures to the remote
 - `/is-publish` — check scaffold/branch state, confirm destination, publish remotely, retry through login if needed
 
 Runtime guardrails:
@@ -54,7 +56,7 @@ On session start, walk up from `cwd` looking for `_agent/`, use `@ideaspaces/sdk
 
 Use-case layer shipped in `skills/`, grouped by role:
 
-- Daily loop: is-orient, is-capture, is-sync, is-reflect
+- Daily loop: is-orient, is-capture, is-push, is-pull, is-reflect
 - Space lifecycle: is-setup, is-publish, is-shape
 - Reference: is-space, is-writing
 
@@ -64,7 +66,7 @@ Keep the layering clear: skills express user intent, tools are primitives, comma
 
 Shared protocol content lives in `reference/`, generated from the SDK canonical skill catalog with `npm run build:reference`. Keep Pi entrypoint skills surface-specific; update shared capture/writing/awareness/shaping protocols in the SDK, then regenerate `reference/`.
 
-Capture flow: user intent → `is-capture` → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-sync`. Reflect and shape use the same capture boundary when they change shared agreement. Cleanup is local conversation hygiene, not Space connector behavior; use `context_cleanup` from `pi-local-context` when that package is installed.
+Capture flow: user intent → `is-capture` → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-push` (or `is-pull` first). Reflect and shape use the same capture boundary when they change shared agreement. Cleanup is local conversation hygiene, not Space connector behavior; use `context_cleanup` from `pi-local-context` when that package is installed.
 
 ## Development
 

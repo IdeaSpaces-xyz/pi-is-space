@@ -16,7 +16,7 @@
 
 ## Behavioral changes
 
-- Tool surface is now local-capture focused: `is_write`, `is_status`, `is_commit`, `is_sync`, `is_auth`.
+- Tool surface is now local-capture focused: `is_write`, `is_status`, `is_commit`, `is_pull`, `is_push`, `is_auth`.
 - Local markdown is the source of truth; sync is optional.
 - `_agent/` awareness is assembled locally through `@ideaspaces/sdk`.
 - Setup/publish flows are Pi-native commands over the CLI: `/is-setup`, `/is-publish`.
@@ -28,5 +28,5 @@
 2. Open a local ideaspace, or run `/is-setup` to scaffold one.
 3. Validate awareness injection from `_agent/`.
 4. Validate the capture loop: `is_write` into a Note, refine with returned `sha` or `is_status`, then `is_commit`.
-5. Use `is_sync` or `/is-publish` when remote hosting is desired.
+5. Use `is_push` / `is_pull` or `/is-publish` when remote hosting is desired.
 6. Keep `pi-sw-space` only as temporary fallback, then remove.
