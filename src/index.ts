@@ -699,7 +699,11 @@ async function formatCatalogSection(
   const pullable = opts.pullable ?? [];
   if (pullable.length) {
     blocks.push(
-      ["Pullable (remote — not yet local):", ...pullable.map((p) => `  ${p.slug} (${p.namespace})`)].join("\n"),
+      [
+        "Pullable (remote — not yet local):",
+        ...pullable.map((p) => `  ${p.slug} (${p.namespace})`),
+        "  → to work on one, clone it into this folder with `ideaspaces clone` (via bash).",
+      ].join("\n"),
     );
   }
   return blocks.length ? blocks.join("\n\n") : null;
@@ -942,14 +946,14 @@ export default function (pi: ExtensionAPI) {
     return ok([header.join("\n"), body].filter(Boolean).join("\n\n"));
   }
 
-  // Fetch the remote/pullable tier once per session, best-effort and
-  // non-blocking. `catalog --json` hits the network; we fire it in the
-  // background and render whatever is cached, so no turn is delayed. Logged out
-  // (or an unreachable server) → the tier stays empty. The pullable set only
-  // changes when a repo is cloned (not a pi-is-space operation), so once is enough.
+  // Fetch the remote/pullable tier once, best-effort and non-blocking.
+  // `catalog --json` hits the network; we fire it in the background and render
+  // whatever is cached, so no turn is delayed. Logged out → the call succeeds
+  // with an empty tier. The latch is reset by `is_auth` (login/logout change the
+  // precondition) and by a transient failure, so both can re-fetch.
   function refreshPullable(cwd: string): void {
     if (pullableFetched) return;
-    pullableFetched = true;
+    pullableFetched = true; // guard against concurrent fires while in flight
     void runJson<{ entries: Array<{ slug: string; namespace: string; location: string }> }>(
       ["catalog", "--json"],
       cwd,
@@ -959,10 +963,14 @@ export default function (pi: ExtensionAPI) {
           pullable = result.data.entries
             .filter((entry) => entry.location === "online-only")
             .map((entry) => ({ slug: entry.slug, namespace: entry.namespace }));
+        } else {
+          // Transient failure (e.g. server unreachable): retry next turn rather
+          // than silencing the tier for the whole session.
+          pullableFetched = false;
         }
       })
       .catch(() => {
-        // Best-effort: no remote tier this session if the catalog call fails.
+        pullableFetched = false;
       });
   }
 
@@ -1653,14 +1661,23 @@ export default function (pi: ExtensionAPI) {
     async execute(_id, params) {
       const action = params.action ?? "login";
       switch (action) {
-        case "login":
-          return run(["login"]);
+        case "login": {
+          const result = await run(["login"]);
+          if (!isErrorResult(result)) {
+            // Now possibly logged in — re-fetch the pullable tier next turn.
+            pullableFetched = false;
+          }
+          return result;
+        }
         case "logout": {
           const result = await run(["power", "logout"]);
           if (!isErrorResult(result)) {
             cachedAwareness = null;
             cachedRoot = null;
             cachedRepoRoot = null;
+            // Drop the remote tier immediately; the next turn re-fetches (→ empty).
+            pullable = [];
+            pullableFetched = false;
           }
           return result;
         }
