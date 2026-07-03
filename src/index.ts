@@ -642,7 +642,11 @@ const MAX_CATALOG_REPOS = 20;
 // parallel across repos.
 async function formatCatalogSection(
   workspaceFolder: string,
-  opts: { povRepoRoot: string | null; mounts: string[] },
+  opts: {
+    povRepoRoot: string | null;
+    mounts: string[];
+    pullable?: Array<{ slug: string; namespace: string }>;
+  },
 ): Promise<string | null> {
   let repos: string[];
   try {
@@ -652,9 +656,9 @@ async function formatCatalogSection(
       .map((entry) => join(workspaceFolder, entry.name))
       .filter((dir) => existsSync(join(dir, ".git")));
   } catch {
-    return null;
+    // Unreadable folder: no local tier, but the pullable tier may still render.
+    repos = [];
   }
-  if (repos.length === 0) return null;
   repos.sort((a, b) => basename(a).localeCompare(basename(b)));
 
   const pov = opts.povRepoRoot ? resolvePath(opts.povRepoRoot) : null;
@@ -684,9 +688,21 @@ async function formatCatalogSection(
     }),
   );
 
-  const lines = ["Repos in scope (local):", ...rows];
-  if (overflow > 0) lines.push(`  …and ${overflow} more`);
-  return lines.join("\n");
+  const blocks: string[] = [];
+  if (rows.length) {
+    const lines = ["Repos in scope (local):", ...rows];
+    if (overflow > 0) lines.push(`  …and ${overflow} more`);
+    blocks.push(lines.join("\n"));
+  }
+  // The remote/pullable tier: account spaces not yet on disk (from the CLI
+  // `catalog` verb). Empty when logged out. Pull one to bring it local.
+  const pullable = opts.pullable ?? [];
+  if (pullable.length) {
+    blocks.push(
+      ["Pullable (remote — not yet local):", ...pullable.map((p) => `  ${p.slug} (${p.namespace})`)].join("\n"),
+    );
+  }
+  return blocks.length ? blocks.join("\n\n") : null;
 }
 
 // Awareness is rooted at a *position* — the place the agent's orientation is
@@ -697,6 +713,7 @@ async function buildAwareness(
   effectivePosition: string,
   mounts: string[] = [],
   workspaceFolder: string = effectivePosition,
+  pullable: Array<{ slug: string; namespace: string }> = [],
 ): Promise<{ root: string | null; repoRoot: string | null; text: string | null }> {
   // Compose the effective fractal contract along the path to the position:
   // `foundation` from the space root, deepest-present guide/purpose/now/next.
@@ -714,8 +731,9 @@ async function buildAwareness(
     }
   }
 
-  // The catalog of local repos in the workspace folder — the POV's siblings.
-  const catalog = await formatCatalogSection(workspaceFolder, { povRepoRoot: repoRoot, mounts });
+  // The catalog: local repos in the workspace folder (the POV's siblings) plus
+  // the remote/pullable tier when logged in.
+  const catalog = await formatCatalogSection(workspaceFolder, { povRepoRoot: repoRoot, mounts, pullable });
 
   // No ideaspace contract at this position: we're at a bare workspace folder (or
   // a plain repo with no `_agent/`). There's no fractal contract to assemble, so
@@ -819,6 +837,12 @@ export default function (pi: ExtensionAPI) {
   // Mounts are content, never authority — read-only reference surfaced as thin
   // handles. Mounting never changes `position`/authority, cwd, or file-op paths.
   let mounts: string[] = [];
+  // The remote/pullable tier of the catalog: the account's spaces not yet on
+  // disk. Fetched once per session via the CLI `catalog` verb (a network call),
+  // then cached; empty when logged out. Filled in the background so the first
+  // turn never blocks on the network.
+  let pullable: Array<{ slug: string; namespace: string }> = [];
+  let pullableFetched = false;
   // The active Change — an idea-snapshot coordinate stamped as a Change-Id
   // trailer on every commit of one decision, across repos. Unset → commits carry
   // no Change-Id. Opened with `is_change_open`, cleared with `is_change_close`.
@@ -918,9 +942,34 @@ export default function (pi: ExtensionAPI) {
     return ok([header.join("\n"), body].filter(Boolean).join("\n\n"));
   }
 
+  // Fetch the remote/pullable tier once per session, best-effort and
+  // non-blocking. `catalog --json` hits the network; we fire it in the
+  // background and render whatever is cached, so no turn is delayed. Logged out
+  // (or an unreachable server) → the tier stays empty. The pullable set only
+  // changes when a repo is cloned (not a pi-is-space operation), so once is enough.
+  function refreshPullable(cwd: string): void {
+    if (pullableFetched) return;
+    pullableFetched = true;
+    void runJson<{ entries: Array<{ slug: string; namespace: string; location: string }> }>(
+      ["catalog", "--json"],
+      cwd,
+    )
+      .then((result) => {
+        if (result.ok) {
+          pullable = result.data.entries
+            .filter((entry) => entry.location === "online-only")
+            .map((entry) => ({ slug: entry.slug, namespace: entry.namespace }));
+        }
+      })
+      .catch(() => {
+        // Best-effort: no remote tier this session if the catalog call fails.
+      });
+  }
+
   async function refreshAwareness(cwd: string): Promise<void> {
+    refreshPullable(cwd);
     try {
-      const awareness = await buildAwareness(effectivePosition(cwd), mounts, cwd);
+      const awareness = await buildAwareness(effectivePosition(cwd), mounts, cwd, pullable);
       cachedAwareness = awareness.text;
       cachedRoot = awareness.root;
       cachedRepoRoot = awareness.repoRoot;
