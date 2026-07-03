@@ -657,10 +657,19 @@ async function formatCatalogSection(
   if (repos.length === 0) return null;
   repos.sort((a, b) => basename(a).localeCompare(basename(b)));
 
-  const overflow = repos.length - MAX_CATALOG_REPOS;
-  const shown = overflow > 0 ? repos.slice(0, MAX_CATALOG_REPOS) : repos;
   const pov = opts.povRepoRoot ? resolvePath(opts.povRepoRoot) : null;
   const mountSet = new Set(opts.mounts.map((mount) => resolvePath(mount)));
+  // Keep the POV and mounted repos in view even past the cap — the agent's own
+  // position must never be the row that gets truncated. Priority repos first,
+  // the rest alphabetically, then slice (never below the priority count).
+  const isPriority = (repo: string): boolean => {
+    const abs = resolvePath(repo);
+    return abs === pov || mountSet.has(abs);
+  };
+  const priority = repos.filter(isPriority);
+  const ordered = [...priority, ...repos.filter((repo) => !isPriority(repo))];
+  const shown = ordered.slice(0, Math.max(MAX_CATALOG_REPOS, priority.length));
+  const overflow = repos.length - shown.length;
 
   const rows = await Promise.all(
     shown.map(async (repo) => {
