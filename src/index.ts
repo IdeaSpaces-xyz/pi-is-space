@@ -603,14 +603,104 @@ async function formatWorkingSetSection(homeRoot: string, mounts: string[]): Prom
   return lines.join("\n");
 }
 
+// One-line sync state for a repo, from gitState: `local-only` (no upstream),
+// `synced`, `ahead N`, `behind N`, `diverged +A/-B`; suffixed ` · dirty` when
+// the tree is dirty. `unknown` when git state can't be read.
+async function readRepoState(repoRoot: string): Promise<string> {
+  let state: Awaited<ReturnType<typeof gitState>>;
+  try {
+    state = await gitState(repoRoot);
+  } catch {
+    return "unknown";
+  }
+  let base: string;
+  if (state.ahead == null || state.behind == null) {
+    base = "local-only";
+  } else if (state.ahead > 0 && state.behind > 0) {
+    base = `diverged +${state.ahead}/-${state.behind}`;
+  } else if (state.ahead > 0) {
+    base = `ahead ${state.ahead}`;
+  } else if (state.behind > 0) {
+    base = `behind ${state.behind}`;
+  } else {
+    base = "synced";
+  }
+  return state.dirty ? `${base} · dirty` : base;
+}
+
+// Cap on catalog rows so a folder with many repos can't bloat the awareness
+// block; the remainder is summarised as "…and N more".
+const MAX_CATALOG_REPOS = 20;
+
+// The catalog: git repos that are immediate children of the workspace folder
+// (the session cwd / `--context` root), each a thin handle tagged with its sync
+// state, the POV, and whether it's mounted. This is the LOCAL tier — the repos
+// the agent can navigate into or pull; the remote/pullable tier is added when
+// IdeaSpace is connected. Repos only: plain dirs are ordinary files the agent
+// reads directly. Returns null when the folder holds no child repos. Immediate
+// children only (repos are siblings), not recursive; capped and rendered in
+// parallel across repos.
+async function formatCatalogSection(
+  workspaceFolder: string,
+  opts: { povRepoRoot: string | null; mounts: string[] },
+): Promise<string | null> {
+  let repos: string[];
+  try {
+    const entries = await readdir(workspaceFolder, { withFileTypes: true });
+    repos = entries
+      .filter((entry) => entry.isDirectory() && !AUTOCOMPLETE_EXCLUDES.includes(entry.name))
+      .map((entry) => join(workspaceFolder, entry.name))
+      .filter((dir) => existsSync(join(dir, ".git")));
+  } catch {
+    return null;
+  }
+  if (repos.length === 0) return null;
+  repos.sort((a, b) => basename(a).localeCompare(basename(b)));
+
+  const pov = opts.povRepoRoot ? resolvePath(opts.povRepoRoot) : null;
+  const mountSet = new Set(opts.mounts.map((mount) => resolvePath(mount)));
+  // Keep the POV and mounted repos in view even past the cap — the agent's own
+  // position must never be the row that gets truncated. Priority repos first,
+  // the rest alphabetically, then slice (never below the priority count).
+  const isPriority = (repo: string): boolean => {
+    const abs = resolvePath(repo);
+    return abs === pov || mountSet.has(abs);
+  };
+  const priority = repos.filter(isPriority);
+  const ordered = [...priority, ...repos.filter((repo) => !isPriority(repo))];
+  const shown = ordered.slice(0, Math.max(MAX_CATALOG_REPOS, priority.length));
+  const overflow = repos.length - shown.length;
+
+  const rows = await Promise.all(
+    shown.map(async (repo) => {
+      const [summary, state] = await Promise.all([readRootSummary(repo), readRepoState(repo)]);
+      const tags = [state];
+      if (pov && resolvePath(repo) === pov) tags.push("POV");
+      if (mountSet.has(resolvePath(repo))) tags.push("mounted");
+      const parts = [`  ${basename(repo)}`];
+      if (summary) parts.push(` — ${summary}`);
+      parts.push(` (${tags.join(" · ")})`);
+      return parts.join("");
+    }),
+  );
+
+  const lines = ["Repos in scope (local):", ...rows];
+  if (overflow > 0) lines.push(`  …and ${overflow} more`);
+  return lines.join("\n");
+}
+
 // Awareness is rooted at a *position* — the place the agent's orientation is
 // focused — not necessarily the session cwd. `navigate` moves this position;
-// when unset, callers pass `ctx.cwd` so behaviour is unchanged.
-async function buildAwareness(effectivePosition: string, mounts: string[] = []): Promise<{ root: string | null; repoRoot: string | null; text: string | null }> {
+// when unset, callers pass `ctx.cwd` so behaviour is unchanged. `workspaceFolder`
+// is the session cwd (the `--context` root); the catalog scans its child repos.
+async function buildAwareness(
+  effectivePosition: string,
+  mounts: string[] = [],
+  workspaceFolder: string = effectivePosition,
+): Promise<{ root: string | null; repoRoot: string | null; text: string | null }> {
   // Compose the effective fractal contract along the path to the position:
   // `foundation` from the space root, deepest-present guide/purpose/now/next.
   const composed = await composeContractAlongPath(effectivePosition);
-  if (!composed.spaceRoot) return { root: null, repoRoot: null, text: null };
 
   const status = await readCaptureStatus(effectivePosition);
   let repoRoot = status?.repoRoot ?? null;
@@ -622,6 +712,25 @@ async function buildAwareness(effectivePosition: string, mounts: string[] = []):
       // space root and git root are different concepts.
       repoRoot = null;
     }
+  }
+
+  // The catalog of local repos in the workspace folder — the POV's siblings.
+  const catalog = await formatCatalogSection(workspaceFolder, { povRepoRoot: repoRoot, mounts });
+
+  // No ideaspace contract at this position: we're at a bare workspace folder (or
+  // a plain repo with no `_agent/`). There's no fractal contract to assemble, so
+  // the catalog *is* the orientation — which repos are here and their state —
+  // plus, at folder level, a nudge to navigate into one.
+  if (!composed.spaceRoot) {
+    const hint = repoRoot
+      ? null
+      : "You're at a workspace folder (no `_agent/` contract here). Navigate into a repo below to work in it (is_navigate), or pull one that's behind.";
+    const parts = [status ? formatStateSection(status) : null, catalog, hint].filter(Boolean);
+    // Report no repoRoot outside an ideaspace: `cachedRepoRoot` gates the
+    // `refs/ideaspaces/seen` marker write on shutdown, which must not land in
+    // plain repos surfaced by the catalog. The local `repoRoot` above is used
+    // only to tag the POV in the catalog; it is not exported here.
+    return { root: null, repoRoot: null, text: parts.length ? parts.join("\n\n") : null };
   }
 
   let lastSha: string | undefined;
@@ -659,6 +768,7 @@ async function buildAwareness(effectivePosition: string, mounts: string[] = []):
     formatStateSection(status),
     block.trim(),
     workingSet,
+    catalog,
     ...drift,
   ].filter(Boolean);
   return { root: composed.spaceRoot, repoRoot, text: parts.length ? parts.join("\n\n") : null };
@@ -810,7 +920,7 @@ export default function (pi: ExtensionAPI) {
 
   async function refreshAwareness(cwd: string): Promise<void> {
     try {
-      const awareness = await buildAwareness(effectivePosition(cwd), mounts);
+      const awareness = await buildAwareness(effectivePosition(cwd), mounts, cwd);
       cachedAwareness = awareness.text;
       cachedRoot = awareness.root;
       cachedRepoRoot = awareness.repoRoot;
