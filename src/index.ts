@@ -628,13 +628,18 @@ async function readRepoState(repoRoot: string): Promise<string> {
   return state.dirty ? `${base} · dirty` : base;
 }
 
+// Cap on catalog rows so a folder with many repos can't bloat the awareness
+// block; the remainder is summarised as "…and N more".
+const MAX_CATALOG_REPOS = 20;
+
 // The catalog: git repos that are immediate children of the workspace folder
 // (the session cwd / `--context` root), each a thin handle tagged with its sync
 // state, the POV, and whether it's mounted. This is the LOCAL tier — the repos
 // the agent can navigate into or pull; the remote/pullable tier is added when
 // IdeaSpace is connected. Repos only: plain dirs are ordinary files the agent
 // reads directly. Returns null when the folder holds no child repos. Immediate
-// children only (repos are siblings), not recursive. See pre-c-account-scope.
+// children only (repos are siblings), not recursive; capped and rendered in
+// parallel across repos.
 async function formatCatalogSection(
   workspaceFolder: string,
   opts: { povRepoRoot: string | null; mounts: string[] },
@@ -652,20 +657,26 @@ async function formatCatalogSection(
   if (repos.length === 0) return null;
   repos.sort((a, b) => basename(a).localeCompare(basename(b)));
 
+  const overflow = repos.length - MAX_CATALOG_REPOS;
+  const shown = overflow > 0 ? repos.slice(0, MAX_CATALOG_REPOS) : repos;
   const pov = opts.povRepoRoot ? resolvePath(opts.povRepoRoot) : null;
   const mountSet = new Set(opts.mounts.map((mount) => resolvePath(mount)));
 
-  const lines = ["Repos in scope (local):"];
-  for (const repo of repos) {
-    const [summary, state] = await Promise.all([readRootSummary(repo), readRepoState(repo)]);
-    const tags = [state];
-    if (pov && resolvePath(repo) === pov) tags.push("POV");
-    if (mountSet.has(resolvePath(repo))) tags.push("mounted");
-    const parts = [`  ${basename(repo)}`];
-    if (summary) parts.push(` — ${summary}`);
-    parts.push(` (${tags.join(" · ")})`);
-    lines.push(parts.join(""));
-  }
+  const rows = await Promise.all(
+    shown.map(async (repo) => {
+      const [summary, state] = await Promise.all([readRootSummary(repo), readRepoState(repo)]);
+      const tags = [state];
+      if (pov && resolvePath(repo) === pov) tags.push("POV");
+      if (mountSet.has(resolvePath(repo))) tags.push("mounted");
+      const parts = [`  ${basename(repo)}`];
+      if (summary) parts.push(` — ${summary}`);
+      parts.push(` (${tags.join(" · ")})`);
+      return parts.join("");
+    }),
+  );
+
+  const lines = ["Repos in scope (local):", ...rows];
+  if (overflow > 0) lines.push(`  …and ${overflow} more`);
   return lines.join("\n");
 }
 
@@ -706,7 +717,11 @@ async function buildAwareness(
       ? null
       : "You're at a workspace folder (no `_agent/` contract here). Navigate into a repo below to work in it (is_navigate), or pull one that's behind.";
     const parts = [status ? formatStateSection(status) : null, catalog, hint].filter(Boolean);
-    return { root: null, repoRoot, text: parts.length ? parts.join("\n\n") : null };
+    // Report no repoRoot outside an ideaspace: `cachedRepoRoot` gates the
+    // `refs/ideaspaces/seen` marker write on shutdown, which must not land in
+    // plain repos surfaced by the catalog. The local `repoRoot` above is used
+    // only to tag the POV in the catalog; it is not exported here.
+    return { root: null, repoRoot: null, text: parts.length ? parts.join("\n\n") : null };
   }
 
   let lastSha: string | undefined;
