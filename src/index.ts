@@ -15,11 +15,7 @@ import {
   spaceRootLevel,
   currentBranchLevel,
   extractSummary,
-  mintChangeId,
-  appendTrailers,
-  isValidChangeId,
 } from "@ideaspaces/sdk";
-import type { Trailers } from "@ideaspaces/sdk";
 
 type CliResult = { out: string; err: string; code: number };
 
@@ -1800,27 +1796,24 @@ export default function (pi: ExtensionAPI) {
       ),
     }),
     async execute(_id, params, _signal, _onUpdate, ctx) {
-      // Stamp the Change layer via the shared lib. Per-commit provenance rides
-      // every agent-driven commit: Co-authored-by (the agent that assisted) and
-      // Conversation (the pi session id). Change-Id + Op ride only when set.
-      // `appendTrailers` merges into the message; git `-m` preserves the block;
-      // author stays the person (CLI-set). All additive.
+      // Stamp the Change layer by handing the trailer inputs to `cli commit`,
+      // which folds them into the message — the CLI (and the SDK beneath it)
+      // own the trailer format and validation. Per-commit provenance rides
+      // every agent-driven commit: Co-authored-by (the agent principal that
+      // assisted) + Conversation (the pi session id); Change-Id + Op ride only
+      // when set. Author stays the person (CLI-set). All additive.
       const cwd = params.cwd || ctx.cwd;
-      const trailers: Trailers = {};
-      if (params.op) trailers.op = params.op;
-      if (currentChangeId) trailers.changeId = currentChangeId;
       if (!agentPrincipal) agentPrincipal = resolveAgentPrincipal(cwd);
-      if (agentPrincipal) trailers.coAuthoredBy = [`Pi <${agentPrincipal}>`];
       const sessionId = ctx.sessionManager.getSessionId();
-      if (sessionId) trailers.conversation = sessionId;
-      const message =
-        trailers.op || trailers.changeId || trailers.coAuthoredBy || trailers.conversation
-          ? appendTrailers(params.message, trailers)
-          : params.message;
 
-      const args = ["commit", "-m", message];
+      const args = ["commit", "-m", params.message];
       if (params.all) args.push("--all");
       else if (params.paths?.length) args.push(...params.paths);
+      if (params.op) args.push("--op", params.op);
+      if (currentChangeId) args.push("--change-id", currentChangeId);
+      if (agentPrincipal) args.push("--co-author", agentPrincipal);
+      if (sessionId) args.push("--conversation", sessionId);
+
       const result = await run(args, undefined, cwd);
       if (!isErrorResult(result)) {
         await refreshAwareness(cwd);
@@ -1849,11 +1842,17 @@ export default function (pi: ExtensionAPI) {
       ),
     }),
     async execute(_id, params) {
-      if (params.id) {
-        if (!isValidChangeId(params.id)) return fail(`Not a valid Change-Id: ${params.id}`);
-        currentChangeId = params.id;
+      const id = params.id?.trim();
+      if (id) {
+        // Continue an existing Change across sessions. The CLI validates the id
+        // when it stamps (`cli commit --change-id` rejects a malformed id), so
+        // we don't re-check — all Change-Id knowledge stays in the CLI/SDK.
+        currentChangeId = id;
       } else if (params.handle?.trim()) {
-        currentChangeId = mintChangeId(params.handle);
+        // Mint offline via the CLI — a repo-agnostic, pure mint.
+        const minted = await runJson<{ change_id: string }>(["change", "new", params.handle.trim()]);
+        if (!minted.ok) return fail(minted.error);
+        currentChangeId = minted.data.change_id;
       } else {
         return fail("Provide `handle` to mint a new Change, or `id` to continue one.");
       }
