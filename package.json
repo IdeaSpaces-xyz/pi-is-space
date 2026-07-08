@@ -22,8 +22,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ideaspaces/cli": "git+https://github.com/IdeaSpaces-xyz/cli.git#95d7015dfcb2698552f573db62660851fe3b334a",
-    "@ideaspaces/sdk": "github:IdeaSpaces-xyz/sdk#56f8880581423982faa1680de11a5478906aee01"
+    "@ideaspaces/cli": "git+https://github.com/IdeaSpaces-xyz/cli.git#29a953d04d33b2945e2d2c095afe8b827c4eb880"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
