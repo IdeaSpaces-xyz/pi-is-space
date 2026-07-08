@@ -70,7 +70,7 @@ Before switching or forking sessions, Pi checks for staged captures awaiting com
 
 ## Awareness
 
-On session start, the extension walks up from `cwd` looking for `_agent/`, formats the awareness block via `@ideaspaces/sdk`, and injects it before each agent turn. The block includes position, git/capture state, Now, tree/context summaries, operating skills, and changes since the last session when available. Missing `_agent/purpose.md` or `_agent/now.md` are surfaced as drift signals.
+On session start, the extension builds the awareness block by shelling the IdeaSpaces CLI — `cli status` for the capture/operating **state** (vantage) and `cli navigate` for the **focus** (fractal contract, position, tree/context summaries, working set, repo catalog, drift) — composes them, and injects the block before each agent turn. Missing `_agent/purpose.md` or `_agent/now.md` are surfaced as drift signals. (The extension no longer imports `@ideaspaces/sdk`; the CLI is the single awareness producer.)
 
 ## CLI
 

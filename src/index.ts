@@ -2,20 +2,13 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Type } from "typebox";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve as resolvePath, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  findSpaceRoot,
-  composeContractAlongPath,
-  assembleAwareness,
-  gitState,
-  walkPathContext,
-  spaceRootLevel,
-  currentBranchLevel,
-  extractSummary,
-} from "@ideaspaces/sdk";
+// No `@ideaspaces/sdk` import: awareness is produced by the CLI now (`cli status`
+// for the capture/operating state, `cli navigate` for the fractal contract, tree,
+// position, catalog, and working set). Only two tiny filesystem/git helpers stay
+// local (findSpaceRoot, headShaOf below) — utility checks, not awareness render.
 
 type CliResult = { out: string; err: string; code: number };
 
@@ -304,16 +297,29 @@ function isCliFile(): boolean {
 // view. (Replaces the SDK session-state file.)
 const SEEN_REF = "refs/ideaspaces/seen";
 
-function readSeenMarker(cwd: string): string | undefined {
-  const r = spawnSync("git", ["-C", cwd, "rev-parse", "--verify", "--quiet", SEEN_REF], {
-    encoding: "utf-8",
-  });
-  return r.status === 0 && r.stdout.trim() ? r.stdout.trim() : undefined;
-}
-
 function setSeenMarker(cwd: string, sha: string): void {
   // Best-effort: a failed marker update must never break the session.
   spawnSync("git", ["-C", cwd, "update-ref", SEEN_REF, sha], { encoding: "utf-8" });
+}
+
+// HEAD sha at `cwd`, or null (unborn/no repo). Offline git, replaces the SDK's
+// `gitState().headSha` on the shutdown seen-marker path.
+function headShaOf(cwd: string): string | null {
+  const r = spawnSync("git", ["-C", cwd, "rev-parse", "--verify", "--quiet", "HEAD"], { encoding: "utf-8" });
+  return r.status === 0 && r.stdout.trim() ? r.stdout.trim() : null;
+}
+
+// Nearest ancestor carrying an `_agent/` dir — the space root. A trivial local
+// filesystem walk (the protocol's space marker), NOT awareness rendering (the
+// CLI owns that now). Sync; call sites `await` it harmlessly.
+function findSpaceRoot(dir: string): { source: "found" | "none"; root: string | null } {
+  let cur = resolvePath(dir);
+  for (;;) {
+    if (existsSync(join(cur, "_agent"))) return { source: "found", root: cur };
+    const parent = dirname(cur);
+    if (parent === cur) return { source: "none", root: null };
+    cur = parent;
+  }
 }
 
 function cli(args: string[], stdin?: string, cwd?: string): Promise<CliResult> {
@@ -495,18 +501,6 @@ async function shouldNudgeKnowledgeWrite(
   return { path: absPath, spaceRoot };
 }
 
-function formatPositionSection(cwd: string, repoRoot: string, pathContext: Awaited<ReturnType<typeof walkPathContext>>): string {
-  const spaceRoot = spaceRootLevel(pathContext);
-  const branch = currentBranchLevel(pathContext);
-  const cwdRel = relative(repoRoot, cwd) || ".";
-  const lines = ["Position:"];
-  lines.push(`  repo: ${repoRoot}`);
-  lines.push(`  cwd: ${cwdRel}`);
-  if (spaceRoot) lines.push(`  space root: ${spaceRoot.path || "."}`);
-  if (branch) lines.push(`  active _agent: ${branch.path || "."}`);
-  return lines.join("\n");
-}
-
 function formatStateSection(status: CaptureStatus | null): string | null {
   if (!status) return null;
   const lines = ["State:"];
@@ -529,267 +523,55 @@ async function readCaptureStatus(cwd: string): Promise<CaptureStatus | null> {
   return result.ok ? result.data : null;
 }
 
-// A single working-set handle: a root, a one-line summary, and a top-level dir
-// count. Mounts surface as thin handles — orientation, not full trees.
-type RootHandle = { summary: string | null; dirCount: number | null };
-
-// First line of a file's content (frontmatter stripped via extractSummary), or
-// null. Kept to a single line so working-set handles stay terse.
-function firstContentLine(content: string): string | null {
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed && !trimmed.startsWith("---")) return trimmed;
-  }
-  return null;
-}
-
-// Read a one-line summary for a root: prefer `_agent/now.md`, then `README.md`.
-// Use the Layer 1 frontmatter summary when present, else the first content line.
-async function readRootSummary(root: string): Promise<string | null> {
-  const candidates = [join(root, "_agent", "now.md"), join(root, "README.md")];
-  for (const candidate of candidates) {
-    try {
-      const content = await readFile(candidate, "utf-8");
-      const summary = extractSummary(content) ?? firstContentLine(content);
-      if (summary) return summary.replace(/\s+/g, " ").trim();
-    } catch {
-      // Missing or unreadable candidate — try the next.
-    }
-  }
-  return null;
-}
-
-// Count top-level directories under a root, excluding noise dirs. Best-effort.
-async function countTopLevelDirs(root: string): Promise<number | null> {
-  try {
-    const entries = await readdir(root, { withFileTypes: true });
-    return entries.filter(
-      (entry) => entry.isDirectory() && !AUTOCOMPLETE_EXCLUDES.includes(entry.name),
-    ).length;
-  } catch {
-    return null;
-  }
-}
-
-async function readRootHandle(root: string): Promise<RootHandle> {
-  const [summary, dirCount] = await Promise.all([readRootSummary(root), countTopLevelDirs(root)]);
-  return { summary, dirCount };
-}
-
-function formatRootHandleLine(label: string, display: string, handle: RootHandle): string {
-  const parts = [`  ${label}: ${display}`];
-  if (handle.summary) parts.push(` — ${handle.summary}`);
-  if (handle.dirCount != null) parts.push(` (${handle.dirCount} dirs)`);
-  return parts.join("");
-}
-
-// The working-set section: the home root (authority frame) plus read-only
-// content mounts, each as a thin handle. Progressive disclosure — handles only,
-// never full trees; deepen a mount on demand via is_navigate({ root }).
-async function formatWorkingSetSection(homeRoot: string, mounts: string[]): Promise<string | null> {
-  const lines = ["Working set:"];
-  const homeHandle = await readRootHandle(homeRoot);
-  lines.push(formatRootHandleLine("home", basename(homeRoot) || homeRoot, homeHandle));
-
-  const mountHandles = await Promise.all(mounts.map((mount) => readRootHandle(mount)));
-  mounts.forEach((mount, index) => {
-    lines.push(formatRootHandleLine("mount", mount, mountHandles[index]));
-  });
-
-  return lines.join("\n");
-}
-
-// One-line sync state for a repo, from gitState: `local-only` (no upstream),
-// `synced`, `ahead N`, `behind N`, `diverged +A/-B`; suffixed ` · dirty` when
-// the tree is dirty. `unknown` when git state can't be read.
-async function readRepoState(repoRoot: string): Promise<string> {
-  let state: Awaited<ReturnType<typeof gitState>>;
-  try {
-    state = await gitState(repoRoot);
-  } catch {
-    return "unknown";
-  }
-  let base: string;
-  if (state.ahead == null || state.behind == null) {
-    base = "local-only";
-  } else if (state.ahead > 0 && state.behind > 0) {
-    base = `diverged +${state.ahead}/-${state.behind}`;
-  } else if (state.ahead > 0) {
-    base = `ahead ${state.ahead}`;
-  } else if (state.behind > 0) {
-    base = `behind ${state.behind}`;
-  } else {
-    base = "synced";
-  }
-  return state.dirty ? `${base} · dirty` : base;
-}
-
-// Cap on catalog rows so a folder with many repos can't bloat the awareness
-// block; the remainder is summarised as "…and N more".
-const MAX_CATALOG_REPOS = 20;
-
-// The catalog: git repos that are immediate children of the workspace folder
-// (the session cwd / `--context` root), each a thin handle tagged with its sync
-// state, the POV, and whether it's mounted. This is the LOCAL tier — the repos
-// the agent can navigate into or pull; the remote/pullable tier is added when
-// IdeaSpace is connected. Repos only: plain dirs are ordinary files the agent
-// reads directly. Returns null when the folder holds no child repos. Immediate
-// children only (repos are siblings), not recursive; capped and rendered in
-// parallel across repos.
-async function formatCatalogSection(
-  workspaceFolder: string,
-  opts: {
-    povRepoRoot: string | null;
-    mounts: string[];
-    pullable?: Array<{ slug: string; namespace: string }>;
-  },
-): Promise<string | null> {
-  let repos: string[];
-  try {
-    const entries = await readdir(workspaceFolder, { withFileTypes: true });
-    repos = entries
-      .filter((entry) => entry.isDirectory() && !AUTOCOMPLETE_EXCLUDES.includes(entry.name))
-      .map((entry) => join(workspaceFolder, entry.name))
-      .filter((dir) => existsSync(join(dir, ".git")));
-  } catch {
-    // Unreadable folder: no local tier, but the pullable tier may still render.
-    repos = [];
-  }
-  repos.sort((a, b) => basename(a).localeCompare(basename(b)));
-
-  const pov = opts.povRepoRoot ? resolvePath(opts.povRepoRoot) : null;
-  const mountSet = new Set(opts.mounts.map((mount) => resolvePath(mount)));
-  // Keep the POV and mounted repos in view even past the cap — the agent's own
-  // position must never be the row that gets truncated. Priority repos first,
-  // the rest alphabetically, then slice (never below the priority count).
-  const isPriority = (repo: string): boolean => {
-    const abs = resolvePath(repo);
-    return abs === pov || mountSet.has(abs);
-  };
-  const priority = repos.filter(isPriority);
-  const ordered = [...priority, ...repos.filter((repo) => !isPriority(repo))];
-  const shown = ordered.slice(0, Math.max(MAX_CATALOG_REPOS, priority.length));
-  const overflow = repos.length - shown.length;
-
-  const rows = await Promise.all(
-    shown.map(async (repo) => {
-      const [summary, state] = await Promise.all([readRootSummary(repo), readRepoState(repo)]);
-      const tags = [state];
-      if (pov && resolvePath(repo) === pov) tags.push("POV");
-      if (mountSet.has(resolvePath(repo))) tags.push("mounted");
-      const parts = [`  ${basename(repo)}`];
-      if (summary) parts.push(` — ${summary}`);
-      parts.push(` (${tags.join(" · ")})`);
-      return parts.join("");
-    }),
-  );
-
-  const blocks: string[] = [];
-  if (rows.length) {
-    const lines = ["Repos in scope (local):", ...rows];
-    if (overflow > 0) lines.push(`  …and ${overflow} more`);
-    blocks.push(lines.join("\n"));
-  }
-  // The remote/pullable tier: account spaces not yet on disk (from the CLI
-  // `catalog` verb). Empty when logged out. Pull one to bring it local.
-  const pullable = opts.pullable ?? [];
-  if (pullable.length) {
-    blocks.push(
-      [
-        "Pullable (remote — not yet local):",
-        ...pullable.map((p) => `  ${p.slug} (${p.namespace})`),
-        "  → to work on one, clone it into this folder with `ideaspaces clone` (via bash).",
-      ].join("\n"),
-    );
-  }
-  return blocks.length ? blocks.join("\n\n") : null;
-}
-
 // Awareness is rooted at a *position* — the place the agent's orientation is
-// focused — not necessarily the session cwd. `navigate` moves this position;
-// when unset, callers pass `ctx.cwd` so behaviour is unchanged. `workspaceFolder`
-// is the session cwd (the `--context` root); the catalog scans its child repos.
+// focused — not necessarily the session cwd. Composed from two CLI shells (no
+// SDK): `cli status` for the capture/operating **state** (vantage), and `cli
+// navigate` for the **focus** — the fractal contract, tree, position, working
+// set, and repo catalog (incl. the bare-folder case). `--no-git` suppresses
+// navigate's compact git line since we render the richer State; `--pullable`
+// carries the remote tier we fetched; `--workspace` is the session cwd (the
+// context root) whose child repos the catalog scans.
+interface NavResult {
+  text: string | null;
+  position: string;
+  root: string | null;
+  repoRoot: string | null;
+}
+
 async function buildAwareness(
   effectivePosition: string,
   mounts: string[] = [],
   workspaceFolder: string = effectivePosition,
   pullable: Array<{ slug: string; namespace: string }> = [],
 ): Promise<{ root: string | null; repoRoot: string | null; text: string | null }> {
-  // Compose the effective fractal contract along the path to the position:
-  // `foundation` from the space root, deepest-present guide/purpose/now/next.
-  const composed = await composeContractAlongPath(effectivePosition);
+  // Vantage: the capture/operating state — kept local (`cli status`, not SDK).
+  const state = formatStateSection(await readCaptureStatus(effectivePosition));
 
-  const status = await readCaptureStatus(effectivePosition);
-  let repoRoot = status?.repoRoot ?? null;
-  if (!repoRoot) {
-    try {
-      repoRoot = (await gitState(effectivePosition)).repoRoot;
-    } catch {
-      // No git repo available. Do not substitute the ideaspace root here:
-      // space root and git root are different concepts.
-      repoRoot = null;
-    }
+  // Focus: the CLI is the single awareness producer.
+  const navArgs = ["navigate", effectivePosition, "--workspace", workspaceFolder, "--no-git"];
+  if (mounts.length) navArgs.push("--mount", mounts.join(","));
+  if (pullable.length) {
+    navArgs.push("--pullable", pullable.map((p) => `${p.slug}:${p.namespace}`).join(","));
+  }
+  const nav = await runJson<NavResult>(navArgs, effectivePosition);
+  if (!nav.ok) {
+    // navigate failed — degrade to vantage-only so orientation isn't empty, but
+    // log it: this runs every turn, so a silent state-only fallback would hide a
+    // broken CLI/`_agent`. (runJson returns ok:false, so the caller's try/catch
+    // never sees it.)
+    console.warn(`IdeaSpaces: navigate failed, awareness is state-only: ${nav.error}`);
+    return { root: null, repoRoot: null, text: state };
   }
 
-  // The catalog: local repos in the workspace folder (the POV's siblings) plus
-  // the remote/pullable tier when logged in.
-  const catalog = await formatCatalogSection(workspaceFolder, { povRepoRoot: repoRoot, mounts, pullable });
-
-  // No ideaspace contract at this position: we're at a bare workspace folder (or
-  // a plain repo with no `_agent/`). There's no fractal contract to assemble, so
-  // the catalog *is* the orientation — which repos are here and their state —
-  // plus, at folder level, a nudge to navigate into one.
-  if (!composed.spaceRoot) {
-    const hint = repoRoot
-      ? null
-      : "You're at a workspace folder (no `_agent/` contract here). Navigate into a repo below to work in it (is_navigate), or pull one that's behind.";
-    const parts = [status ? formatStateSection(status) : null, catalog, hint].filter(Boolean);
-    // Report no repoRoot outside an ideaspace: `cachedRepoRoot` gates the
-    // `refs/ideaspaces/seen` marker write on shutdown, which must not land in
-    // plain repos surfaced by the catalog. The local `repoRoot` above is used
-    // only to tag the POV in the catalog; it is not exported here.
-    return { root: null, repoRoot: null, text: parts.length ? parts.join("\n\n") : null };
-  }
-
-  let lastSha: string | undefined;
-  if (repoRoot) {
-    // First run (no marker yet) returns undefined — no "since last session" diff.
-    lastSha = readSeenMarker(repoRoot);
-  }
-  const [block, pathContext] = await Promise.all([
-    assembleAwareness({
-      root: effectivePosition,
-      contract: composed.contract,
-      lastSha,
-    }),
-    repoRoot ? walkPathContext(repoRoot, effectivePosition) : Promise.resolve(null),
-  ]);
-  const drift: string[] = [];
-  if (!composed.contract.purpose) {
-    drift.push(
-      "⚠ `_agent/purpose.md` not yet captured. The contract names it; suggest capturing in conversation when there's a natural moment.",
-    );
-  }
-  if (!composed.contract.now) {
-    drift.push(
-      "⚠ `_agent/now.md` not yet captured. Suggest capturing what's currently active.",
-    );
-  }
-
-  // Working set: the home root (authority frame, above) plus read-only content
-  // mounts, surfaced as thin handles. Anchored on the space root so "home"
-  // names the authority frame, not a deep position within it.
-  const workingSet = await formatWorkingSetSection(composed.spaceRoot, mounts);
-
-  const parts = [
-    pathContext && repoRoot ? formatPositionSection(effectivePosition, repoRoot, pathContext) : null,
-    formatStateSection(status),
-    block.trim(),
-    workingSet,
-    catalog,
-    ...drift,
-  ].filter(Boolean);
-  return { root: composed.spaceRoot, repoRoot, text: parts.length ? parts.join("\n\n") : null };
+  // Compose: vantage (State) then focus (navigate's block). Both from the CLI.
+  const parts = [state, nav.data.text].filter(Boolean) as string[];
+  return {
+    root: nav.data.root,
+    // Gate the shutdown seen-marker to ideaspaces: outside one (no space root),
+    // report no repoRoot so the marker never lands in a plain repo.
+    repoRoot: nav.data.root ? nav.data.repoRoot : null,
+    text: parts.length ? parts.join("\n\n") : null,
+  };
 }
 
 /** Wrap a bare id or principal into `agent:<id>@ideaspaces` (domain platform-set). */
@@ -917,19 +699,11 @@ export default function (pi: ExtensionAPI) {
       return fail(`Not a directory: ${subPath}`);
     }
 
-    let composed: Awaited<ReturnType<typeof composeContractAlongPath>>;
-    let block: string;
-    try {
-      composed = await composeContractAlongPath(subPath);
-      block = await assembleAwareness({
-        root: subPath,
-        contract: composed.contract,
-        lastSha: undefined,
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return fail(`Failed to read mounted content at ${subPath}: ${message}`);
-    }
+    // Orient at the mounted subpath by shelling `cli navigate` (the single
+    // awareness producer) — no --workspace (this is read-only content, not a
+    // workspace catalog scan), --no-git (content, not operating state).
+    const nav = await runJson<NavResult>(["navigate", subPath, "--no-git"], subPath);
+    if (!nav.ok) return fail(`Failed to read mounted content at ${subPath}: ${nav.error}`);
 
     const rel = relative(mountRoot, subPath) || ".";
     const header = [
@@ -937,8 +711,8 @@ export default function (pi: ExtensionAPI) {
       `mount: ${mountRoot}`,
       `position: ${rel}`,
     ];
-    if (composed.spaceRoot) header.push(`mount space root: ${composed.spaceRoot}`);
-    const body = block.trim();
+    if (nav.data.root) header.push(`mount space root: ${nav.data.root}`);
+    const body = (nav.data.text ?? "").trim();
     return ok([header.join("\n"), body].filter(Boolean).join("\n\n"));
   }
 
@@ -1193,8 +967,8 @@ export default function (pi: ExtensionAPI) {
     // the next session can render "Since last session" from git history.
     if (!cachedRepoRoot) return;
     try {
-      const state = await gitState(cachedRepoRoot);
-      if (state.headSha) setSeenMarker(cachedRepoRoot, state.headSha);
+      const sha = headShaOf(cachedRepoRoot);
+      if (sha) setSeenMarker(cachedRepoRoot, sha);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.warn(`IdeaSpaces: failed to persist last-seen HEAD: ${message}`);
@@ -1609,11 +1383,11 @@ export default function (pi: ExtensionAPI) {
 
       await refreshAwareness(ctx.cwd);
 
-      const handle = await readRootHandle(target);
-      const lines = [`Mounted (read-only): ${target}`];
-      if (handle.summary) lines.push(`  ${handle.summary}`);
-      lines.push("Surfaced as a working-set handle. Look inside with is_navigate({ root, path }). It is content, not authority.");
-      return ok(lines.join("\n"));
+      // The mount's summary/handle now renders in the working set (via the
+      // refreshed awareness above), so the confirmation stays terse.
+      return ok(
+        `Mounted (read-only): ${target}\nSurfaced as a working-set handle. Look inside with is_navigate({ root, path }). It is content, not authority.`,
+      );
     },
   });
 
