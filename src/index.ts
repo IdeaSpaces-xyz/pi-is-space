@@ -283,12 +283,17 @@ function resolveCli(): string {
 const CLI = resolveCli();
 
 // Make the resolved CLI discoverable to skills that invoke Bash. If CLI is a
-// PATH command this is harmless; skills check that the path exists before using
-// `node "$IS_CLI_PATH"`.
+// PATH command this is harmless; skills exec it directly (or via `node` for a
+// `.js` bundle) — see the `is_cli` helper in the skills.
 if (!process.env.IS_CLI_PATH) process.env.IS_CLI_PATH = CLI;
 
-function isCliFile(): boolean {
-  return CLI.includes("/") || CLI.includes("\\") || CLI.endsWith(".js");
+// Only a `.js` bundle needs `node` to run it (dev: cli/bundle/ideaspaces.js —
+// and running via node doesn't depend on its executable bit). A compiled binary
+// (the desktop's bundled bun sidecar — a path, but NOT `.js`) or a PATH command
+// runs directly; `node <mach-o binary>` would fail. The old check keyed on "has
+// a slash", which wrongly routed the bundled sidecar through node.
+function cliNeedsNode(): boolean {
+  return CLI.endsWith(".js");
 }
 
 // The "last seen" marker — HEAD at the end of the previous session — lives in a
@@ -324,7 +329,7 @@ function findSpaceRoot(dir: string): { source: "found" | "none"; root: string | 
 
 function cli(args: string[], stdin?: string, cwd?: string): Promise<CliResult> {
   return new Promise((resolve) => {
-    const proc = spawn(isCliFile() ? "node" : CLI, isCliFile() ? [CLI, ...args] : args, {
+    const proc = spawn(cliNeedsNode() ? "node" : CLI, cliNeedsNode() ? [CLI, ...args] : args, {
       stdio: ["pipe", "pipe", "pipe"],
       cwd: cwd || undefined,
     });
