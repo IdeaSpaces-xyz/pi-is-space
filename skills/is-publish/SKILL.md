@@ -20,7 +20,10 @@ This skill is the conversational layer around the IdeaSpaces CLI. The extension 
 ```bash
 is_cli() {
   if [ -n "$IS_CLI_PATH" ] && [ -f "$IS_CLI_PATH" ]; then
-    node "$IS_CLI_PATH" "$@"
+    case "$IS_CLI_PATH" in
+      *.js) node "$IS_CLI_PATH" "$@" ;;   # dev: a .js bundle needs node
+      *) "$IS_CLI_PATH" "$@" ;;           # a compiled sidecar runs directly
+    esac
   else
     ideaspaces "$@"
   fi
