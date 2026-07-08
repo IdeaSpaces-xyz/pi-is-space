@@ -22,14 +22,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ideaspaces/cli": "git+https://github.com/IdeaSpaces-xyz/cli.git#29a953d04d33b2945e2d2c095afe8b827c4eb880"
+    "@ideaspaces/cli": "git+https://github.com/IdeaSpaces-xyz/cli.git#29a953d04d33b2945e2d2c095afe8b827c4eb880",
+    "@ideaspaces/sdk": "github:IdeaSpaces-xyz/sdk#56f8880581423982faa1680de11a5478906aee01"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
     "typebox": "*"
   },
   "devDependencies": {
-    "@ideaspaces/sdk": "github:IdeaSpaces-xyz/sdk#56f8880581423982faa1680de11a5478906aee01",
     "@types/node": "^25.5.2",
     "typescript": "^5.8.3"
   }
