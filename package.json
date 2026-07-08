@@ -29,6 +29,7 @@
     "typebox": "*"
   },
   "devDependencies": {
+    "@ideaspaces/sdk": "github:IdeaSpaces-xyz/sdk#56f8880581423982faa1680de11a5478906aee01",
     "@types/node": "^25.5.2",
     "typescript": "^5.8.3"
   }

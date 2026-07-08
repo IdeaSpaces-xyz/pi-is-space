@@ -2,7 +2,6 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Type } from "typebox";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve as resolvePath, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -556,7 +555,11 @@ async function buildAwareness(
   }
   const nav = await runJson<NavResult>(navArgs, effectivePosition);
   if (!nav.ok) {
-    // navigate failed — still surface the vantage so orientation isn't empty.
+    // navigate failed — degrade to vantage-only so orientation isn't empty, but
+    // log it: this runs every turn, so a silent state-only fallback would hide a
+    // broken CLI/`_agent`. (runJson returns ok:false, so the caller's try/catch
+    // never sees it.)
+    console.warn(`IdeaSpaces: navigate failed, awareness is state-only: ${nav.error}`);
     return { root: null, repoRoot: null, text: state };
   }
 
