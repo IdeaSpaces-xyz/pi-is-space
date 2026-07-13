@@ -1,9 +1,10 @@
-// Build reference/ from the SDK's canonical skill catalog via readSkill().
+// Build reference/ from the protocol's canonical skill catalog via the SDK's
+// readSkill() re-export.
 //
 // Pi keeps surface-specific entrypoint skills in skills/is-*/SKILL.md. The
-// shared protocols they read live in reference/ and are generated from
+// shared protocols they read live in reference/ and are generated through
 // @ideaspaces/sdk so Pi, Claude Code, MCP resources, and CLI consumers stay on
-// one catalog.
+// one protocol-owned catalog.
 //
 // reference/ is committed as a vendored distribution artifact. Re-run after
 // bumping the SDK dependency.

@@ -1472,7 +1472,7 @@ export default function (pi: ExtensionAPI) {
       name: Type.Optional(Type.String({ description: "Note name" })),
       summary: Type.Optional(Type.String({ description: "Dense summary for search/orientation" })),
       tags: Type.Optional(Type.Array(Type.String())),
-      attached_to: Type.Optional(Type.Array(Type.String({ description: "Entity binding" }))),
+      attached_to: Type.Optional(Type.String({ description: "Primary entity binding" })),
       if_match: Type.Optional(
         Type.String({
           description:
@@ -1487,13 +1487,30 @@ export default function (pi: ExtensionAPI) {
         }),
       ),
     }),
+    prepareArguments(args) {
+      // Older sessions may replay the previous array-of-one tool shape. Keep
+      // the public schema singular while folding that one legacy form before
+      // validation; arrays with multiple values remain invalid and fail loudly.
+      if (!args || typeof args !== "object") return args as any;
+      const input = args as Record<string, unknown>;
+      if (!Array.isArray(input.attached_to)) return args as any;
+      if (input.attached_to.length === 0) {
+        const next = { ...input };
+        delete next.attached_to;
+        return next as any;
+      }
+      if (input.attached_to.length === 1 && typeof input.attached_to[0] === "string") {
+        return { ...input, attached_to: input.attached_to[0] } as any;
+      }
+      return args as any;
+    },
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const cwd = params.cwd || ctx.cwd;
       const args = ["write", params.path];
       if (params.name) args.push("--name", params.name);
       if (params.summary) args.push("--summary", params.summary);
       if (params.tags?.length) args.push("--tags", params.tags.join(","));
-      if (params.attached_to?.length) args.push("--attached-to", params.attached_to.join(","));
+      if (params.attached_to) args.push("--attached-to", params.attached_to);
       if (params.if_match) args.push("--if-match", params.if_match);
       if (params.force) args.push("--force");
 
