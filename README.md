@@ -107,7 +107,7 @@ Conversation hygiene is intentionally out of scope here; install `pi-local-conte
 - `is-space` — compatibility/reference entrypoint; use when the user asks how IdeaSpaces works.
 - `is-writing` — writing quality reference loaded by capture/writing tasks.
 
-Shared protocol content lives in `reference/`, generated from the SDK canonical skill catalog with `npm run build:reference`. Entry skills stay Pi-specific while reading SDK-backed references such as `reference/capture.md`, `reference/writing.md`, and `reference/awareness.md` on demand.
+Shared protocol content lives in `reference/`, generated from the protocol's canonical skill catalog as re-exported by the SDK (`npm run build:reference`). Entry skills stay Pi-specific while reading references such as `reference/capture.md`, `reference/writing.md`, and `reference/awareness.md` on demand.
 
 Capture flow: user intent → `is-capture` skill → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-push` (or `is-pull` first). Cleanup is separate local-context hygiene owned by `pi-local-context`; use `context_cleanup` from that package when available.
 

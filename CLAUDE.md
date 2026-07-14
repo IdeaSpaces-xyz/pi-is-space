@@ -50,7 +50,7 @@ No `sw_*` tools in this package.
 
 ## Session Awareness
 
-On session start, walk up from `cwd` looking for `_agent/`, use `@ideaspaces/sdk` to assemble awareness, and inject it before agent turns. Awareness includes position, git/capture state, Now/tree/context summaries, operating skills, and changes since last session when available. Missing `_agent/purpose.md` / `_agent/now.md` are drift signals, not placeholders to silently fill.
+On session start, shell the IdeaSpaces CLI for awareness: `status` supplies capture/operating state and `navigate` supplies the composed contract, position, tree/context summaries, working set, repo catalog, drift, and changes since last session. The extension injects the combined block before agent turns; it does not import the SDK directly. Missing `_agent/purpose.md` / `_agent/now.md` are drift signals, not placeholders to silently fill.
 
 ## Skills
 
@@ -64,7 +64,7 @@ Conversation hygiene lives in `pi-local-context` (`context-conversation`, `conte
 
 Keep the layering clear: skills express user intent, tools are primitives, commands are human-triggered Pi UI flows.
 
-Shared protocol content lives in `reference/`, generated from the SDK canonical skill catalog with `npm run build:reference`. Keep Pi entrypoint skills surface-specific; update shared capture/writing/awareness/shaping protocols in the SDK, then regenerate `reference/`.
+Shared protocol content lives in `reference/`, generated from the protocol's canonical skill catalog as re-exported by the SDK (`npm run build:reference`). Keep Pi entrypoint skills surface-specific; update shared capture/writing/awareness/shaping protocols in `ideaspace-protocol`, release and bump the SDK, then regenerate `reference/`.
 
 Capture flow: user intent → `is-capture` → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-push` (or `is-pull` first). Reflect and shape use the same capture boundary when they change shared agreement. Cleanup is local conversation hygiene, not Space connector behavior; use `context_cleanup` from `pi-local-context` when that package is installed.
 
