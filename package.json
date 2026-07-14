@@ -26,6 +26,7 @@
     "@ideaspaces/sdk": "github:IdeaSpaces-xyz/sdk#de0eeddd3ad9431c97b30a34ed97fc6f0be91d84"
   },
   "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*",
     "typebox": "*"
   },

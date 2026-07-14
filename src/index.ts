@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
@@ -15,8 +16,11 @@ type CliResult = { out: string; err: string; code: number };
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
   details: Record<string, unknown>;
-  isError?: boolean;
 };
+
+type CliTextResult =
+  | { ok: true; text: string }
+  | { ok: false; error: string };
 
 type JsonCliResult<T> =
   | { ok: true; data: T; text: string }
@@ -84,17 +88,17 @@ type FileSuggestion = {
 const AUTOCOMPLETE_LIMIT = 20;
 const AUTOCOMPLETE_FD_LIMIT = 1000;
 const AUTOCOMPLETE_EXCLUDES = [".git", "node_modules", "backups", ".pi", ".claude"];
+const CHANGE_ID_PATTERN = /^chg_[a-z0-9]+(-[a-z0-9]+)*$/;
 
 function ok(text: string): ToolResult {
   return { content: [{ type: "text", text }], details: {} };
 }
 
-function fail(text: string): ToolResult {
-  return { content: [{ type: "text", text }], details: {}, isError: true };
-}
-
-function isErrorResult(result: ToolResult): boolean {
-  return result.isError === true;
+function changeId(value: unknown, source: string): string {
+  if (typeof value !== "string" || !CHANGE_ID_PATTERN.test(value)) {
+    throw new Error(`${source} is not a valid Change-Id: ${String(value)}`);
+  }
+  return value;
 }
 
 function toPosixPath(path: string): string {
@@ -347,10 +351,18 @@ function cli(args: string[], stdin?: string, cwd?: string): Promise<CliResult> {
   });
 }
 
-async function run(args: string[], stdin?: string, cwd?: string): Promise<ToolResult> {
+async function runText(args: string[], stdin?: string, cwd?: string): Promise<CliTextResult> {
   const { out, err, code } = await cli(["--json", ...args], stdin, cwd);
-  if (code !== 0) return fail(err.trim() || out.trim() || `Exit ${code}`);
-  return ok(out.trim() || err.trim() || "Done");
+  if (code !== 0) {
+    return { ok: false, error: err.trim() || out.trim() || `Exit ${code}` };
+  }
+  return { ok: true, text: out.trim() || err.trim() || "Done" };
+}
+
+async function runTool(args: string[], stdin?: string, cwd?: string): Promise<ToolResult> {
+  const result = await runText(args, stdin, cwd);
+  if (!result.ok) throw new Error(result.error);
+  return ok(result.text);
 }
 
 async function runJson<T>(args: string[], cwd?: string): Promise<JsonCliResult<T>> {
@@ -686,29 +698,29 @@ export default function (pi: ExtensionAPI) {
     const mountRoot = resolveMount(rootArg);
     if (!mountRoot) {
       const available = mounts.length ? mounts.join(", ") : "(none mounted)";
-      return fail(`No mounted root matches "${rootArg}". Mounted roots: ${available}. Use is_mount to add one.`);
+      throw new Error(`No mounted root matches "${rootArg}". Mounted roots: ${available}. Use is_mount to add one.`);
     }
 
     const subPath = rawPath === "" || rawPath === "." ? mountRoot : resolvePath(mountRoot, rawPath);
     if (!isPathInside(subPath, mountRoot)) {
-      return fail(`Refusing to look outside the mounted root (${mountRoot}): ${subPath}`);
+      throw new Error(`Refusing to look outside the mounted root (${mountRoot}): ${subPath}`);
     }
 
     let stats: ReturnType<typeof statSync>;
     try {
       stats = statSync(subPath);
     } catch {
-      return fail(`No such path in mount: ${subPath}`);
+      throw new Error(`No such path in mount: ${subPath}`);
     }
     if (!stats.isDirectory()) {
-      return fail(`Not a directory: ${subPath}`);
+      throw new Error(`Not a directory: ${subPath}`);
     }
 
     // Orient at the mounted subpath by shelling `cli navigate` (the single
     // awareness producer) — no --workspace (this is read-only content, not a
     // workspace catalog scan), --no-git (content, not operating state).
     const nav = await runJson<NavResult>(["navigate", subPath, "--no-git"], subPath);
-    if (!nav.ok) return fail(`Failed to read mounted content at ${subPath}: ${nav.error}`);
+    if (!nav.ok) throw new Error(`Failed to read mounted content at ${subPath}: ${nav.error}`);
 
     const rel = relative(mountRoot, subPath) || ".";
     const header = [
@@ -1131,9 +1143,9 @@ export default function (pi: ExtensionAPI) {
           ctx.ui.notify("Publish cancelled — login required", "info");
           return;
         }
-        const loginResult = await run(["login"], undefined, ctx.cwd);
-        if (isErrorResult(loginResult)) {
-          ctx.ui.notify(`Login failed:\n${loginResult.content.map((c) => c.text).join("\n")}`, "error");
+        const loginResult = await runText(["login"], undefined, ctx.cwd);
+        if (!loginResult.ok) {
+          ctx.ui.notify(`Login failed:\n${loginResult.error}`, "error");
           return;
         }
         published = await runJson<PublishResult>(publishArgs, ctx.cwd);
@@ -1332,13 +1344,13 @@ export default function (pi: ExtensionAPI) {
       try {
         stats = statSync(target);
       } catch {
-        return fail(`No such path: ${target}`);
+        throw new Error(`No such path: ${target}`);
       }
       if (!stats.isDirectory()) {
-        return fail(`Not a directory: ${target}`);
+        throw new Error(`Not a directory: ${target}`);
       }
       if (!isPathInside(target, repoRoot)) {
-        return fail(`Refusing to navigate outside the repo root (${repoRoot}): ${target}`);
+        throw new Error(`Refusing to navigate outside the repo root (${repoRoot}): ${target}`);
       }
 
       await setPosition(target, ctx.cwd);
@@ -1367,23 +1379,23 @@ export default function (pi: ExtensionAPI) {
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const homeRoot = cachedRepoRoot ?? cachedRoot ?? ctx.cwd;
       const raw = params.path.trim();
-      if (!raw) return fail("Provide a path to mount.");
+      if (!raw) throw new Error("Provide a path to mount.");
       const target = resolvePath(homeRoot, raw);
 
       let stats: ReturnType<typeof statSync>;
       try {
         stats = statSync(target);
       } catch {
-        return fail(`No such path: ${target}`);
+        throw new Error(`No such path: ${target}`);
       }
       if (!stats.isDirectory()) {
-        return fail(`Not a directory: ${target}`);
+        throw new Error(`Not a directory: ${target}`);
       }
       if (isPathInside(target, homeRoot)) {
-        return fail(`Already reachable from home (${homeRoot}); no mount needed: ${target}`);
+        throw new Error(`Already reachable from home (${homeRoot}); no mount needed: ${target}`);
       }
       if (!addMount(target)) {
-        return fail(`Already mounted: ${target}`);
+        throw new Error(`Already mounted: ${target}`);
       }
 
       await refreshAwareness(ctx.cwd);
@@ -1409,12 +1421,12 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const raw = params.path.trim();
-      if (!raw) return fail("Provide a mounted root to remove.");
+      if (!raw) throw new Error("Provide a mounted root to remove.");
 
       const removed = removeMount(raw);
       if (!removed) {
         const available = mounts.length ? mounts.join(", ") : "(none mounted)";
-        return fail(`Not mounted: ${raw}. Mounted roots: ${available}.`);
+        throw new Error(`Not mounted: ${raw}. Mounted roots: ${available}.`);
       }
 
       await refreshAwareness(ctx.cwd);
@@ -1430,30 +1442,26 @@ export default function (pi: ExtensionAPI) {
     promptSnippet: "Log in or out for optional IdeaSpaces remote sync",
     parameters: Type.Object({
       action: Type.Optional(
-        Type.Union([Type.Literal("login"), Type.Literal("logout")]),
+        StringEnum(["login", "logout"] as const),
       ),
     }),
     async execute(_id, params) {
       const action = params.action ?? "login";
       switch (action) {
         case "login": {
-          const result = await run(["login"]);
-          if (!isErrorResult(result)) {
-            // Now possibly logged in — re-fetch the pullable tier next turn.
-            pullableFetched = false;
-          }
+          const result = await runTool(["login"]);
+          // Now possibly logged in — re-fetch the pullable tier next turn.
+          pullableFetched = false;
           return result;
         }
         case "logout": {
-          const result = await run(["power", "logout"]);
-          if (!isErrorResult(result)) {
-            cachedAwareness = null;
-            cachedRoot = null;
-            cachedRepoRoot = null;
-            // Drop the remote tier immediately; the next turn re-fetches (→ empty).
-            pullable = [];
-            pullableFetched = false;
-          }
+          const result = await runTool(["power", "logout"]);
+          cachedAwareness = null;
+          cachedRoot = null;
+          cachedRepoRoot = null;
+          // Drop the remote tier immediately; the next turn re-fetches (→ empty).
+          pullable = [];
+          pullableFetched = false;
           return result;
         }
       }
@@ -1514,11 +1522,9 @@ export default function (pi: ExtensionAPI) {
       if (params.if_match) args.push("--if-match", params.if_match);
       if (params.force) args.push("--force");
 
-      const result = await run(args, params.content, cwd);
-      if (!isErrorResult(result)) {
-        await refreshAwareness(cwd);
-        await refreshSpaceUi(ctx, cwd);
-      }
+      const result = await runTool(args, params.content, cwd);
+      await refreshAwareness(cwd);
+      await refreshSpaceUi(ctx, cwd);
       return result;
     },
   });
@@ -1545,13 +1551,13 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const cwd = params.cwd || ctx.cwd;
-      if (params.path) return run(["status", "--path", params.path], undefined, cwd);
+      if (params.path) return runTool(["status", "--path", params.path], undefined, cwd);
 
       // A global status read is also a deliberate UI refresh; single-path sha
       // queries are local concurrency checks and should not rewrite the widget.
       await refreshAwareness(cwd);
       const result = await runJson<CaptureStatus>(["status"], cwd);
-      if (!result.ok) return fail(result.error);
+      if (!result.ok) throw new Error(result.error);
       updateSpaceUi(ctx, result.data);
       return ok(JSON.stringify(result.data, null, 2));
     },
@@ -1572,15 +1578,8 @@ export default function (pi: ExtensionAPI) {
         Type.Boolean({ description: "Commit all staged IdeaSpaces knowledge (markdown + _agent/) instead of explicit paths" }),
       ),
       op: Type.Optional(
-        Type.Union(
-          [
-            Type.Literal("create"),
-            Type.Literal("update"),
-            Type.Literal("move"),
-            Type.Literal("delete"),
-            Type.Literal("restructure"),
-            Type.Literal("capture"),
-          ],
+        StringEnum(
+          ["create", "update", "move", "delete", "restructure", "capture"] as const,
           { description: "Optional Op trailer — the kind of change (the meaning lives in the message body)" },
         ),
       ),
@@ -1610,11 +1609,9 @@ export default function (pi: ExtensionAPI) {
       if (agentPrincipal) args.push("--co-author", agentPrincipal);
       if (sessionId) args.push("--conversation", sessionId);
 
-      const result = await run(args, undefined, cwd);
-      if (!isErrorResult(result)) {
-        await refreshAwareness(cwd);
-        await refreshSpaceUi(ctx, cwd);
-      }
+      const result = await runTool(args, undefined, cwd);
+      await refreshAwareness(cwd);
+      await refreshSpaceUi(ctx, cwd);
       return result;
     },
   });
@@ -1640,17 +1637,14 @@ export default function (pi: ExtensionAPI) {
     async execute(_id, params) {
       const id = params.id?.trim();
       if (id) {
-        // Continue an existing Change across sessions. The CLI validates the id
-        // when it stamps (`cli commit --change-id` rejects a malformed id), so
-        // we don't re-check — all Change-Id knowledge stays in the CLI/SDK.
-        currentChangeId = id;
+        currentChangeId = changeId(id, "Provided id");
       } else if (params.handle?.trim()) {
         // Mint offline via the CLI — a repo-agnostic, pure mint.
-        const minted = await runJson<{ change_id: string }>(["change", "new", params.handle.trim()]);
-        if (!minted.ok) return fail(minted.error);
-        currentChangeId = minted.data.change_id;
+        const minted = await runJson<{ change_id: unknown }>(["change", "new", params.handle.trim()]);
+        if (!minted.ok) throw new Error(minted.error);
+        currentChangeId = changeId(minted.data.change_id, "CLI response");
       } else {
-        return fail("Provide `handle` to mint a new Change, or `id` to continue one.");
+        throw new Error("Provide `handle` to mint a new Change, or `id` to continue one.");
       }
       return ok(
         `Change open: ${currentChangeId}. It stamps every is_commit until is_change_close. Find its arc later with: git log --grep="Change-Id: ${currentChangeId}"`,
@@ -1693,8 +1687,8 @@ export default function (pi: ExtensionAPI) {
       const args = ["pull"];
       if (params.dry_run) args.push("--dry-run");
       if (params.rebase === false) args.push("--rebase=false");
-      const result = await run(args, undefined, params.cwd || ctx.cwd);
-      if (!isErrorResult(result) && !params.dry_run) {
+      const result = await runTool(args, undefined, params.cwd || ctx.cwd);
+      if (!params.dry_run) {
         await refreshAwareness(params.cwd || ctx.cwd);
         await refreshSpaceUi(ctx, params.cwd || ctx.cwd);
       }
@@ -1720,8 +1714,8 @@ export default function (pi: ExtensionAPI) {
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const args = ["push"];
       if (params.dry_run) args.push("--dry-run");
-      const result = await run(args, undefined, params.cwd || ctx.cwd);
-      if (!isErrorResult(result) && !params.dry_run) {
+      const result = await runTool(args, undefined, params.cwd || ctx.cwd);
+      if (!params.dry_run) {
         await refreshAwareness(params.cwd || ctx.cwd);
         await refreshSpaceUi(ctx, params.cwd || ctx.cwd);
       }

@@ -30,6 +30,7 @@ jobs:
             typescript@^5.8.3 \
             @types/node@^25.5.2 \
             typebox \
+            @earendil-works/pi-ai \
             @earendil-works/pi-coding-agent \
             "$SDK_SPEC"
           ln -s .ci-deps/node_modules node_modules
