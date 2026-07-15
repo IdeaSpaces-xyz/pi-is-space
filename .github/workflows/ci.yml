@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   build:
-    name: Typecheck
+    name: Typecheck, test, drift guards
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -32,11 +32,15 @@ jobs:
             typebox \
             @earendil-works/pi-ai \
             @earendil-works/pi-coding-agent \
+            vitest@^3.2.6 \
             "$SDK_SPEC"
           ln -s .ci-deps/node_modules node_modules
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Test
+        run: npm test
 
       - name: Lint skill entrypoints
         run: npm run lint:skills

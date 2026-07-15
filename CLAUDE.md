@@ -20,9 +20,12 @@ Agent (Pi) → pi-is-space → IdeaSpaces CLI --json → SDK → local files / o
 
 IdeaSpaces-aware primitives:
 
+- `is_navigate` — move home awareness focus, or inspect a mounted repo as read-only reference
+- `is_mount` / `is_unmount` — manage the conversation's read-only working set without changing authority
 - `is_status` — inspect capture/git state and file `sha` for safe updates
 - `is_write` — capture primitive for frontmatter-aware Note writes; stages, tracks, and returns `sha`
 - `is_commit` — capture primitive; commits only tracked or explicit capture paths
+- `is_change_open` / `is_change_close` — carry one decision's `Change-Id` across commits and repos
 - `is_pull` — pull primitive; integrates remote changes into the local space (never pushes)
 - `is_push` — push primitive; sends committed captures to the remote (refuses when behind — pull first)
 - `is_auth` — login/logout for optional sync
@@ -71,6 +74,9 @@ Capture flow: user intent → `is-capture` → maybe `is_write` for Notes or nat
 ## Development
 
 ```bash
+npm run typecheck
+npm test      # common MCP/Pi tool-contract conformance
+npm run lint:skills
 pi install .  # full extension + skills package
 pi -e .       # quick extension-only test
 ```
