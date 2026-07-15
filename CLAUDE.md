@@ -71,6 +71,9 @@ Capture flow: user intent → `is-capture` → maybe `is_write` for Notes or nat
 ## Development
 
 ```bash
+npm run typecheck
+npm test      # common MCP/Pi tool-contract conformance
+npm run lint:skills
 pi install .  # full extension + skills package
 pi -e .       # quick extension-only test
 ```
