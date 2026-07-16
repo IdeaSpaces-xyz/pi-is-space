@@ -23,7 +23,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ideaspaces/cli": "git+https://github.com/IdeaSpaces-xyz/cli.git#edb975f1574d82474efb35f4591c2ed3bcb8bfe4",
+    "@ideaspaces/cli": "git+https://github.com/IdeaSpaces-xyz/cli.git#f11276db0596320e299d10e2852e7c3c903fedb6",
     "@ideaspaces/sdk": "github:IdeaSpaces-xyz/sdk#332b289bafacc6495ada5a661c405e023f939092"
   },
   "peerDependencies": {
@@ -34,6 +34,7 @@
   "devDependencies": {
     "@types/node": "^25.5.2",
     "typescript": "^5.8.3",
-    "vitest": "^3.2.6"
+    "vitest": "^3.2.6",
+    "@ideaspaces/protocol": "github:IdeaSpaces-xyz/ideaspace-protocol#96e0d0c84705d1fb1b97ce1a84b33e2a0a5b2237"
   }
 }
