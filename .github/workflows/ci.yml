@@ -26,6 +26,10 @@ jobs:
         run: |
           mkdir -p .ci-deps
           SDK_SPEC=$(node -p "require('./package.json').dependencies['@ideaspaces/sdk']")
+          # The CLI git dep builds its bundle via `prepare` on install — the
+          # conformance e2e executes that bundle, so it must be a real install.
+          CLI_SPEC=$(node -p "require('./package.json').dependencies['@ideaspaces/cli']")
+          PROTOCOL_SPEC=$(node -p "require('./package.json').devDependencies['@ideaspaces/protocol']")
           npm install --prefix .ci-deps --no-save --no-audit --no-fund \
             typescript@^5.8.3 \
             @types/node@^25.5.2 \
@@ -33,7 +37,9 @@ jobs:
             @earendil-works/pi-ai \
             @earendil-works/pi-coding-agent \
             vitest@^3.2.6 \
-            "$SDK_SPEC"
+            "$SDK_SPEC" \
+            "$CLI_SPEC" \
+            "$PROTOCOL_SPEC"
           ln -s .ci-deps/node_modules node_modules
 
       - name: Typecheck
