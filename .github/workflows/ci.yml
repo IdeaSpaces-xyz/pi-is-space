@@ -21,26 +21,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: npm
 
-      - name: Install typecheck dependencies
-        run: |
-          mkdir -p .ci-deps
-          SDK_SPEC=$(node -p "require('./package.json').dependencies['@ideaspaces/sdk']")
-          # The CLI git dep builds its bundle via `prepare` on install — the
-          # conformance e2e executes that bundle, so it must be a real install.
-          CLI_SPEC=$(node -p "require('./package.json').dependencies['@ideaspaces/cli']")
-          PROTOCOL_SPEC=$(node -p "require('./package.json').devDependencies['@ideaspaces/protocol']")
-          npm install --prefix .ci-deps --no-save --no-audit --no-fund \
-            typescript@^5.8.3 \
-            @types/node@^25.5.2 \
-            typebox \
-            @earendil-works/pi-ai \
-            @earendil-works/pi-coding-agent \
-            vitest@^3.2.6 \
-            "$SDK_SPEC" \
-            "$CLI_SPEC" \
-            "$PROTOCOL_SPEC"
-          ln -s .ci-deps/node_modules node_modules
+      # `npm ci` from the committed lockfile replaces the old hand-curated
+      # `.ci-deps` install — that list had to be maintained by hand and missed
+      # `@ideaspaces/cli` until the conformance suite first executed it (epic
+      # conformance finding #4). The lockfile pins everything, including the
+      # `*` peer deps, and the CLI git dep still builds its bundle via
+      # `prepare` — the conformance e2e executes that bundle.
+      - name: Install
+        run: npm ci --no-audit --no-fund
 
       - name: Typecheck
         run: npm run typecheck

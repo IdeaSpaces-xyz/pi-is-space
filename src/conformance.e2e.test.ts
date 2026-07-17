@@ -17,10 +17,10 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
-  AuthStorage,
   discoverAndLoadExtensions,
   ExtensionRunner,
   ModelRegistry,
+  ModelRuntime,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import {
@@ -123,12 +123,20 @@ beforeAll(async () => {
   tools = ours.tools;
 
   sessionManager = SessionManager.inMemory();
+  // pi-coding-agent ≥0.80: ModelRegistry wraps a ModelRuntime (AuthStorage and
+  // the static ModelRegistry.create are gone). Network stays off — the suite
+  // never talks to a model.
+  const modelRuntime = await ModelRuntime.create({
+    authPath: join(home, "auth.json"),
+    modelsPath: null,
+    allowModelNetwork: false,
+  });
   const runner = new ExtensionRunner(
     result.extensions,
     result.runtime,
     space,
     sessionManager,
-    ModelRegistry.create(AuthStorage.create(join(home, "auth.json"))),
+    new ModelRegistry(modelRuntime),
   );
   ctx = runner.createContext();
 }, T * 2);
