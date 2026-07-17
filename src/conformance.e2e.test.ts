@@ -465,3 +465,55 @@ describe("Change persistence across pi restarts (real runtime)", () => {
     expect(existsSync(changeFile)).toBe(false);
   });
 });
+
+describe("close never deletes another surface's newer record", () => {
+  test("armed close with a since-replaced record leaves the other Change in place", { timeout: T }, async () => {
+    // Reuse the persistence sandbox's machinery is overkill here — one boot in
+    // a fresh space suffices.
+    const qspace = mkdtempSync(join(tmpdir(), "is-pi-close-guard-"));
+    try {
+      sh("node", [CLI, "create", "--yes"], qspace);
+      const agentDir = join(home, "pi-agent-close-guard");
+      mkdirSync(agentDir, { recursive: true });
+      const result = await discoverAndLoadExtensions([join(ROOT, "src/index.ts")], qspace, agentDir);
+      const ours = result.extensions.find((e: { tools: Map<string, unknown> }) => e.tools.has("is_write"))!;
+      const sm = SessionManager.inMemory();
+      const modelRuntime = await ModelRuntime.create({
+        authPath: join(home, "auth.json"),
+        modelsPath: null,
+        allowModelNetwork: false,
+      });
+      const runner = new ExtensionRunner(result.extensions, result.runtime, qspace, sm, new ModelRegistry(modelRuntime));
+      const qctx = runner.createContext();
+      const exec = async (name: string, params: Record<string, unknown>) => {
+        const res = (await ours.tools.get(name)!.definition.execute(`cg-${++toolCall}`, params, undefined, undefined, qctx)) as {
+          content?: Array<{ type: string; text?: string }>;
+        };
+        return res.content?.map((c) => c.text ?? "").join("") ?? "";
+      };
+
+      // Arm a Change in this session, then simulate the other surface opening
+      // a DIFFERENT Change in the same project dir (the shared one-per-dir slot).
+      const open = await exec("is_change_open", { handle: "mine" });
+      const mine = open.match(/chg_[a-z0-9-]+/)?.[0] ?? "";
+      const { createHash } = await import("node:crypto");
+      const { resolve } = await import("node:path");
+      const key = createHash("sha256").update(resolve(qspace)).digest("hex").slice(0, 16);
+      const file = join(home, ".ideaspaces", "changes", key);
+      writeFileSync(
+        file,
+        JSON.stringify({ change_id: "chg_theirs-zz99", opened_at: Date.now(), session_id: "claude-other" }) + "\n",
+      );
+
+      const closed = await exec("is_change_close", {});
+      expect(closed).toContain(`Change closed: ${mine}`);
+      expect(closed).toContain("chg_theirs-zz99");
+      // The other surface's record survives our close.
+      expect(existsSync(file)).toBe(true);
+      expect(JSON.parse(readFileSync(file, "utf-8")).change_id).toBe("chg_theirs-zz99");
+      rmSync(file);
+    } finally {
+      rmSync(qspace, { recursive: true, force: true });
+    }
+  });
+});

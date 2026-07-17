@@ -1608,7 +1608,7 @@ export default function (pi: ExtensionAPI) {
     name: "is_status",
     label: "IS Status",
     description:
-      "Show IdeaSpaces capture state. Without path: returns JSON for git position plus staged captures and refreshes the UI. With path: returns single-file state text including sha for is_write if_match, without refreshing the UI.",
+      "Show IdeaSpaces capture state. Without path: returns JSON for git position plus staged captures and refreshes the UI. With path: returns single-file state text including sha for is_write if_match, without refreshing the UI. The `change` field always reflects the session's own open-Change record (a Change is session-scoped, spanning repos) — it does not follow a `cwd` override.",
     promptSnippet: "Inspect IdeaSpaces capture state or get a file sha for safe updates",
     parameters: Type.Object({
       path: Type.Optional(
@@ -1768,8 +1768,17 @@ export default function (pi: ExtensionAPI) {
         return ok("No Change is open.");
       }
       currentChangeId = null;
-      clearPersistedChange(file);
-      return ok(`Change closed: ${armed}.`);
+      // Match-before-clear: the shared record is one-per-project-dir, and
+      // another surface/session may have opened a DIFFERENT Change since we
+      // armed. Closing ours must not delete theirs — clear only when the disk
+      // record still describes the Change being closed (or is absent).
+      if (!rec || rec.change_id === armed) {
+        clearPersistedChange(file);
+        return ok(`Change closed: ${armed}.`);
+      }
+      return ok(
+        `Change closed: ${armed}. A different Change (${rec.change_id}) was opened elsewhere since — its record is left in place.`,
+      );
     },
   });
 
