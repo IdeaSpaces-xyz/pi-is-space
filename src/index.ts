@@ -6,6 +6,16 @@ import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve as resolvePath, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  CHANGE_ID_SHAPE,
+  armingDecision,
+  changeCachePath,
+  clearPersistedChange,
+  readPersistedChange,
+  renderChangeLine,
+  writePersistedChange,
+  type PersistedChange,
+} from "./change-state.js";
 // No `@ideaspaces/sdk` import: awareness is produced by the CLI now (`cli status`
 // for the capture/operating state, `cli navigate` for the fractal contract, tree,
 // position, catalog, and working set). Only two tiny filesystem/git helpers stay
@@ -88,7 +98,7 @@ type FileSuggestion = {
 const AUTOCOMPLETE_LIMIT = 20;
 const AUTOCOMPLETE_FD_LIMIT = 1000;
 const AUTOCOMPLETE_EXCLUDES = [".git", "node_modules", "backups", ".pi", ".claude"];
-const CHANGE_ID_PATTERN = /^chg_[a-z0-9]+(-[a-z0-9]+)*$/;
+const CHANGE_ID_PATTERN = CHANGE_ID_SHAPE;
 
 function ok(text: string): ToolResult {
   return { content: [{ type: "text", text }], details: {} };
@@ -643,9 +653,47 @@ export default function (pi: ExtensionAPI) {
   let pullable: Array<{ slug: string; namespace: string }> = [];
   let pullableFetched = false;
   // The active Change — an idea-snapshot coordinate stamped as a Change-Id
-  // trailer on every commit of one decision, across repos. Unset → commits carry
-  // no Change-Id. Opened with `is_change_open`, cleared with `is_change_close`.
+  // trailer on every commit of one decision, across repos. Armed in memory here
+  // and persisted to the cross-surface user-level record (change-state.ts) so a
+  // pi restart doesn't silently drop it; openChangeState() is the read path.
+  // Unset and nothing re-armable persisted → commits carry no Change-Id.
   let currentChangeId: string | null = null;
+
+  // Where the open Change persists for this session. Keyed by the session's
+  // start cwd (pi's analog of CLAUDE_PROJECT_DIR) — never a per-call cwd
+  // override, which affects path resolution, not identity.
+  function changeCacheFile(ctx: ExtensionContext): string {
+    return changeCachePath(homedir(), ctx.cwd);
+  }
+
+  // The open-Change view for this call: one read of the persisted record, then
+  // armingDecision — silent re-arm ONLY for the session that opened it (pi
+  // restart + resume); any other session (or the Claude surface) keeps the
+  // record visible in `rec` without arming. EVERY Change-touching path goes
+  // through this (is_commit, is_status, is_change_close, awareness) so the
+  // arm decision is applied before any branch on armed state.
+  function openChangeState(ctx: ExtensionContext): { armed: string | null; rec: PersistedChange | undefined } {
+    const rec = readPersistedChange(changeCacheFile(ctx));
+    if (!currentChangeId && armingDecision(rec, ctx.sessionManager.getSessionId()) === "arm") {
+      currentChangeId = rec!.change_id;
+    }
+    return { armed: currentChangeId, rec };
+  }
+
+  // Persist the newly armed Change. Best-effort: on a write failure the Change
+  // still works for this process's lifetime — it just won't survive a restart.
+  function persistOpenChange(ctx: ExtensionContext, id: string, handle?: string): void {
+    try {
+      writePersistedChange(changeCacheFile(ctx), {
+        change_id: id,
+        handle,
+        opened_at: Date.now(),
+        session_id: ctx.sessionManager.getSessionId(),
+      });
+    } catch {
+      // Never fail the open on a cache write; memory still carries it.
+    }
+  }
   // The local agent's signing principal (`agent:<id>@ideaspaces`), resolved once
   // and cached: `IDEASPACES_AGENT_ID` override, else derived from the person
   // identity in git `user.email`. Null until resolved (retried each commit).
@@ -872,6 +920,18 @@ export default function (pi: ExtensionAPI) {
     await refreshAwareness(ctx.cwd);
     await refreshSpaceUi(ctx);
 
+    // A cross-session (or cross-surface) open Change deserves more than buried
+    // context: notify once at session start so the resume-or-close decision is
+    // visible. Same-session records re-arm silently in openChangeState and
+    // need no warning.
+    const { armed, rec } = openChangeState(ctx);
+    if (!armed && rec) {
+      ctx.ui.notify(
+        `Change open from a previous session: ${rec.change_id} — resume with is_change_open or clear with is_change_close`,
+        "warning",
+      );
+    }
+
     // IdeaSpaces often uses .gitignore as a sharing boundary, not a local
     // context boundary. Broaden @mention discovery to include gitignored local
     // files while still excluding dependency and git metadata noise.
@@ -935,9 +995,24 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("before_agent_start", async (event, ctx) => {
     await refreshAwareness(ctx.cwd);
-    if (!cachedAwareness) return;
+    // The open-Change line is session state, computed fresh at injection time
+    // (never cached with awareness) and rendered even when no `_agent/`
+    // contract resolves here — a Change spans repos and surfaces. Display-only;
+    // arming stays in openChangeState.
+    const { armed, rec } = openChangeState(ctx);
+    // Render from the record only when it verifiably describes the armed
+    // Change (a failed persist can leave a stale record for a different id).
+    const changeLine = armed
+      ? rec && rec.change_id === armed
+        ? renderChangeLine(rec, ctx.sessionManager.getSessionId(), Date.now())
+        : `Change open: ${armed} (this session) — stamping every is_commit; close with is_change_close when the decision lands.`
+      : rec
+        ? renderChangeLine(rec, ctx.sessionManager.getSessionId(), Date.now())
+        : undefined;
+    if (!cachedAwareness && !changeLine) return;
+    const block = [cachedAwareness, changeLine].filter(Boolean).join("\n\n");
     return {
-      systemPrompt: `${event.systemPrompt}\n\n[IdeaSpaces Awareness]\n${cachedAwareness}`,
+      systemPrompt: `${event.systemPrompt}\n\n[IdeaSpaces Awareness]\n${block}`,
     };
   });
 
@@ -1533,7 +1608,7 @@ export default function (pi: ExtensionAPI) {
     name: "is_status",
     label: "IS Status",
     description:
-      "Show IdeaSpaces capture state. Without path: returns JSON for git position plus staged captures and refreshes the UI. With path: returns single-file state text including sha for is_write if_match, without refreshing the UI.",
+      "Show IdeaSpaces capture state. Without path: returns JSON for git position plus staged captures and refreshes the UI. With path: returns single-file state text including sha for is_write if_match, without refreshing the UI. The `change` field always reflects the session's own open-Change record (a Change is session-scoped, spanning repos) — it does not follow a `cwd` override.",
     promptSnippet: "Inspect IdeaSpaces capture state or get a file sha for safe updates",
     parameters: Type.Object({
       path: Type.Optional(
@@ -1559,7 +1634,22 @@ export default function (pi: ExtensionAPI) {
       const result = await runJson<CaptureStatus>(["status"], cwd);
       if (!result.ok) throw new Error(result.error);
       updateSpaceUi(ctx, result.data);
-      return ok(JSON.stringify(result.data, null, 2));
+
+      // Merge the surface-owned Change state so capture state is one answer:
+      // an armed Change (stamping every is_commit), or a record persisted by a
+      // previous session / the other surface awaiting explicit resume or close.
+      const { armed, rec } = openChangeState(ctx);
+      let change: Record<string, unknown> | undefined;
+      if (armed) {
+        change = { open: armed, ...(rec?.change_id === armed ? { opened_at: rec.opened_at } : {}) };
+      } else if (rec) {
+        change = {
+          persisted: rec.change_id,
+          opened_at: rec.opened_at,
+          hint: `From a previous session or another surface — resume with is_change_open({ id: "${rec.change_id}" }) or clear with is_change_close.`,
+        };
+      }
+      return ok(JSON.stringify(change ? { ...result.data, change } : result.data, null, 2));
     },
   });
 
@@ -1600,12 +1690,15 @@ export default function (pi: ExtensionAPI) {
       const cwd = params.cwd || ctx.cwd;
       if (!agentPrincipal) agentPrincipal = resolveAgentPrincipal(cwd);
       const sessionId = ctx.sessionManager.getSessionId();
+      // Lazy resolution: a same-session pi restart re-arms the persisted
+      // Change here; other sessions' records never arm (openChangeState).
+      const { armed } = openChangeState(ctx);
 
       const args = ["commit", "-m", params.message];
       if (params.all) args.push("--all");
       else if (params.paths?.length) args.push(...params.paths);
       if (params.op) args.push("--op", params.op);
-      if (currentChangeId) args.push("--change-id", currentChangeId);
+      if (armed) args.push("--change-id", armed);
       if (agentPrincipal) args.push("--co-author", agentPrincipal);
       if (sessionId) args.push("--conversation", sessionId);
 
@@ -1634,18 +1727,20 @@ export default function (pi: ExtensionAPI) {
         }),
       ),
     }),
-    async execute(_id, params) {
+    async execute(_id, params, _signal, _onUpdate, ctx) {
       const id = params.id?.trim();
+      const handle = params.handle?.trim();
       if (id) {
         currentChangeId = changeId(id, "Provided id");
-      } else if (params.handle?.trim()) {
+      } else if (handle) {
         // Mint offline via the CLI — a repo-agnostic, pure mint.
-        const minted = await runJson<{ change_id: unknown }>(["change", "new", params.handle.trim()]);
+        const minted = await runJson<{ change_id: unknown }>(["change", "new", handle]);
         if (!minted.ok) throw new Error(minted.error);
         currentChangeId = changeId(minted.data.change_id, "CLI response");
       } else {
         throw new Error("Provide `handle` to mint a new Change, or `id` to continue one.");
       }
+      persistOpenChange(ctx, currentChangeId, handle);
       return ok(
         `Change open: ${currentChangeId}. It stamps every is_commit until is_change_close. Find its arc later with: git log --grep="Change-Id: ${currentChangeId}"`,
       );
@@ -1656,14 +1751,34 @@ export default function (pi: ExtensionAPI) {
     name: "is_change_close",
     label: "IS Change Close",
     description:
-      "Close the active Change so later commits no longer carry its Change-Id. The decision's arc stays queryable in git history.",
+      "Close the active Change so later commits no longer carry its Change-Id. The decision's arc stays queryable in git history. Also clears a Change record persisted by a previous session or another surface (the one awareness surfaces) when nothing is currently armed — note this clears the shared record only, not another still-running surface's memory.",
     promptSnippet: "Close the active Change-Id",
     parameters: Type.Object({}),
-    async execute() {
-      if (!currentChangeId) return ok("No Change is open.");
-      const closed = currentChangeId;
+    async execute(_id, _params, _signal, _onUpdate, ctx) {
+      const file = changeCacheFile(ctx);
+      // Resolve BEFORE branching: a same-session pi restart must re-arm here
+      // too, or a close issued right after the restart would misreport this
+      // session's Change as "previous session".
+      const { armed, rec } = openChangeState(ctx);
+      if (!armed) {
+        if (rec) {
+          clearPersistedChange(file);
+          return ok(`Cleared persisted Change ${rec.change_id} (opened in a previous session or another surface). Later commits won't carry it.`);
+        }
+        return ok("No Change is open.");
+      }
       currentChangeId = null;
-      return ok(`Change closed: ${closed}.`);
+      // Match-before-clear: the shared record is one-per-project-dir, and
+      // another surface/session may have opened a DIFFERENT Change since we
+      // armed. Closing ours must not delete theirs — clear only when the disk
+      // record still describes the Change being closed (or is absent).
+      if (!rec || rec.change_id === armed) {
+        clearPersistedChange(file);
+        return ok(`Change closed: ${armed}.`);
+      }
+      return ok(
+        `Change closed: ${armed}. A different Change (${rec.change_id}) was opened elsewhere since — its record is left in place.`,
+      );
     },
   });
 
