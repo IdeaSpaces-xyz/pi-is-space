@@ -10,10 +10,11 @@ Implement the ideaspace inhabitation loop as a natural Pi surface:
 arrive → orient → inspect → act → capture → sync → reflect
 ```
 
-The agent chooses intent; the extension/skills choose mechanism. Keep the wrapper thin. Behavior lives in the IdeaSpaces CLI and SDK.
+The agent chooses intent; the extension/skills choose mechanism. Keep the wrapper thin. Portable local shape reads come from `@ideaspaces/protocol`; platform interactions and transitional local writes stay in the IdeaSpaces CLI.
 
 ```txt
-Agent (Pi) → pi-is-space → IdeaSpaces CLI --json → SDK → local files / optional remote sync
+Agent (Pi) → pi-is-space → protocol (local reads)
+                         → CLI (auth/sync/publish + transitional writes)
 ```
 
 ## Tool Surface
@@ -53,7 +54,7 @@ No `sw_*` tools in this package.
 
 ## Session Awareness
 
-On session start, shell the IdeaSpaces CLI for awareness: `status` supplies capture/operating state and `navigate` supplies the composed contract, position, tree/context summaries, working set, repo catalog, drift, and changes since last session. The extension injects the combined block before agent turns; it does not import the SDK directly. Missing `_agent/purpose.md` / `_agent/now.md` are drift signals, not placeholders to silently fill.
+On session start, assemble local awareness in-process from `@ideaspaces/protocol`: structured Content awareness supplies the composed contract, position, tree/context summaries, drift, and recent activity; protocol workspace/root handles supply the local catalog; protocol git/path primitives supply capture state. Pi owns the working-set/catalog roles, combined `before_agent_start` placement, Change line, and seen-ref write. Missing `_agent/purpose.md` / `_agent/now.md` are drift signals, not placeholders to silently fill. Prompt-cache placement remains a separate measurement-led change.
 
 ## Skills
 

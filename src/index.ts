@@ -7,6 +7,20 @@ import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve as resolvePath, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  findNearestAgent,
+  gitState,
+  isIdeaspacePath,
+  resolveRepoRoot,
+} from "@ideaspaces/protocol";
+import {
+  buildLocalAwareness,
+  LOCAL_WORKSPACE_EXCLUDES,
+  readCaptureStatus,
+  readMountedAwareness,
+  readPathStatusText,
+  type CaptureStatus,
+} from "./local-awareness.js";
+import {
   CHANGE_ID_SHAPE,
   armingDecision,
   changeCachePath,
@@ -16,10 +30,9 @@ import {
   writePersistedChange,
   type PersistedChange,
 } from "./change-state.js";
-// No `@ideaspaces/sdk` import: awareness is produced by the CLI now (`cli status`
-// for the capture/operating state, `cli navigate` for the fractal contract, tree,
-// position, catalog, and working set). Only two tiny filesystem/git helpers stay
-// local (findSpaceRoot, headShaOf below) — utility checks, not awareness render.
+// Local shape reads come directly from @ideaspaces/protocol. The CLI remains
+// the platform/transitional-write client for auth, sync, publish, setup, write,
+// commit, and remote catalog discovery.
 
 type CliResult = { out: string; err: string; code: number };
 
@@ -35,16 +48,6 @@ type CliTextResult =
 type JsonCliResult<T> =
   | { ok: true; data: T; text: string }
   | { ok: false; error: string; text: string };
-
-type CaptureStatus = {
-  repoRoot: string;
-  branch: string | null;
-  ahead: number | null;
-  behind: number | null;
-  dirty: boolean;
-  untracked_in_tracked_dirs: string[];
-  tracked_captures: string[];
-};
 
 type SyncDryRun = {
   /** Mirrors the CLI JSON shape for `ideaspaces sync --dry-run`. */
@@ -97,7 +100,7 @@ type FileSuggestion = {
 
 const AUTOCOMPLETE_LIMIT = 20;
 const AUTOCOMPLETE_FD_LIMIT = 1000;
-const AUTOCOMPLETE_EXCLUDES = [".git", "node_modules", "backups", ".pi", ".claude"];
+const AUTOCOMPLETE_EXCLUDES = [".git", "node_modules", ...LOCAL_WORKSPACE_EXCLUDES];
 const CHANGE_ID_PATTERN = CHANGE_ID_SHAPE;
 
 function ok(text: string): ToolResult {
@@ -321,26 +324,6 @@ function setSeenMarker(cwd: string, sha: string): void {
   spawnSync("git", ["-C", cwd, "update-ref", SEEN_REF, sha], { encoding: "utf-8" });
 }
 
-// HEAD sha at `cwd`, or null (unborn/no repo). Offline git, replaces the SDK's
-// `gitState().headSha` on the shutdown seen-marker path.
-function headShaOf(cwd: string): string | null {
-  const r = spawnSync("git", ["-C", cwd, "rev-parse", "--verify", "--quiet", "HEAD"], { encoding: "utf-8" });
-  return r.status === 0 && r.stdout.trim() ? r.stdout.trim() : null;
-}
-
-// Nearest ancestor carrying an `_agent/` dir — the space root. A trivial local
-// filesystem walk (the protocol's space marker), NOT awareness rendering (the
-// CLI owns that now). Sync; call sites `await` it harmlessly.
-function findSpaceRoot(dir: string): { source: "found" | "none"; root: string | null } {
-  let cur = resolvePath(dir);
-  for (;;) {
-    if (existsSync(join(cur, "_agent"))) return { source: "found", root: cur };
-    const parent = dirname(cur);
-    if (parent === cur) return { source: "none", root: null };
-    cur = parent;
-  }
-}
-
 function cli(args: string[], stdin?: string, cwd?: string): Promise<CliResult> {
   return new Promise((resolve) => {
     const proc = spawn(cliNeedsNode() ? "node" : CLI, cliNeedsNode() ? [CLI, ...args] : args, {
@@ -480,125 +463,40 @@ function toolPath(input: Record<string, unknown>): string | null {
   return path.trim().replace(/^@/, "");
 }
 
-function isKnowledgePath(path: string): boolean {
-  const normalized = resolvePath(path);
-  const parts = normalized.split(sep);
-  return normalized.endsWith(".md") || parts.includes("_agent");
-}
-
 async function gitRootForDir(
-  pi: ExtensionAPI,
   cache: Map<string, string | null>,
   dir: string,
-  signal?: AbortSignal,
 ): Promise<string | null> {
   const key = resolvePath(dir);
   // Session-scoped cache: git ownership is stable for normal Pi sessions. If a
   // user runs `git init` mid-session, a reload/new session refreshes this map.
   if (cache.has(key)) return cache.get(key) ?? null;
-
-  const result = await pi.exec("git", ["-C", key, "rev-parse", "--show-toplevel"], { signal, timeout: 5_000 });
-  const root = result.code === 0 && result.stdout.trim() ? resolvePath(result.stdout.trim()) : null;
+  const root = await resolveRepoRoot(key);
   cache.set(key, root);
   return root;
 }
 
 async function shouldNudgeKnowledgeWrite(
-  pi: ExtensionAPI,
   cwd: string,
   rawPath: string,
   gitRootCache: Map<string, string | null>,
-  signal?: AbortSignal,
 ): Promise<{ path: string; spaceRoot: string } | null> {
   const absPath = resolvePath(cwd, rawPath);
-  if (!isKnowledgePath(absPath)) return null;
+  if (!isIdeaspacePath(absPath)) return null;
 
-  const space = await findSpaceRoot(dirname(absPath));
+  const space = await findNearestAgent(dirname(absPath));
   if (space.source === "none" || !space.root) return null;
 
   const spaceRoot = resolvePath(space.root);
   if (!isPathInside(absPath, spaceRoot)) return null;
 
   // Avoid noisy nudges for markdown/docs inside nested code repos contained by
-  // a parent ideaspace. If the nested repo is its own ideaspace, findSpaceRoot
-  // returns that nested root and the repo root matches, so nudges still apply.
-  const gitRoot = await gitRootForDir(pi, gitRootCache, dirname(absPath), signal);
+  // a parent ideaspace. A nested repo with its own `_agent/` still nudges because
+  // the nearest agent root and git root resolve to that nested repo.
+  const gitRoot = await gitRootForDir(gitRootCache, dirname(absPath));
   if (gitRoot && gitRoot !== spaceRoot && isPathInside(absPath, gitRoot)) return null;
 
   return { path: absPath, spaceRoot };
-}
-
-function formatStateSection(status: CaptureStatus | null): string | null {
-  if (!status) return null;
-  const lines = ["State:"];
-  lines.push(`  branch: ${status.branch ?? "(detached)"}`);
-  if (status.ahead != null || status.behind != null) {
-    lines.push(`  remote: ahead ${status.ahead ?? 0}, behind ${status.behind ?? 0}`);
-  } else {
-    lines.push("  remote: no upstream");
-  }
-  lines.push(`  working tree: ${status.dirty ? "dirty" : "clean"}`);
-  lines.push(`  captures awaiting commit: ${status.tracked_captures.length}`);
-  if (status.untracked_in_tracked_dirs.length) {
-    lines.push(`  untracked knowledge files: ${status.untracked_in_tracked_dirs.length}`);
-  }
-  return lines.join("\n");
-}
-
-async function readCaptureStatus(cwd: string): Promise<CaptureStatus | null> {
-  const result = await runJson<CaptureStatus>(["status"], cwd);
-  return result.ok ? result.data : null;
-}
-
-// Awareness is rooted at a *position* — the place the agent's orientation is
-// focused — not necessarily the session cwd. Composed from two CLI shells (no
-// SDK): `cli status` for the capture/operating **state** (vantage), and `cli
-// navigate` for the **focus** — the fractal contract, tree, position, working
-// set, and repo catalog (incl. the bare-folder case). `--no-git` suppresses
-// navigate's compact git line since we render the richer State; `--pullable`
-// carries the remote tier we fetched; `--workspace` is the session cwd (the
-// context root) whose child repos the catalog scans.
-interface NavResult {
-  text: string | null;
-  position: string;
-  root: string | null;
-  repoRoot: string | null;
-}
-
-async function buildAwareness(
-  effectivePosition: string,
-  mounts: string[] = [],
-  workspaceFolder: string = effectivePosition,
-  pullable: Array<{ slug: string; namespace: string }> = [],
-): Promise<{ root: string | null; repoRoot: string | null; text: string | null }> {
-  // Vantage: the capture/operating state — kept local (`cli status`, not SDK).
-  const state = formatStateSection(await readCaptureStatus(effectivePosition));
-
-  // Focus: the CLI is the single awareness producer.
-  const navArgs = ["navigate", effectivePosition, "--workspace", workspaceFolder, "--no-git"];
-  if (mounts.length) navArgs.push("--mount", mounts.join(","));
-  if (pullable.length) {
-    navArgs.push("--pullable", pullable.map((p) => `${p.slug}:${p.namespace}`).join(","));
-  }
-  const nav = await runJson<NavResult>(navArgs, effectivePosition);
-  if (!nav.ok) {
-    // navigate failed — degrade to vantage-only so orientation isn't empty, but
-    // log it: this runs every turn, so a silent state-only fallback would hide a
-    // broken CLI/`_agent`. (runJson returns ok:false, so the caller's try/catch
-    // never sees it.)
-    console.warn(`IdeaSpaces: navigate failed, awareness is state-only: ${nav.error}`);
-    return { root: null, repoRoot: null, text: state };
-  }
-
-  // Compose: vantage (State) then focus (navigate's block). Both from the CLI.
-  const parts = [state, nav.data.text].filter(Boolean) as string[];
-  return {
-    root: nav.data.root,
-    // Gate the shutdown seen-marker to ideaspaces: outside one (no space root),
-    // report no repoRoot so the marker never lands in a plain repo.
-    repoRoot: nav.data.root ? nav.data.repoRoot : null,
-    text: parts.length ? parts.join("\n\n") : null,
-  };
 }
 
 /** Wrap a bare id or principal into `agent:<id>@ideaspaces` (domain platform-set). */
@@ -764,20 +662,15 @@ export default function (pi: ExtensionAPI) {
       throw new Error(`Not a directory: ${subPath}`);
     }
 
-    // Orient at the mounted subpath by shelling `cli navigate` (the single
-    // awareness producer) — no --workspace (this is read-only content, not a
-    // workspace catalog scan), --no-git (content, not operating state).
-    const nav = await runJson<NavResult>(["navigate", subPath, "--no-git"], subPath);
-    if (!nav.ok) throw new Error(`Failed to read mounted content at ${subPath}: ${nav.error}`);
-
+    const awareness = await readMountedAwareness(subPath);
     const rel = relative(mountRoot, subPath) || ".";
     const header = [
       "Mounted content (read-only) — its `_agent/` is reference, not your operating contract.",
       `mount: ${mountRoot}`,
       `position: ${rel}`,
     ];
-    if (nav.data.root) header.push(`mount space root: ${nav.data.root}`);
-    const body = (nav.data.text ?? "").trim();
+    if (awareness.root) header.push(`mount space root: ${awareness.root}`);
+    const body = (awareness.text ?? "").trim();
     return ok([header.join("\n"), body].filter(Boolean).join("\n\n"));
   }
 
@@ -812,7 +705,12 @@ export default function (pi: ExtensionAPI) {
   async function refreshAwareness(cwd: string): Promise<void> {
     refreshPullable(cwd);
     try {
-      const awareness = await buildAwareness(effectivePosition(cwd), mounts, cwd, pullable);
+      const awareness = await buildLocalAwareness({
+        position: effectivePosition(cwd),
+        mounts,
+        workspace: cwd,
+        pullable,
+      });
       cachedAwareness = awareness.text;
       cachedRoot = awareness.root;
       cachedRepoRoot = awareness.repoRoot;
@@ -1024,7 +922,7 @@ export default function (pi: ExtensionAPI) {
     if (!rawPath) return undefined;
 
     try {
-      const nudge = await shouldNudgeKnowledgeWrite(pi, ctx.cwd, rawPath, gitRootCache, ctx.signal);
+      const nudge = await shouldNudgeKnowledgeWrite(ctx.cwd, rawPath, gitRootCache);
       if (!nudge) return undefined;
 
       const displayPath = relative(nudge.spaceRoot, nudge.path) || rawPath;
@@ -1059,8 +957,8 @@ export default function (pi: ExtensionAPI) {
     // the next session can render "Since last session" from git history.
     if (!cachedRepoRoot) return;
     try {
-      const sha = headShaOf(cachedRepoRoot);
-      if (sha) setSeenMarker(cachedRepoRoot, sha);
+      const state = await gitState(cachedRepoRoot);
+      if (state.headSha) setSeenMarker(cachedRepoRoot, state.headSha);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.warn(`IdeaSpaces: failed to persist last-seen HEAD: ${message}`);
@@ -1132,7 +1030,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("is-publish", {
     description: "Publish this ideaspace to the IdeaSpaces remote after guided preflight",
     handler: async (_args, ctx) => {
-      const space = await findSpaceRoot(ctx.cwd);
+      const space = await findNearestAgent(ctx.cwd);
       if (space.source === "none" || !space.root) {
         ctx.ui.notify("Run /is-publish from the root of a scaffolded ideaspace. Use /is-setup first if this folder has no _agent/ contract.", "warning");
         return;
@@ -1626,14 +1524,14 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const cwd = params.cwd || ctx.cwd;
-      if (params.path) return runTool(["status", "--path", params.path], undefined, cwd);
+      if (params.path) return ok(await readPathStatusText(cwd, params.path));
 
       // A global status read is also a deliberate UI refresh; single-path sha
       // queries are local concurrency checks and should not rewrite the widget.
       await refreshAwareness(cwd);
-      const result = await runJson<CaptureStatus>(["status"], cwd);
-      if (!result.ok) throw new Error(result.error);
-      updateSpaceUi(ctx, result.data);
+      const status = await readCaptureStatus(cwd);
+      if (!status) throw new Error("not inside a git repository");
+      updateSpaceUi(ctx, status);
 
       // Merge the surface-owned Change state so capture state is one answer:
       // an armed Change (stamping every is_commit), or a record persisted by a
@@ -1649,7 +1547,7 @@ export default function (pi: ExtensionAPI) {
           hint: `From a previous session or another surface — resume with is_change_open({ id: "${rec.change_id}" }) or clear with is_change_close.`,
         };
       }
-      return ok(JSON.stringify(change ? { ...result.data, change } : result.data, null, 2));
+      return ok(JSON.stringify(change ? { ...status, change } : status, null, 2));
     },
   });
 

@@ -18,9 +18,9 @@
 
 - Tool surface is now local-capture focused: `is_write`, `is_status`, `is_commit`, `is_pull`, `is_push`, `is_auth`.
 - Local markdown is the source of truth; sync is optional.
-- `_agent/` awareness is produced by the CLI (`cli status` + `cli navigate`) and composed by the extension; it no longer imports `@ideaspaces/sdk`.
+- `_agent/`, git/capture, path-status, mounted-root, and workspace-handle reads run in-process through `@ideaspaces/protocol`; Pi owns their awareness placement and role rendering.
 - Setup/publish flows are Pi-native commands over the CLI: `/is-setup`, `/is-publish`.
-- Business logic lives in `@ideaspaces/cli` (which uses the shape lib internally); the extension shells the CLI and imports no in-process library.
+- The CLI remains the platform/transitional-write client for auth, sync, publish/setup, write, and commit. Portable local shape reads no longer shell it.
 
 ## Suggested rollout
 
