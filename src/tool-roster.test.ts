@@ -7,6 +7,9 @@ type RegisteredTool = {
   execute: (...args: any[]) => Promise<unknown> | unknown;
 };
 
+// Protocol-first cleanup row 11b deliberately leaves concrete parameter schemas
+// harness-owned. This locks Pi's roster; protocol skills and Slice 0 e2e guard
+// cross-surface semantics without recreating a shared signature literal.
 const EXPECTED_PI_TOOL_NAMES = [
   "is_navigate",
   "is_mount",
