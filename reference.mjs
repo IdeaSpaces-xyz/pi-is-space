@@ -1,18 +1,16 @@
-// Build reference/ from the protocol's canonical skill catalog via the SDK's
-// readSkill() re-export.
+// Build reference/ directly from the protocol's canonical skill catalog.
 //
 // Pi keeps surface-specific entrypoint skills in skills/is-*/SKILL.md. The
-// shared protocols they read live in reference/ and are generated through
-// @ideaspaces/sdk so Pi, Claude Code, MCP resources, and CLI consumers stay on
-// one protocol-owned catalog.
+// shared protocols they read live in reference/, while Pi, Claude Code, MCP
+// resources, and CLI consumers resolve the same protocol-owned catalog.
 //
 // reference/ is committed as a vendored distribution artifact. Re-run after
-// bumping the SDK dependency.
+// bumping the protocol dependency.
 
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { listSkills, readSkill } from "@ideaspaces/sdk";
+import { listSkills, readSkill } from "@ideaspaces/protocol";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const dst = join(root, "reference");
@@ -21,7 +19,7 @@ let skills;
 try {
   skills = await listSkills();
 } catch {
-  console.error("✗ SDK skill catalog unavailable — run `npm install` first.");
+  console.error("✗ Protocol skill catalog unavailable — run `npm install` first.");
   process.exit(1);
 }
 

@@ -315,7 +315,7 @@ function cliNeedsNode(): boolean {
 // The "last seen" marker — HEAD at the end of the previous session — lives in a
 // local git ref, not a file in HOME. update-ref is atomic, local refs aren't
 // pushed, and `recentActivity` diffs HEAD against it for the since-last-session
-// view. (Replaces the SDK session-state file.)
+// view. (Replaces the old shared session-state file.)
 const SEEN_REF = "refs/ideaspaces/seen";
 
 function setSeenMarker(cwd: string, sha: string): void {
@@ -1596,8 +1596,8 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_id, params, _signal, _onUpdate, ctx) {
       // Stamp the Change layer by handing the trailer inputs to `cli commit`,
-      // which folds them into the message — the CLI (and the SDK beneath it)
-      // own the trailer format and validation. Per-commit provenance rides
+      // which folds them into the message — the CLI orchestrates the command
+      // and the protocol owns trailer format and validation. Per-commit provenance rides
       // every agent-driven commit: Co-authored-by (the agent principal that
       // assisted) + Conversation (the pi session id); Change-Id + Op ride only
       // when set. Author stays the person (CLI-set). All additive.
