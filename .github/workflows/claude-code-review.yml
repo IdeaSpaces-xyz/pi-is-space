@@ -33,11 +33,11 @@ jobs:
 
             ## Context
             - This repo: `@ideaspaces/pi-is-space`, a Pi extension giving IdeaSpaces tools local-first parity with the Claude Code plugin. Entry point `src/index.ts`; skills shipped under `skills/`.
-            - **Thin wrapper only.** Behavior lives in the IdeaSpaces CLI and SDK — this package adapts them to Pi. The data flow is: `Agent (Pi) → pi-is-space → IdeaSpaces CLI --json → SDK → local files / optional remote sync`.
-            - Tool surface: `is_write`, `is_status`, `is_commit`, `is_sync`, `is_auth`. Pi's native `read`/`edit`/`write`/`bash` cover navigation, search, code/config edits, git, moves, and deletes — pi-is-space must not duplicate them.
+            - **Thin wrapper, split at the approved boundary.** Portable read-only local shape comes from exact-pinned `@ideaspaces/protocol`; platform interactions (auth, sync, publish) and transitional local writes remain in the IdeaSpaces CLI; Pi owns harness placement, UI, session/Change state, mounts, and lifecycle writes. Data flow: `Agent (Pi) → pi-is-space → protocol (local reads) | CLI (platform + transitional writes)`.
+            - Tool surface: `is_navigate`, `is_mount`/`is_unmount`, `is_write`, `is_status`, `is_commit`, `is_change_open`/`is_change_close`, `is_pull`, `is_push`, `is_auth`. Pi's native `read`/`edit`/`write`/`bash` cover file inspection, search, code/config edits, raw git, moves, and deletes — pi-is-space must not duplicate them.
             - No `sw_*` tools (that's the legacy `pi-sw-space`, remote-first surface). New work lives here.
-            - Dependencies: `@ideaspaces/cli` and `@ideaspaces/sdk` pinned by git SHA; peer deps on `@earendil-works/pi-coding-agent` and `typebox`.
-            - Session awareness: on start, walk up from `cwd` for `_agent/`, assemble awareness via `@ideaspaces/sdk`, inject before agent turns. Missing `_agent/purpose.md` / `_agent/now.md` are drift signals, not gaps to silently fill.
+            - Dependencies: `@ideaspaces/protocol`, `@ideaspaces/cli`, and `@ideaspaces/sdk` are exact git pins; peer deps include `@earendil-works/pi-coding-agent`, `@earendil-works/pi-ai`, and `typebox`.
+            - Session awareness: assemble protocol-owned Content/git/path/workspace facts in-process, render shared sections canonically, add Pi-owned working-set/catalog/Change layers, and place them through Pi's harness. Missing `_agent/purpose.md` / `_agent/now.md` are drift signals, not gaps to silently fill. Seen-ref updates remain surface-owned writes.
             - Reference: this repo's CLAUDE.md and the monorepo root CLAUDE.md (root principles).
 
             ## SLC label context
@@ -48,13 +48,13 @@ jobs:
             ## SLC Framework Review
 
             ### Simple 🎯
-            - Is this the simplest adapter that bridges Pi to the CLI/SDK?
-            - Logic that belongs in the CLI or SDK should NOT leak into this wrapper. Push behavior down, keep the extension thin.
+            - Is this the simplest adapter that bridges Pi to the protocol and CLI at their approved boundaries?
+            - Shared portable shape logic belongs in `@ideaspaces/protocol`; platform/auth/sync/write behavior belongs in the CLI; harness placement, UI, and session roles belong here. Push logic to the correct owner, not reflexively to one executable.
             - Does it reuse Pi's native `read`/`edit`/`write`/`bash` instead of reimplementing navigation, search, git, or file ops?
             - Any unnecessary new abstractions or tool surface?
 
             ### Lovable ❤️
-            - Tool ergonomics: clear schemas, predictable defaults, errors from the CLI/SDK surfaced legibly rather than swallowed.
+            - Tool ergonomics: clear schemas, predictable defaults, errors from protocol reads or CLI operations surfaced legibly rather than swallowed.
             - Capture flow stays coherent: `is_write` → refine with returned `sha` or `is_status({ path })` → user confirms → `is_commit` → optional `is_sync`.
             - Graceful degradation: absent `_agent/`, missing space root, CLI/sync/auth failures handled without crashing the session.
             - Awareness injection is a signal, not noise — drift surfaces honestly.
@@ -63,10 +63,10 @@ jobs:
             - Does the change keep tool registration, schemas, and skills consistent with each other?
             - No leftover `sw_*` / remote-first dead code, stale skill references, or unused imports.
             - Skills under `skills/` match the actual tool surface and capture flow.
-            - Dependency pins (CLI/SDK git SHAs) updated deliberately when behavior depends on them — not left stale, not bumped blindly.
+            - Dependency pins (protocol/CLI/SDK git SHAs) updated deliberately when behavior depends on them — not left stale, not bumped blindly.
 
             ## pi-is-space-specific checks
-            - **Thin wrapper preservation.** Reject logic that should live in the CLI or SDK. This package adapts, it does not implement.
+            - **Thin wrapper preservation.** Reject portable shape logic that should live in the protocol, platform/write logic that should live in the CLI, or generic tools Pi already supplies. Keep Pi-specific placement, roles, UI, and session behavior here.
             - **No tool duplication.** Don't add tools that re-do Pi natives (`read`/`edit`/`write`/`bash`).
             - **No `sw_*` revival.** The remote-first surface belongs to legacy `pi-sw-space`.
             - **Read-only awareness assembly.** Session-start awareness walks the tree and reads; it must not write or mutate `_agent/`.
@@ -74,7 +74,7 @@ jobs:
             - **Async by default** for any I/O or CLI invocation.
 
             ## Anti-pattern detection 🚨
-            - Reimplementing CLI/SDK behavior inside the wrapper.
+            - Reimplementing protocol shape or CLI platform/write behavior inside the wrapper.
             - Adding speculative tools or schema surface no agent flow needs yet.
             - Swallowing CLI/SDK errors so failures look like successes.
             - Auto-filling missing `_agent/` files instead of surfacing drift.
