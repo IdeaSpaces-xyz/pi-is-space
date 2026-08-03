@@ -36,7 +36,7 @@ jobs:
             - **Thin wrapper, split at the approved boundary.** Portable read-only local shape comes from exact-pinned `@ideaspaces/protocol`; platform interactions (auth, sync, publish) and transitional local writes remain in the IdeaSpaces CLI; Pi owns harness placement, UI, session/Change state, mounts, and lifecycle writes. Data flow: `Agent (Pi) → pi-is-space → protocol (local reads) | CLI (platform + transitional writes)`.
             - Tool surface: `is_navigate`, `is_mount`/`is_unmount`, `is_write`, `is_status`, `is_commit`, `is_change_open`/`is_change_close`, `is_pull`, `is_push`, `is_auth`. Pi's native `read`/`edit`/`write`/`bash` cover file inspection, search, code/config edits, raw git, moves, and deletes — pi-is-space must not duplicate them.
             - No `sw_*` tools (that's the legacy `pi-sw-space`, remote-first surface). New work lives here.
-            - Dependencies: `@ideaspaces/protocol`, `@ideaspaces/cli`, and `@ideaspaces/sdk` are exact git pins; peer deps include `@earendil-works/pi-coding-agent`, `@earendil-works/pi-ai`, and `typebox`.
+            - Dependencies: `@ideaspaces/protocol` and `@ideaspaces/cli` are exact git pins; peer deps include `@earendil-works/pi-coding-agent`, `@earendil-works/pi-ai`, and `typebox`. Pi imports protocol-owned shape and the canonical skill catalog directly; `@ideaspaces/sdk` is Keeper transport and is not a Pi dependency.
             - Session awareness: assemble protocol-owned Content/git/path/workspace facts in-process, render shared sections canonically, add Pi-owned working-set/catalog/Change layers, and place them through Pi's harness. Missing `_agent/purpose.md` / `_agent/now.md` are drift signals, not gaps to silently fill. Seen-ref updates remain surface-owned writes.
             - Reference: this repo's CLAUDE.md and the monorepo root CLAUDE.md (root principles).
 
@@ -63,7 +63,7 @@ jobs:
             - Does the change keep tool registration, schemas, and skills consistent with each other?
             - No leftover `sw_*` / remote-first dead code, stale skill references, or unused imports.
             - Skills under `skills/` match the actual tool surface and capture flow.
-            - Dependency pins (protocol/CLI/SDK git SHAs) updated deliberately when behavior depends on them — not left stale, not bumped blindly.
+            - Dependency pins (protocol/CLI git SHAs) are updated deliberately when behavior depends on them — not left stale or bumped blindly. Generated `reference/` content comes directly from the pinned protocol catalog and stays drift-checked in CI.
 
             ## pi-is-space-specific checks
             - **Thin wrapper preservation.** Reject portable shape logic that should live in the protocol, platform/write logic that should live in the CLI, or generic tools Pi already supplies. Keep Pi-specific placement, roles, UI, and session behavior here.
@@ -76,7 +76,7 @@ jobs:
             ## Anti-pattern detection 🚨
             - Reimplementing protocol shape or CLI platform/write behavior inside the wrapper.
             - Adding speculative tools or schema surface no agent flow needs yet.
-            - Swallowing CLI/SDK errors so failures look like successes.
+            - Swallowing protocol or CLI errors so failures look like successes.
             - Auto-filling missing `_agent/` files instead of surfacing drift.
             - Bumping dependency SHAs without a stated reason tied to the change.
 
