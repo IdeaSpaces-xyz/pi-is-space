@@ -10,7 +10,6 @@ import {
   findNearestAgent,
   gitState,
   isIdeaspacePath,
-  resolveRepoRoot,
 } from "@ideaspaces/protocol";
 import {
   buildLocalAwareness,
@@ -464,22 +463,33 @@ function toolPath(input: Record<string, unknown>): string | null {
 }
 
 async function gitRootForDir(
+  pi: ExtensionAPI,
   cache: Map<string, string | null>,
   dir: string,
+  signal?: AbortSignal,
 ): Promise<string | null> {
   const key = resolvePath(dir);
-  // Session-scoped cache: git ownership is stable for normal Pi sessions. If a
-  // user runs `git init` mid-session, a reload/new session refreshes this map.
+  // Session-scoped cache: git ownership is stable for normal Pi sessions. The
+  // nudge runs inside a tool-result event, so retain Pi's cancellation + timeout
+  // here; protocol git reads are intentionally unbounded today.
   if (cache.has(key)) return cache.get(key) ?? null;
-  const root = await resolveRepoRoot(key);
+  const result = await pi.exec("git", ["-C", key, "rev-parse", "--show-toplevel"], {
+    signal,
+    timeout: 5_000,
+  });
+  const root = result.code === 0 && result.stdout.trim()
+    ? resolvePath(result.stdout.trim())
+    : null;
   cache.set(key, root);
   return root;
 }
 
 async function shouldNudgeKnowledgeWrite(
+  pi: ExtensionAPI,
   cwd: string,
   rawPath: string,
   gitRootCache: Map<string, string | null>,
+  signal?: AbortSignal,
 ): Promise<{ path: string; spaceRoot: string } | null> {
   const absPath = resolvePath(cwd, rawPath);
   if (!isIdeaspacePath(absPath)) return null;
@@ -493,7 +503,7 @@ async function shouldNudgeKnowledgeWrite(
   // Avoid noisy nudges for markdown/docs inside nested code repos contained by
   // a parent ideaspace. A nested repo with its own `_agent/` still nudges because
   // the nearest agent root and git root resolve to that nested repo.
-  const gitRoot = await gitRootForDir(gitRootCache, dirname(absPath));
+  const gitRoot = await gitRootForDir(pi, gitRootCache, dirname(absPath), signal);
   if (gitRoot && gitRoot !== spaceRoot && isPathInside(absPath, gitRoot)) return null;
 
   return { path: absPath, spaceRoot };
@@ -922,7 +932,13 @@ export default function (pi: ExtensionAPI) {
     if (!rawPath) return undefined;
 
     try {
-      const nudge = await shouldNudgeKnowledgeWrite(ctx.cwd, rawPath, gitRootCache);
+      const nudge = await shouldNudgeKnowledgeWrite(
+        pi,
+        ctx.cwd,
+        rawPath,
+        gitRootCache,
+        ctx.signal,
+      );
       if (!nudge) return undefined;
 
       const displayPath = relative(nudge.spaceRoot, nudge.path) || rawPath;
