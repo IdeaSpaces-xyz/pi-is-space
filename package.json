@@ -2,7 +2,7 @@
   "name": "@ideaspaces/pi-is-space",
   "version": "0.1.0",
   "type": "module",
-  "description": "Pi extension for IdeaSpaces — local-first CLI-backed tools and skills",
+  "description": "Pi extension for IdeaSpaces — protocol-backed local awareness, capture, and sync",
   "keywords": [
     "pi-package",
     "ideaspaces",
@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@ideaspaces/cli": "git+https://github.com/IdeaSpaces-xyz/cli.git#f11276db0596320e299d10e2852e7c3c903fedb6",
+    "@ideaspaces/protocol": "github:IdeaSpaces-xyz/ideaspace-protocol#197a82e6319cc98536570c9e1d312cf19335bc17",
     "@ideaspaces/sdk": "github:IdeaSpaces-xyz/sdk#332b289bafacc6495ada5a661c405e023f939092"
   },
   "peerDependencies": {
@@ -34,7 +35,6 @@
   "devDependencies": {
     "@types/node": "^25.5.2",
     "typescript": "^5.8.3",
-    "vitest": "^3.2.6",
-    "@ideaspaces/protocol": "github:IdeaSpaces-xyz/ideaspace-protocol#96e0d0c84705d1fb1b97ce1a84b33e2a0a5b2237"
+    "vitest": "^3.2.6"
   }
 }

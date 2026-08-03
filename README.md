@@ -13,10 +13,11 @@ arrive → orient → inspect → act → capture → sync → reflect
 The agent chooses the intent; the package chooses the mechanism. Architecture stays thin:
 
 ```txt
-Agent (Pi) → pi-is-space → IdeaSpaces CLI --json → SDK → local files / optional remote sync
+Agent (Pi) → pi-is-space → @ideaspaces/protocol (portable local reads)
+                         → IdeaSpaces CLI (auth/sync/publish + transitional writes)
 ```
 
-Behavior lives in the IdeaSpaces CLI and SDK where possible.
+The wrapper keeps harness placement and session behavior local while reusing the protocol's shape and the CLI's platform capabilities.
 
 ## Install
 
@@ -70,11 +71,11 @@ Before switching or forking sessions, Pi checks for staged captures awaiting com
 
 ## Awareness
 
-On session start, the extension builds the awareness block by shelling the IdeaSpaces CLI — `cli status` for the capture/operating **state** (vantage) and `cli navigate` for the **focus** (fractal contract, position, tree/context summaries, working set, repo catalog, drift) — composes them, and injects the block before each agent turn. Missing `_agent/purpose.md` or `_agent/now.md` are surfaced as drift signals. (The extension no longer imports `@ideaspaces/sdk`; the CLI is the single awareness producer.)
+On session start, the extension builds local awareness in-process from `@ideaspaces/protocol`: the structured Content manifest supplies position, fractal contract, tree/context summaries, recent activity, and drift; protocol git/path reads supply capture state; neutral workspace/root handles supply catalog facts. Pi renders its working-set and catalog roles, appends Change state, and injects the combined block before each agent turn. Missing `_agent/purpose.md` or `_agent/now.md` remain drift signals. Prompt-cache placement is deliberately unchanged here and remains measurement-led.
 
 ## CLI
 
-The package depends on `@ideaspaces/cli`. The extension resolves the CLI for tool calls and exposes the path to skills as `$IS_CLI_PATH` when available. Skills use a small `is_cli` shell helper so local development, installed packages, and PATH installs all work.
+The package still depends on `@ideaspaces/cli` for auth, sync, publish/setup, remote catalog discovery, and transitional write/commit verbs. It resolves the CLI for those calls and exposes the path to skills as `$IS_CLI_PATH` when available. Local status, path status, navigation, mounted orientation, capture nudges, and session awareness do not invoke it.
 
 ## Auth and publish
 
