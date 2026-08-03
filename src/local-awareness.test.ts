@@ -12,6 +12,8 @@ import {
   readPathStatusText,
 } from "./local-awareness.js";
 
+const CLI = join(process.cwd(), "node_modules/@ideaspaces/cli/bundle/ideaspaces.js");
+
 let workspace: string;
 
 beforeEach(async () => {
@@ -63,8 +65,7 @@ describe("local awareness", () => {
     await makeSpace(sibling, "Sibling handle.");
     await makeSpace(mount, "Mounted handle.");
 
-    const cli = join(process.cwd(), "node_modules/@ideaspaces/cli/bundle/ideaspaces.js");
-    const statusRun = spawnSync("node", [cli, "--json", "status"], {
+    const statusRun = spawnSync("node", [CLI, "--json", "status"], {
       cwd: home,
       encoding: "utf-8",
     });
@@ -82,7 +83,7 @@ describe("local awareness", () => {
     const navRun = spawnSync(
       "node",
       [
-        cli,
+        CLI,
         "--json",
         "navigate",
         home,
@@ -176,15 +177,31 @@ describe("local awareness", () => {
     expect(result.repoRoot).toBeNull();
     expect(result.text).toContain("Repos in scope (local):");
     expect(result.text).toContain("Navigate into a repo below");
+
+    const cliRun = spawnSync(
+      "node",
+      [CLI, "--json", "navigate", workspace, "--workspace", workspace, "--no-git"],
+      { cwd: workspace, encoding: "utf-8" },
+    );
+    expect(cliRun.status, cliRun.stderr).toBe(0);
+    expect(result.text).toBe(JSON.parse(cliRun.stdout).text);
   });
 
-  it("nudges to clone in an empty bare workspace", async () => {
+  it("matches the CLI clone hint in an empty bare workspace", async () => {
     const result = await buildLocalAwareness({
       position: workspace,
       workspace,
     });
     expect(result.text).toContain("no repos yet");
     expect(result.text).not.toContain("Navigate into a repo below");
+
+    const cliRun = spawnSync(
+      "node",
+      [CLI, "--json", "navigate", workspace, "--workspace", workspace, "--no-git"],
+      { cwd: workspace, encoding: "utf-8" },
+    );
+    expect(cliRun.status, cliRun.stderr).toBe(0);
+    expect(result.text).toBe(JSON.parse(cliRun.stdout).text);
   });
 
   it("returns path status and staged capture facts in-process", async () => {

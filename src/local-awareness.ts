@@ -93,15 +93,29 @@ export async function buildLocalAwareness(opts: {
   const mounts = opts.mounts ?? [];
   const pullable = opts.pullable ?? [];
 
-  const focusedRepoRootPromise = resolveRepoRoot(position);
-  const [status, manifest, focusedRepoRoot, catalog] = await Promise.all([
-    readCaptureStatus(position),
-    assembleContentAwareness({ position }),
+  const focusedRepoRootPromise = resolveRepoRoot(position).catch(() => null);
+  const [status, manifestRead, focusedRepoRoot, catalog] = await Promise.all([
+    readCaptureStatus(position).catch((error) => {
+      console.warn(`IdeaSpaces: status read failed: ${errorMessage(error)}`);
+      return null;
+    }),
+    settle(assembleContentAwareness({ position })),
     focusedRepoRootPromise,
-    formatCatalogSection(workspace, focusedRepoRootPromise, mounts, pullable),
+    formatCatalogSection(workspace, focusedRepoRootPromise, mounts, pullable).catch(
+      (error) => `⚠ workspace catalog read failed: ${errorMessage(error)}`,
+    ),
   ]);
 
   const state = formatStateSection(status);
+  if (!manifestRead.ok) {
+    // Preserve the old failure boundary: if orientation itself unexpectedly
+    // fails, keep any independently-read operating state instead of blanking
+    // the whole awareness block.
+    console.warn(`IdeaSpaces: Content awareness read failed: ${errorMessage(manifestRead.error)}`);
+    return { root: null, repoRoot: null, text: state };
+  }
+
+  const manifest = manifestRead.value;
   if (!manifest) {
     const hint = !focusedRepoRoot && !catalog?.startsWith("⚠")
       ? catalog
@@ -277,6 +291,20 @@ function formatRepoState(state: GitState): string {
   else if (state.behind > 0) value = `behind ${state.behind}`;
   else value = "synced";
   return state.dirty ? `${value} · dirty` : value;
+}
+
+type Settled<T> = { ok: true; value: T } | { ok: false; error: unknown };
+
+async function settle<T>(promise: Promise<T>): Promise<Settled<T>> {
+  try {
+    return { ok: true, value: await promise };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function joinSections(sections: Array<string | null | undefined>): string | null {
