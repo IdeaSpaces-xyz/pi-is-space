@@ -2,7 +2,16 @@
   "name": "@ideaspaces/pi-is-space",
   "version": "0.1.0",
   "type": "module",
-  "description": "Pi extension for IdeaSpaces — protocol-backed local awareness, capture, and sync",
+  "description": "Local-first IdeaSpaces extension for Pi — durable awareness, capture, and optional sync",
+  "license": "MIT",
+  "homepage": "https://ideaspaces.xyz",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IdeaSpaces-xyz/pi-is-space.git"
+  },
+  "bugs": {
+    "url": "https://github.com/IdeaSpaces-xyz/pi-is-space/issues"
+  },
   "keywords": [
     "pi-package",
     "ideaspaces",

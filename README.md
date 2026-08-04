@@ -1,8 +1,38 @@
-# pi-is-space
+# IdeaSpaces for Pi
 
-Pi extension for [IdeaSpaces](https://ideaspaces.xyz). Local-first: an ideaspace is a markdown folder with an `_agent/` contract, optional remote sync, and frontmatter-aware capture.
+[![CI](https://github.com/IdeaSpaces-xyz/pi-is-space/actions/workflows/ci.yml/badge.svg)](https://github.com/IdeaSpaces-xyz/pi-is-space/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-## Why this exists
+> Give Pi a durable place to think with you: plain Markdown, an explicit agent contract, and git history that survives the chat.
+
+`pi-is-space` is the local-first [IdeaSpaces](https://ideaspaces.xyz) package for Pi. It orients the agent from the folder you are working in, helps preserve decisions and insights as they crystallize, and carries that shared understanding into later sessions. Everything stays on your machine unless you choose to publish or sync it.
+
+[Explore the protocol as an Ideaspace](https://ideaspaces.xyz/spaces/n_64dbf7878f05362337a6cda6) · [Read the protocol](https://github.com/IdeaSpaces-xyz/ideaspace-protocol) · [Use IdeaSpaces with Claude](https://github.com/IdeaSpaces-xyz/claude-code-plugin)
+
+## Install
+
+Install the extension and its skills directly from GitHub:
+
+```bash
+pi install git:github.com/IdeaSpaces-xyz/pi-is-space
+```
+
+Or try it for one run without adding it to your settings:
+
+```bash
+pi -e git:github.com/IdeaSpaces-xyz/pi-is-space
+```
+
+Pi packages execute code with your user permissions. Review the source before installing any third-party package.
+
+## What you get
+
+- **Awareness on arrival** — Pi reads the active `_agent/` agreement, current direction, tree, and recent movement.
+- **Knowledge that compounds** — capture decisions and context into ordinary Markdown rather than leaving them trapped in transcripts.
+- **Native Pi flows** — tools and commands cover capture, commit, setup, publish, push, and pull without duplicating Pi's file tools.
+- **Optional collaboration** — work fully offline, then publish or sync when you choose.
+
+## How it works
 
 `pi-is-space` makes the ideaspace inhabitation loop feel native in Pi:
 
@@ -19,14 +49,6 @@ Agent (Pi) → pi-is-space → @ideaspaces/protocol (portable local reads)
 
 The wrapper keeps harness placement and session behavior local while reusing the protocol's shape and the CLI's platform capabilities.
 
-## Install
-
-```bash
-pi install /path/to/pi-is-space
-# quick extension-only test; install for the full extension + skills package
-pi -e /path/to/pi-is-space
-```
-
 ## Tools
 
 The package has three surfaces:
@@ -41,9 +63,12 @@ Pi's native `read`, `edit`, `write`, and `bash` cover navigation, inspection, an
 
 | Tool | What |
 |---|---|
+| `is_navigate` | Move home awareness focus, or inspect a mounted ideaspace as read-only reference. |
+| `is_mount` / `is_unmount` | Add or remove read-only repositories from the conversation's working set. |
 | `is_status` | Inspect git/capture state, or return a file `sha` for safe Note updates. |
 | `is_write` | Capture primitive: create/update a markdown Note with Layer 1 frontmatter, stage it in git, and return a content `sha`. Normally reached through the `is-capture` skill. |
 | `is_commit` | Capture primitive: commit only explicit paths or all staged knowledge after confirmation; never sweep unrelated staged work. |
+| `is_change_open` / `is_change_close` | Carry one decision's `Change-Id` across commits and repositories. |
 | `is_pull` | Pull primitive: integrate remote changes into the local space; never pushes; refuses to integrate on staged/dirty tree. |
 | `is_push` | Push primitive: send committed captures to the remote; refuses on uncommitted captures, and when behind — pull first. |
 | `is_auth` | Log in / out for optional remote sync. |
@@ -112,4 +137,12 @@ Shared protocol content lives in `reference/`, generated directly from the proto
 
 Capture flow: user intent → `is-capture` skill → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-push` (or `is-pull` first). Cleanup is separate local-context hygiene owned by `pi-local-context`; use `context_cleanup` from that package when available.
 
-See `MIGRATION.md` for mapping from legacy `pi-sw-space`.
+See [`MIGRATION.md`](MIGRATION.md) for mapping from legacy `pi-sw-space`.
+
+## Status
+
+Public preview. The local orientation and capture loop is in active use; the protocol and Pi package may still change before 1.0, and remote hosting is optional.
+
+## License
+
+[MIT](LICENSE)
