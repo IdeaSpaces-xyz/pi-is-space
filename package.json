@@ -2,7 +2,7 @@
   "name": "@ideaspaces/pi-is-space",
   "version": "0.1.0",
   "type": "module",
-  "description": "Local-first IdeaSpaces extension for Pi — durable awareness, capture, and optional sync",
+  "description": "Ideaspace Protocol extension for Pi — durable awareness, deliberate capture, optional sync",
   "license": "MIT",
   "homepage": "https://ideaspaces.xyz",
   "repository": {
