@@ -82,7 +82,7 @@ is_cli create --yes --shared
 
 The CLI handles git init (if needed), `_agent/foundation.md`, `_agent/guide.md`, `CLAUDE.md` (or `CLAUDE.local.md`), `.gitattributes`, `.gitignore` defaults, and the initial commit. Errors don't roll back partial scaffolds — git is the recovery surface.
 
-**Why seed-only:** `foundation.md` + `guide.md` describe the contract that names `purpose.md`, `now.md`, and `next.md`. Reading them, an agent sees those names without matching files and the drift rule fires — propose creating them. Real content from real exchange beats placeholder filler.
+**Why seed-only:** the scaffolded foundation explains its own shape — the seed names the emergent files, and the drift rule fires from the files themselves. Nothing to restate here.
 
 ## 4. Capture purpose / now / next in conversation
 
@@ -92,7 +92,7 @@ For each of these, draw the content out and write the file when there's real con
 2. **Now** — *"What are you working on right now?"* Single paragraph becomes `_agent/now.md`.
 3. **Next** — *"What's queued after now?"* Optional. Vague is OK.
 
-Use `is_write` for these (Layer 1 frontmatter — `name`, `summary`). Capture is conscious; don't write Purpose for the user, elicit and reflect back. After each capture, commit it as its own capture commit with `is_commit` (explicit `paths` or `all=true`), not a broad git sweep.
+Use `is_write` for these (Layer 1 frontmatter — `name`, `summary`). Don't write Purpose *for* the user — elicit and reflect back; the space's own capture rule governs the boundary. After each capture, commit it as its own capture commit with `is_commit` (explicit `paths` or `all=true`), not a broad git sweep.
 
 ## 5. Offer publish
 

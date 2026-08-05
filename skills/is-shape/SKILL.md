@@ -29,7 +29,7 @@ Primitives and perspectives live in `_agent/` at the level where they apply; eve
 
 Use native `write` / `edit` for `_agent/skills/*`, `_agent/perspectives/*`, and other agent-context primitives because they use `name` + `description` frontmatter, not Note `name` + `summary` frontmatter. Use `is_write` only when shaping ordinary Notes such as `_agent/purpose.md` or `_agent/now.md` that should carry Note-style summary frontmatter.
 
-Nothing writes without agreement — preview, confirm, then write.
+Preview, confirm, then write — the write gate in [guide](../../reference/guide.md) applies to shaping like any capture.
 
 Shaping changes the agent agreement, so finish with the capture boundary:
 
