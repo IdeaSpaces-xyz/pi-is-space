@@ -16,6 +16,7 @@ import {
   LOCAL_WORKSPACE_EXCLUDES,
   readCaptureStatus,
   readMountedAwareness,
+  probeTree,
   readPathStatusText,
   type CaptureStatus,
 } from "./local-awareness.js";
@@ -650,7 +651,11 @@ export default function (pi: ExtensionAPI) {
   // content. Never changes `position`/authority — the mount's _agent/ is
   // reference, not the operating contract. Returns the view in the tool result,
   // not the persistent awareness.
-  async function navigateMount(rootArg: string, rawPath: string): Promise<ToolResult> {
+  async function navigateMount(
+    rootArg: string,
+    rawPath: string,
+    treeDepth?: number,
+  ): Promise<ToolResult> {
     const mountRoot = resolveMount(rootArg);
     if (!mountRoot) {
       const available = mounts.length ? mounts.join(", ") : "(none mounted)";
@@ -672,7 +677,7 @@ export default function (pi: ExtensionAPI) {
       throw new Error(`Not a directory: ${subPath}`);
     }
 
-    const awareness = await readMountedAwareness(subPath);
+    const awareness = await readMountedAwareness(subPath, treeDepth);
     const rel = relative(mountRoot, subPath) || ".";
     const header = [
       "Mounted content (read-only) — its `_agent/` is reference, not your operating contract.",
@@ -1316,11 +1321,18 @@ export default function (pi: ExtensionAPI) {
             "Omit or \"home\" to move your home awareness focus (authority re-roots). Pass a mounted root (absolute path or basename) to look into that mount as read-only content without changing authority.",
         }),
       ),
+      depth: Type.Optional(
+        Type.Number({
+          description:
+            "One-shot map probe: render the tree this many levels deep (soft-capped 1..4) in THIS result only — a name-rung outline below level 1, more map never content. The persistent awareness block stays at depth 1.",
+        }),
+      ),
     }),
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const rootArg = params.root?.trim();
+      const depth = params.depth && params.depth > 1 ? params.depth : undefined;
       if (rootArg && rootArg !== "home") {
-        return navigateMount(rootArg, params.path.trim());
+        return navigateMount(rootArg, params.path.trim(), depth);
       }
 
       // Resolve against the repo root, falling back to the current awareness
@@ -1350,6 +1362,11 @@ export default function (pi: ExtensionAPI) {
       const nowLine = cachedAwareness?.split("\n").find((line) => line.startsWith("Now:"));
       if (nowLine) lines.push(nowLine);
       else if (cachedAwareness === null) lines.push("No _agent/ contract resolves at this position.");
+      if (depth) {
+        // One-shot probe in this result only; the per-turn block stays depth 1.
+        const probed = await probeTree(target, depth);
+        if (probed) lines.push("", probed);
+      }
       return ok(lines.join("\n"));
     },
   });
