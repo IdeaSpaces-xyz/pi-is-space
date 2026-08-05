@@ -927,7 +927,8 @@ export default function (pi: ExtensionAPI) {
         : undefined;
   }
 
-  // Cache placement (plans/integration/pi-cache-placement.md): only the
+  // Cache placement (design + measurement: pi-cache-placement in the team
+  // roadmap space — a separate private repo, not a path in this one): only the
   // STABLE register enters the system prompt. Its bytes are deterministic for
   // unchanged state, so an unchanged session keeps its prompt-cache prefix; a
   // landed capture or a deliberate navigate changes the bytes — a legitimate,
@@ -947,10 +948,20 @@ export default function (pi: ExtensionAPI) {
   // on the last user message, which a transient tail would become). Here the
   // payload is already built: the breakpoint sits on the real last user
   // message, and this block lands after it, outside every cached prefix.
+  let warnedTailShape = false;
   pi.on("before_provider_request", async (event, ctx) => {
     const tail = [cachedVolatile, openChangeLine(ctx)].filter(Boolean).join("\n\n");
     if (!tail) return;
-    appendVolatileTail(event.payload, `[IdeaSpaces State]\n${tail}`);
+    const appended = appendVolatileTail(event.payload, `[IdeaSpaces State]\n${tail}`);
+    if (!appended && !warnedTailShape) {
+      // Surface the degradation once, not per call: an unrecognized payload
+      // shape means git state / activity / the Change line never reach the
+      // model this session — the opposite of drift surfacing honestly.
+      warnedTailShape = true;
+      console.warn(
+        "IdeaSpaces: volatile awareness could not attach to this provider's payload shape; git state, activity, and the Change line are absent from model context this session.",
+      );
+    }
   });
 
   pi.on("tool_result", async (event, ctx) => {

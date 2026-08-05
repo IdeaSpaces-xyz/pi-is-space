@@ -54,7 +54,7 @@ No `sw_*` tools in this package.
 
 ## Session Awareness
 
-On session start, assemble local awareness in-process from `@ideaspaces/protocol`: structured Content awareness supplies the composed contract, position, tree/context summaries, drift, and recent activity; protocol workspace/root handles supply the local catalog; protocol git/path primitives supply capture state. Pi owns the working-set/catalog roles, the split cache placement (stable register in the system prompt via `before_agent_start`; volatile register appended after the last cache breakpoint via `before_provider_request` — see roadmap plans/integration/pi-cache-placement.md), the Change line, and the seen-ref write. Missing `_agent/purpose.md` / `_agent/now.md` are drift signals, not placeholders to silently fill.
+On session start, assemble local awareness in-process from `@ideaspaces/protocol`: structured Content awareness supplies the composed contract, position, tree/context summaries, drift, and recent activity; protocol workspace/root handles supply the local catalog; protocol git/path primitives supply capture state. Pi owns the working-set/catalog roles, the split cache placement (stable register in the system prompt via `before_agent_start`; volatile register appended after the last cache breakpoint via `before_provider_request` — design and measurement in `pi-cache-placement` in the team roadmap space, a separate private repo), the Change line, and the seen-ref write. Missing `_agent/purpose.md` / `_agent/now.md` are drift signals, not placeholders to silently fill.
 
 ## Skills
 

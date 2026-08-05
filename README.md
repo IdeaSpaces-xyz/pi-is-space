@@ -99,7 +99,7 @@ Before switching or forking sessions, Pi checks for staged captures awaiting com
 
 ## Awareness
 
-On session start, the extension builds local awareness in-process from `@ideaspaces/protocol`: the structured Content manifest supplies position, fractal contract, tree/context summaries, recent activity, and drift; protocol git/path reads supply capture state; neutral workspace/root handles supply catalog facts. Pi renders its working-set and catalog roles, appends Change state, and injects the combined block before each agent turn. Missing `_agent/purpose.md` or `_agent/now.md` remain drift signals. Prompt-cache placement is deliberately unchanged here and remains measurement-led.
+On session start, the extension builds local awareness in-process from `@ideaspaces/protocol`: the structured Content manifest supplies position, fractal contract, tree/context summaries, recent activity, and drift; protocol git/path reads supply capture state; neutral workspace/root handles supply catalog facts. Pi renders its working-set and catalog roles and splits the block into two cache registers: the stable register (position, Now, tree, contract, skills, working set) enters the system prompt per prompt with deterministic bytes, so an unchanged session keeps its prompt-cache prefix; the volatile register (git State, since-last-session activity, catalog, drift, and the open-Change line) is appended per LLM call strictly after the last cache breakpoint, outside every cached prefix. Missing `_agent/purpose.md` or `_agent/now.md` remain drift signals.
 
 ## CLI
 
