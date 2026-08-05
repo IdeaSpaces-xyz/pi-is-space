@@ -57,9 +57,9 @@ describe("local awareness failure boundaries", () => {
       workspace,
     });
 
-    expect(result).toMatchObject({ root: null, repoRoot: null });
-    expect(result.text).toContain("State:\n  branch: main");
-    expect(result.text).toContain("working tree: clean");
+    expect(result).toMatchObject({ root: null, repoRoot: null, stable: null });
+    expect(result.volatile).toContain("State:\n  branch: main");
+    expect(result.volatile).toContain("working tree: clean");
     expect(warning).toHaveBeenCalledWith(
       "IdeaSpaces: Content awareness read failed: fixture manifest failure",
     );

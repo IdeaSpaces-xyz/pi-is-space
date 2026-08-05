@@ -29,12 +29,37 @@ export type PullableSpace = { slug: string; namespace: string };
 export interface LocalAwarenessResult {
   root: string | null;
   repoRoot: string | null;
-  text: string | null;
+  /**
+   * The cache-stable register: position, Now, tree, contract, skills, working
+   * set. Deterministic bytes for unchanged state — safe in the system prompt;
+   * a changed byte is a legitimate, content-hash invalidation (a capture
+   * landed, focus moved), never per-turn churn.
+   */
+  stable: string | null;
+  /**
+   * The volatile register: State (git), since-last-session activity, catalog
+   * (sync states + async pullable tier), and drift. Changes freely; must never
+   * enter the cached prefix — appended after the last cache breakpoint in
+   * before_provider_request.
+   */
+  volatile: string | null;
 }
 
 export const LOCAL_WORKSPACE_EXCLUDES = ["backups", ".pi", ".claude"] as const;
 
 const MAX_CATALOG_REPOS = 20;
+// The cache-stable subset of the canonical sections: file-backed, changes only
+// when state genuinely changes (a capture, a navigate, a new file) — never
+// per-turn. `activity` is deliberately NOT here: since-last-session changes as
+// commits land mid-session, so it rides the volatile register.
+const STABLE_SECTIONS = [
+  "position",
+  "now",
+  "tree",
+  "contract",
+  "skills",
+] as const;
+
 const CORE_SECTIONS = [
   "position",
   "now",
@@ -110,9 +135,9 @@ export async function buildLocalAwareness(opts: {
   if (!manifestRead.ok) {
     // Preserve the old failure boundary: if orientation itself unexpectedly
     // fails, keep any independently-read operating state instead of blanking
-    // the whole awareness block.
+    // the whole awareness block. State is volatile; nothing stable resolves.
     console.warn(`IdeaSpaces: Content awareness read failed: ${errorMessage(manifestRead.error)}`);
-    return { root: null, repoRoot: null, text: state };
+    return { root: null, repoRoot: null, stable: null, volatile: state };
   }
 
   const manifest = manifestRead.value;
@@ -122,19 +147,44 @@ export async function buildLocalAwareness(opts: {
         ? BARE_FOLDER_HINT
         : EMPTY_FOLDER_HINT
       : null;
-    const text = joinSections([state, catalog, hint]);
-    return { root: null, repoRoot: null, text };
+    // No contract resolves: everything is workspace/session state — volatile
+    // by nature, and keeping the system prompt untouched is cache-optimal.
+    const volatile = joinSections([state, catalog, hint]);
+    return { root: null, repoRoot: null, stable: null, volatile };
   }
 
-  const core = renderContentAwareness(manifest, { sections: CORE_SECTIONS });
+  const stableCore = renderContentAwareness(manifest, { sections: STABLE_SECTIONS });
+  const activity = renderContentAwareness(manifest, { sections: ["activity"] });
   const workingSet = await formatWorkingSetSection(manifest.spaceRoot, mounts);
   const drift = renderContentAwareness(manifest, { sections: DRIFT_SECTIONS });
-  const text = joinSections([state, core, workingSet, catalog, drift]);
   return {
     root: manifest.spaceRoot,
     repoRoot: manifest.position.repoRoot,
-    text,
+    stable: joinSections([stableCore, workingSet]),
+    volatile: joinSections([state, activity, catalog, drift]),
   };
+}
+
+/**
+ * Append the volatile tail OUTSIDE the cached prefix. Pi places the history
+ * cache breakpoint on the last user-role message's last content block; a text
+ * block pushed after it is never part of any cached prefix, so per-call churn
+ * costs only itself. Mutates the payload in place. Returns false (payload
+ * untouched) for shapes it does not recognize — a provider without this
+ * layout keeps its default behavior.
+ */
+export function appendVolatileTail(payload: unknown, text: string): boolean {
+  if (!payload || typeof payload !== "object") return false;
+  const messages = (payload as { messages?: unknown }).messages;
+  if (!Array.isArray(messages)) return false;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i] as { role?: unknown; content?: unknown };
+    if (message?.role !== "user") continue;
+    if (!Array.isArray(message.content)) return false;
+    message.content.push({ type: "text", text });
+    return true;
+  }
+  return false;
 }
 
 /** Render a mounted Content position without importing its contract as authority. */

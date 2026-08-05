@@ -6,6 +6,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  appendVolatileTail,
   buildLocalAwareness,
   probeTree,
   readCaptureStatus,
@@ -126,7 +127,30 @@ describe("local awareness", () => {
       mounts: [mount],
       pullable: [{ slug: "online", namespace: "alice" }],
     });
-    expect(local.text).toBe(`${state}\n\n${nav.text}`);
+    // Split registers: the CLI's navigate text is stable sections + catalog;
+    // the catalog is volatile (async pullable, sync states), so parity holds
+    // piecewise around that boundary. State leads the volatile register.
+    const catalogIdx = nav.text.indexOf("Repos in scope (local):");
+    expect(catalogIdx).toBeGreaterThan(0);
+    const navStable = nav.text.slice(0, catalogIdx).trimEnd();
+    const navCatalog = nav.text.slice(catalogIdx).trimEnd();
+    expect(local.stable).toBe(navStable);
+    expect(local.volatile).toBe(`${state}\n\n${navCatalog}`);
+  });
+
+  it("keeps the stable register byte-identical across rebuilds with unchanged state", async () => {
+    const home = join(workspace, "home");
+    await fs.mkdir(home);
+    await makeSpace(home, "Stability check.");
+    const opts = { position: home, workspace };
+    const first = await buildLocalAwareness(opts);
+    const second = await buildLocalAwareness(opts);
+    expect(first.stable).toBeTruthy();
+    expect(second.stable).toBe(first.stable);
+    // Volatile-only facts never leak into the stable register.
+    expect(first.stable).not.toContain("State:");
+    expect(first.stable).not.toContain("Since last session");
+    expect(first.stable).not.toContain("Repos in scope");
   });
 
   it("composes state, canonical Content sections, working set, and catalog", async () => {
@@ -157,30 +181,36 @@ describe("local awareness", () => {
 
     expect(result.root).toBe(home);
     expect(result.repoRoot).toBe(home);
-    expect(result.text).toContain("State:\n  branch: main");
-    expect(result.text).toContain("working tree: dirty");
-    expect(result.text).toContain("captures awaiting commit: 1");
-    expect(result.text).toContain(`Position:\n  repo: ${home}`);
-    expect(result.text).toContain("Now: Home focus.");
-    expect(result.text).toContain("Since last session (1 changes):");
-    expect(result.text).toContain("Working set:");
-    expect(result.text).toContain("  home: home — Home focus.");
-    expect(result.text).toContain(`  mount: ${mount} — Mounted handle.`);
-    expect(result.text).toContain("Repos in scope (local):");
-    expect(result.text).toContain("home — Home focus. (local-only · dirty · POV)");
-    expect(result.text).toContain("sibling — Sibling handle. (local-only)");
-    expect(result.text).toContain("Pullable (remote — not yet local):");
-    expect(result.text).toContain("online (alice)");
-    expect(result.text).not.toContain("Git:");
+    // Stable register: orientation + working set.
+    expect(result.stable).toContain(`Position:\n  repo: ${home}`);
+    expect(result.stable).toContain("Now: Home focus.");
+    expect(result.stable).toContain("Working set:");
+    expect(result.stable).toContain("  home: home — Home focus.");
+    expect(result.stable).toContain(`  mount: ${mount} — Mounted handle.`);
+    expect(result.stable).not.toContain("Since last session");
+    expect(result.stable).not.toContain("State:");
+    // Volatile register: State, activity, catalog.
+    expect(result.volatile).toContain("State:\n  branch: main");
+    expect(result.volatile).toContain("working tree: dirty");
+    expect(result.volatile).toContain("captures awaiting commit: 1");
+    expect(result.volatile).toContain("Since last session (1 changes):");
+    expect(result.volatile).toContain("Repos in scope (local):");
+    expect(result.volatile).toContain("home — Home focus. (local-only · dirty · POV)");
+    expect(result.volatile).toContain("sibling — Sibling handle. (local-only)");
+    expect(result.volatile).toContain("Pullable (remote — not yet local):");
+    expect(result.volatile).toContain("online (alice)");
+    expect(result.volatile).not.toContain("Git:");
 
-    expect(result.text!.indexOf("State:")).toBeLessThan(
-      result.text!.indexOf("Position:"),
+    // Register-internal ordering: State leads the volatile register; the
+    // working set rides the stable register after orientation.
+    expect(result.volatile!.indexOf("State:")).toBeLessThan(
+      result.volatile!.indexOf("Since last session"),
     );
-    expect(result.text!.indexOf("Since last session")).toBeLessThan(
-      result.text!.indexOf("Working set:"),
+    expect(result.volatile!.indexOf("Since last session")).toBeLessThan(
+      result.volatile!.indexOf("Repos in scope"),
     );
-    expect(result.text!.indexOf("Working set:")).toBeLessThan(
-      result.text!.indexOf("Repos in scope"),
+    expect(result.stable!.indexOf("Position:")).toBeLessThan(
+      result.stable!.indexOf("Working set:"),
     );
   });
 
@@ -195,8 +225,9 @@ describe("local awareness", () => {
     });
     expect(result.root).toBeNull();
     expect(result.repoRoot).toBeNull();
-    expect(result.text).toContain("Repos in scope (local):");
-    expect(result.text).toContain("Navigate into a repo below");
+    expect(result.stable).toBeNull();
+    expect(result.volatile).toContain("Repos in scope (local):");
+    expect(result.volatile).toContain("Navigate into a repo below");
 
     const cliRun = spawnSync(
       "node",
@@ -204,7 +235,7 @@ describe("local awareness", () => {
       { cwd: workspace, encoding: "utf-8" },
     );
     expect(cliRun.status, cliRun.stderr).toBe(0);
-    expect(result.text).toBe(JSON.parse(cliRun.stdout).text);
+    expect(result.volatile).toBe(JSON.parse(cliRun.stdout).text);
   });
 
   it("matches the CLI clone hint in an empty bare workspace", async () => {
@@ -212,8 +243,8 @@ describe("local awareness", () => {
       position: workspace,
       workspace,
     });
-    expect(result.text).toContain("no repos yet");
-    expect(result.text).not.toContain("Navigate into a repo below");
+    expect(result.volatile).toContain("no repos yet");
+    expect(result.volatile).not.toContain("Navigate into a repo below");
 
     const cliRun = spawnSync(
       "node",
@@ -221,7 +252,7 @@ describe("local awareness", () => {
       { cwd: workspace, encoding: "utf-8" },
     );
     expect(cliRun.status, cliRun.stderr).toBe(0);
-    expect(result.text).toBe(JSON.parse(cliRun.stdout).text);
+    expect(result.volatile).toBe(JSON.parse(cliRun.stdout).text);
   });
 
   it("returns path status and staged capture facts in-process", async () => {
@@ -257,5 +288,35 @@ describe("local awareness", () => {
     expect(result.text).not.toContain("Working set:");
     expect(result.text).not.toContain("Repos in scope");
     expect(result.text).not.toContain("Git:");
+  });
+});
+
+describe("appendVolatileTail", () => {
+  it("appends after the breakpointed block of the last user message", () => {
+    const payload = {
+      system: [{ type: "text", text: "stable", cache_control: { type: "ephemeral" } }],
+      messages: [
+        { role: "user", content: [{ type: "text", text: "hi" }] },
+        { role: "assistant", content: [{ type: "text", text: "ok" }] },
+        {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "t1", content: "done", cache_control: { type: "ephemeral" } }],
+        },
+      ],
+    };
+    expect(appendVolatileTail(payload, "[IdeaSpaces State]\ntail")).toBe(true);
+    const last = payload.messages[2].content;
+    expect(last).toHaveLength(2);
+    // The breakpoint block is untouched and still precedes the tail.
+    expect((last[0] as { cache_control?: unknown }).cache_control).toBeDefined();
+    expect(last[1]).toEqual({ type: "text", text: "[IdeaSpaces State]\ntail" });
+  });
+
+  it("leaves unrecognized payload shapes untouched", () => {
+    const stringContent = { messages: [{ role: "user", content: "plain" }] };
+    expect(appendVolatileTail(stringContent, "tail")).toBe(false);
+    expect(stringContent.messages[0].content).toBe("plain");
+    expect(appendVolatileTail({ prompt: "x" }, "tail")).toBe(false);
+    expect(appendVolatileTail(null, "tail")).toBe(false);
   });
 });

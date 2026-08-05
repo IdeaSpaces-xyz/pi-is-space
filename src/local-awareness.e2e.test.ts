@@ -137,8 +137,28 @@ describe("Pi in-process local awareness", () => {
     );
     expect(injected?.systemPrompt).toContain("[IdeaSpaces Awareness]");
     expect(injected?.systemPrompt).toContain("Now: Home awareness.");
-    expect(injected?.systemPrompt).toContain("Repos in scope (local):");
-    expect(injected?.systemPrompt).toContain("sibling");
+    // Volatile facts never enter the cached prefix (cache placement split).
+    expect(injected?.systemPrompt).not.toContain("Repos in scope (local):");
+    expect(injected?.systemPrompt).not.toContain("State:");
+
+    // The volatile register lands per LLM call, strictly after the last
+    // cache breakpoint — outside every cached prefix.
+    const payload = {
+      system: [{ type: "text", text: injected!.systemPrompt, cache_control: { type: "ephemeral" } }],
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "orient", cache_control: { type: "ephemeral" } }],
+        },
+      ],
+    };
+    await runner.emitBeforeProviderRequest(payload);
+    const blocks = payload.messages[0].content as Array<{ type: string; text?: string; cache_control?: unknown }>;
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0].cache_control).toBeDefined();
+    expect(blocks[1].text).toContain("[IdeaSpaces State]");
+    expect(blocks[1].text).toContain("Repos in scope (local):");
+    expect(blocks[1].text).toContain("sibling");
 
     const status = await call("is_status", { path: "README.md", cwd: space });
     expect(JSON.parse(text(status))).toMatchObject({
