@@ -12,6 +12,7 @@ import {
   isIdeaspacePath,
 } from "@ideaspaces/protocol";
 import {
+  appendVolatileTail,
   buildLocalAwareness,
   LOCAL_WORKSPACE_EXCLUDES,
   readCaptureStatus,
@@ -545,7 +546,8 @@ function resolveAgentPrincipal(cwd: string): string | null {
 }
 
 export default function (pi: ExtensionAPI) {
-  let cachedAwareness: string | null = null;
+  let cachedStable: string | null = null;
+  let cachedVolatile: string | null = null;
   let cachedRoot: string | null = null;
   let cachedRepoRoot: string | null = null;
   // Session-persistent orientation focus. Unset → awareness roots at ctx.cwd.
@@ -726,13 +728,15 @@ export default function (pi: ExtensionAPI) {
         workspace: cwd,
         pullable,
       });
-      cachedAwareness = awareness.text;
+      cachedStable = awareness.stable;
+      cachedVolatile = awareness.volatile;
       cachedRoot = awareness.root;
       cachedRepoRoot = awareness.repoRoot;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.warn(`IdeaSpaces: awareness build failed: ${message}`);
-      cachedAwareness = null;
+      cachedStable = null;
+      cachedVolatile = null;
       cachedRoot = null;
       cachedRepoRoot = null;
     }
@@ -906,27 +910,47 @@ export default function (pi: ExtensionAPI) {
     }));
   });
 
-  pi.on("before_agent_start", async (event, ctx) => {
-    await refreshAwareness(ctx.cwd);
-    // The open-Change line is session state, computed fresh at injection time
-    // (never cached with awareness) and rendered even when no `_agent/`
-    // contract resolves here — a Change spans repos and surfaces. Display-only;
-    // arming stays in openChangeState.
+  // The open-Change line is session state, computed fresh at render time
+  // (never cached with awareness) and rendered even when no `_agent/` contract
+  // resolves here — a Change spans repos and surfaces. Display-only; arming
+  // stays in openChangeState.
+  function openChangeLine(ctx: ExtensionContext): string | undefined {
     const { armed, rec } = openChangeState(ctx);
     // Render from the record only when it verifiably describes the armed
     // Change (a failed persist can leave a stale record for a different id).
-    const changeLine = armed
+    return armed
       ? rec && rec.change_id === armed
         ? renderChangeLine(rec, ctx.sessionManager.getSessionId(), Date.now())
         : `Change open: ${armed} (this session) — stamping every is_commit; close with is_change_close when the decision lands.`
       : rec
         ? renderChangeLine(rec, ctx.sessionManager.getSessionId(), Date.now())
         : undefined;
-    if (!cachedAwareness && !changeLine) return;
-    const block = [cachedAwareness, changeLine].filter(Boolean).join("\n\n");
+  }
+
+  // Cache placement (plans/integration/pi-cache-placement.md): only the
+  // STABLE register enters the system prompt. Its bytes are deterministic for
+  // unchanged state, so an unchanged session keeps its prompt-cache prefix; a
+  // landed capture or a deliberate navigate changes the bytes — a legitimate,
+  // automatic invalidation, never per-turn churn.
+  pi.on("before_agent_start", async (event, ctx) => {
+    await refreshAwareness(ctx.cwd);
+    if (!cachedStable) return;
     return {
-      systemPrompt: `${event.systemPrompt}\n\n[IdeaSpaces Awareness]\n${block}`,
+      systemPrompt: `${event.systemPrompt}\n\n[IdeaSpaces Awareness]\n${cachedStable}`,
     };
+  });
+
+  // The VOLATILE register (State, activity, catalog, drift, Change line) is
+  // appended per LLM call, strictly AFTER the last cache breakpoint. Transient
+  // content anywhere inside the cached prefix would poison every later lookup
+  // — and the `context` event cannot control breakpoint placement (pi puts it
+  // on the last user message, which a transient tail would become). Here the
+  // payload is already built: the breakpoint sits on the real last user
+  // message, and this block lands after it, outside every cached prefix.
+  pi.on("before_provider_request", async (event, ctx) => {
+    const tail = [cachedVolatile, openChangeLine(ctx)].filter(Boolean).join("\n\n");
+    if (!tail) return;
+    appendVolatileTail(event.payload, `[IdeaSpaces State]\n${tail}`);
   });
 
   pi.on("tool_result", async (event, ctx) => {
@@ -1359,9 +1383,9 @@ export default function (pi: ExtensionAPI) {
       const rel = relative(repoRoot, target) || ".";
       const lines = [`Awareness focus moved to ${rel} (working directory unchanged).`];
       if (cachedRoot) lines.push(`space root: ${cachedRoot}`);
-      const nowLine = cachedAwareness?.split("\n").find((line) => line.startsWith("Now:"));
+      const nowLine = cachedStable?.split("\n").find((line) => line.startsWith("Now:"));
       if (nowLine) lines.push(nowLine);
-      else if (cachedAwareness === null) lines.push("No _agent/ contract resolves at this position.");
+      else if (cachedStable === null) lines.push("No _agent/ contract resolves at this position.");
       if (depth) {
         // One-shot probe in this result only; the per-turn block stays depth 1.
         const probed = await probeTree(target, depth);
@@ -1462,7 +1486,8 @@ export default function (pi: ExtensionAPI) {
         }
         case "logout": {
           const result = await runTool(["power", "logout"]);
-          cachedAwareness = null;
+          cachedStable = null;
+          cachedVolatile = null;
           cachedRoot = null;
           cachedRepoRoot = null;
           // Drop the remote tier immediately; the next turn re-fetches (→ empty).
