@@ -27,6 +27,14 @@ const FORBIDDEN = [
   { re: /\bis_conversation\b|\bis-conversation\b/, why: "local conversation metadata moved to pi-local-context (context_conversation)" },
   { re: /\bis_recall\b|\bis-recall\b/, why: "local recall moved to pi-local-context (context_recall)" },
   { re: /\bis_cleanup\b|\bis-cleanup\b/, why: "local cleanup moved to pi-local-context (context_cleanup)" },
+  // Conduct/shape restatements deduped 2026-08-05 — the space's foundation
+  // (core-composed since cli#99) and reference/ carry these once; entrypoints
+  // point, they do not restate. Shared with claude-code-plugin's linter.
+  { re: /Real content (over placeholder|from real exchange)/, why: "scaffold-template phrase — the space's foundation carries it" },
+  { re: /\.gitignore is also part of the Agreement/, why: "foundation-template sentence — the space carries it" },
+  { re: /Capture is conscious/, why: "the foundation core's line — point at the space's contract or reference/, don't restate" },
+  { re: /Nothing writes without agreement/, why: "reference\/guide.md's line — point, don't restate" },
+  { re: /\|\s*`foundation\.md`\s*\|/, why: "the contract table lives in the space's foundation and SPEC — not in entrypoints" },
 ];
 
 const violations = [];
