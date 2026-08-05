@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   buildLocalAwareness,
+  probeTree,
   readCaptureStatus,
   readMountedAwareness,
   readPathStatusText,
@@ -54,6 +55,25 @@ async function makeSpace(root: string, summary: string): Promise<void> {
 }
 
 describe("local awareness", () => {
+  it("probeTree renders a one-shot outline: handles at level 1, names below", async () => {
+    const home = join(workspace, "home");
+    await makeSpace(home, "probe test");
+    await fs.mkdir(join(home, "research", "deep"), { recursive: true });
+    await fs.writeFile(
+      join(home, "research", "README.md"),
+      "---\nname: Research\nsummary: EU landscape sweep.\n---\n# R\n",
+    );
+    await fs.writeFile(join(home, "research", "deep", "more.md"), "# More\n");
+
+    const probed = await probeTree(home, 2);
+    expect(probed).toContain("research/ (2) — EU landscape sweep.");
+    expect(probed).toContain("    deep/ (1)");
+    // Depth is a one-shot render; the ambient block is built elsewhere at depth 1.
+    const ambient = await readMountedAwareness(home);
+    expect(ambient.text).not.toContain("    deep/ (1)");
+  });
+
+
   it("matches the current CLI status + navigate awareness text", async () => {
     const home = join(workspace, "home");
     const sibling = join(workspace, "sibling");

@@ -138,11 +138,17 @@ export async function buildLocalAwareness(opts: {
 }
 
 /** Render a mounted Content position without importing its contract as authority. */
-export async function readMountedAwareness(position: string): Promise<{
+export async function readMountedAwareness(
+  position: string,
+  treeDepth?: number,
+): Promise<{
   root: string | null;
   text: string | null;
 }> {
-  const manifest = await assembleContentAwareness({ position: resolve(position) });
+  const manifest = await assembleContentAwareness({
+    position: resolve(position),
+    ...(treeDepth ? { treeDepth } : {}),
+  });
   if (!manifest) return { root: null, text: null };
   return {
     root: manifest.spaceRoot,
@@ -150,6 +156,21 @@ export async function readMountedAwareness(position: string): Promise<{
       sections: [...CORE_SECTIONS, ...DRIFT_SECTIONS],
     }) || null,
   };
+}
+
+/**
+ * One-shot map probe at a position: the tree section at the given depth,
+ * rendered as tool output. Never touches the persistent awareness block —
+ * ambient orientation stays at depth 1; probing is deliberate and ephemeral.
+ */
+export async function probeTree(position: string, treeDepth: number): Promise<string | null> {
+  const manifest = await assembleContentAwareness({
+    position: resolve(position),
+    lastSha: null,
+    treeDepth,
+  });
+  if (!manifest) return null;
+  return renderContentAwareness(manifest, { sections: ["tree"] }) || null;
 }
 
 function captureStatus(state: GitState, captures: string[]): CaptureStatus {
