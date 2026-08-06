@@ -30,6 +30,7 @@ Pi packages execute code with your user permissions. Review the source before in
 ## What you get
 
 - **Awareness on arrival** — Pi reads the active `_agent/` agreement, current direction, tree, and recent movement.
+- **Your space's skills, natively** — root `_agent/skills/` entries register as Pi skills at session start (listed by description, `/skill:name` invocable); branch skills surface as you navigate.
 - **Deliberate capture** — when understanding crystallizes, Pi proposes preserving it, stages the agreed draft, and commits only after explicit confirmation.
 - **Knowledge that compounds** — decisions and context become ordinary Markdown rather than remaining trapped in transcripts.
 - **Native Pi flows** — tools and commands cover capture, commit, setup, publish, push, and pull without duplicating Pi's file tools.

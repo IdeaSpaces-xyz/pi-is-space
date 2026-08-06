@@ -32,7 +32,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ideaspaces/cli": "git+https://github.com/IdeaSpaces-xyz/cli.git#8df2f78e9f26f8644caa8ac00ea35f87924eda66"
+    "@ideaspaces/cli": "github:IdeaSpaces-xyz/cli#959338d90887e55a6aa05fccc67fe6e62e979c96",
+    "@ideaspaces/protocol": "github:IdeaSpaces-xyz/ideaspace-protocol#f052e07ea9bc3de5d80001c4c72bacb775612f7b"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
@@ -40,7 +41,6 @@
     "typebox": "*"
   },
   "devDependencies": {
-    "@ideaspaces/protocol": "github:IdeaSpaces-xyz/ideaspace-protocol#f052e07ea9bc3de5d80001c4c72bacb775612f7b",
     "@types/node": "^25.5.2",
     "typescript": "^5.8.3",
     "vitest": "^3.2.6"
