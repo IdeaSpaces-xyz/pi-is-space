@@ -6,7 +6,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const control = vi.hoisted(() => ({ failManifest: false }));
+const control = vi.hoisted(() => ({ failManifest: false, failCompose: false }));
 
 vi.mock("@ideaspaces/protocol", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@ideaspaces/protocol")>();
@@ -18,10 +18,16 @@ vi.mock("@ideaspaces/protocol", async (importOriginal) => {
       if (control.failManifest) throw new Error("fixture manifest failure");
       return actual.assembleContentAwareness(opts);
     },
+    async composeContractAlongPath(
+      position: Parameters<typeof actual.composeContractAlongPath>[0],
+    ) {
+      if (control.failCompose) throw new Error("fixture compose failure");
+      return actual.composeContractAlongPath(position);
+    },
   };
 });
 
-import { buildLocalAwareness } from "./local-awareness.js";
+import { buildLocalAwareness, discoverSpaceSkillPaths } from "./local-awareness.js";
 
 let workspace: string;
 
@@ -37,6 +43,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   control.failManifest = false;
+  control.failCompose = false;
   vi.restoreAllMocks();
   await rm(workspace, { recursive: true, force: true });
 });
@@ -62,6 +69,18 @@ describe("local awareness failure boundaries", () => {
     expect(result.volatile).toContain("working tree: clean");
     expect(warning).toHaveBeenCalledWith(
       "IdeaSpaces: Content awareness read failed: fixture manifest failure",
+    );
+  });
+
+  it("degrades native skill discovery to an empty roster instead of throwing", async () => {
+    // resources_discover fires on every /new, /resume, /fork, and reload — a
+    // protocol read failure must warn and yield [], never crash the session.
+    control.failCompose = true;
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await expect(discoverSpaceSkillPaths(workspace)).resolves.toEqual([]);
+    expect(warning).toHaveBeenCalledWith(
+      "is: space skill discovery unavailable: Error: fixture compose failure",
     );
   });
 });
