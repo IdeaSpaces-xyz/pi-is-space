@@ -14,6 +14,7 @@ import {
 import {
   appendVolatileTail,
   buildLocalAwareness,
+  discoverSpaceSkillPaths,
   LOCAL_WORKSPACE_EXCLUDES,
   readCaptureStatus,
   readMountedAwareness,
@@ -832,6 +833,17 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.notify(`${action} cancelled — captures are still awaiting commit`, "warning");
     return { cancel: true };
   }
+
+  // Native skill acquisition (the SKILLS-2 placement model): the home space
+  // root's `_agent/skills/` entries register as Pi skills — listed by name and
+  // description in <available_skills>, bodies loaded via read. Branch skills
+  // stay awareness-discovered as focus moves. Fires at startup and on every
+  // /new, /resume, /fork, and reload; derived from disk each time because
+  // reload discards module state.
+  pi.on("resources_discover", async (event) => {
+    const skillPaths = await discoverSpaceSkillPaths(event.cwd);
+    return skillPaths.length ? { skillPaths } : undefined;
+  });
 
   pi.on("session_start", async (_event, ctx) => {
     await refreshAwareness(ctx.cwd);

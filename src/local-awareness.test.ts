@@ -8,6 +8,7 @@ import { join } from "node:path";
 import {
   appendVolatileTail,
   buildLocalAwareness,
+  discoverSpaceSkillPaths,
   probeTree,
   readCaptureStatus,
   readMountedAwareness,
@@ -318,5 +319,52 @@ describe("appendVolatileTail", () => {
     expect(stringContent.messages[0].content).toBe("plain");
     expect(appendVolatileTail({ prompt: "x" }, "tail")).toBe(false);
     expect(appendVolatileTail(null, "tail")).toBe(false);
+  });
+});
+
+describe("discoverSpaceSkillPaths", () => {
+  it("returns root-level entries only — both forms, README excluded, branches stay out", async () => {
+    const home = join(workspace, "home");
+    await makeSpace(home, "native skills");
+    const skillsDir = join(home, "_agent", "skills");
+    await fs.mkdir(join(skillsDir, "pdf-report"), { recursive: true });
+    await fs.writeFile(
+      join(skillsDir, "meeting-notes.md"),
+      "---\nname: meeting-notes\ndescription: Decision-first records.\n---\n# Meeting notes\n",
+    );
+    await fs.writeFile(
+      join(skillsDir, "pdf-report", "SKILL.md"),
+      "---\nname: pdf-report\ndescription: Render a report.\n---\n# PDF report\n",
+    );
+    await fs.writeFile(
+      join(skillsDir, "README.md"),
+      "---\nname: Skills\nsummary: Convention marker.\n---\n# Skills\n",
+    );
+    // Branch skills are awareness-discovered, never session-start acquisitions.
+    const branchSkills = join(home, "clients", "_agent", "skills");
+    await fs.mkdir(branchSkills, { recursive: true });
+    await fs.writeFile(
+      join(branchSkills, "acme.md"),
+      "---\nname: acme\ndescription: Branch-only.\n---\n# Acme\n",
+    );
+
+    // From the root and from a deep position, the acquisition set is identical.
+    for (const cwd of [home, join(home, "clients")]) {
+      const paths = await discoverSpaceSkillPaths(cwd);
+      expect(paths.sort()).toEqual([
+        join(skillsDir, "meeting-notes.md"),
+        join(skillsDir, "pdf-report", "SKILL.md"),
+      ]);
+    }
+  });
+
+  it("returns [] outside a foundation-marked space or without skills", async () => {
+    const bare = join(workspace, "bare");
+    await fs.mkdir(bare, { recursive: true });
+    expect(await discoverSpaceSkillPaths(bare)).toEqual([]);
+
+    const empty = join(workspace, "empty");
+    await makeSpace(empty, "no skills");
+    expect(await discoverSpaceSkillPaths(empty)).toEqual([]);
   });
 });
