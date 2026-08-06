@@ -19,6 +19,7 @@ let home: string;
 let workspace: string;
 let space: string;
 let sibling: string;
+let seeded: string;
 let cliLog: string;
 let runner: ExtensionRunner;
 let ctx: import("@earendil-works/pi-coding-agent").ExtensionContext;
@@ -60,10 +61,14 @@ beforeAll(async () => {
   workspace = mkdtempSync(join(tmpdir(), "is-pi-local-workspace-"));
   space = join(workspace, "home");
   sibling = join(workspace, "sibling");
+  seeded = join(workspace, "seeded");
   mkdirSync(space);
   mkdirSync(sibling);
+  mkdirSync(seeded);
   makeSpace(space, "Home awareness.");
   makeSpace(sibling, "Sibling awareness.");
+  // Pre-seeded via IS_MOUNTS (below) — mounted at extension load, not by is_mount.
+  makeSpace(seeded, "Seeded awareness.");
 
   cliLog = join(home, "cli-calls.log");
   const fakeCli = join(home, "fake-cli.js");
@@ -84,6 +89,9 @@ beforeAll(async () => {
   for (const [key, value] of Object.entries({
     HOME: home,
     IS_CLI_PATH: fakeCli,
+    // The host's durable mount set — read by the extension at load (same env
+    // channel as IS_CLI_PATH). Proves seeding without an is_mount call.
+    IS_MOUNTS: seeded,
     PATH: process.env.PATH ?? "",
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_TERMINAL_PROMPT: "0",
@@ -182,6 +190,14 @@ describe("Pi in-process local awareness", () => {
     const calls = readFileSync(cliLog, "utf-8").trim().split("\n").filter(Boolean);
     expect(calls.length).toBeGreaterThan(0);
     expect(calls.every((line) => line.split(/\s+/).includes("catalog"))).toBe(true);
+  });
+
+  it("seeds mounts from IS_MOUNTS at load — navigable without is_mount", async () => {
+    // No is_mount call here: `seeded` was mounted purely by the IS_MOUNTS env at
+    // extension load, so the host owns the durable set and re-seeds each turn.
+    const mounted = await call("is_navigate", { root: "seeded", path: "." });
+    expect(text(mounted)).toContain("Mounted content (read-only)");
+    expect(text(mounted)).toContain("Now: Seeded awareness.");
   });
 
   it("pins the protocol version that supplies workspace handles", () => {
