@@ -22,6 +22,7 @@ import {
   readPathStatusText,
   type CaptureStatus,
 } from "./local-awareness.js";
+import { parseMountEnv } from "./mounts.js";
 import {
   CHANGE_ID_SHAPE,
   armingDecision,
@@ -558,6 +559,13 @@ export default function (pi: ExtensionAPI) {
   // Mounts are content, never authority — read-only reference surfaced as thin
   // handles. Mounting never changes `position`/authority, cwd, or file-op paths.
   let mounts: string[] = [];
+  // Seed the working set from the host's durable set: the desktop owns the
+  // conversation's mounts and passes them as `IS_MOUNTS` (comma-separated), the
+  // same env channel as PI_CODING_AGENT_DIR / IS_CLI_PATH. The one-process-per-turn
+  // model resets in-session `is_mount`s, so the host re-seeds each turn. `addMount`
+  // resolves + dedupes; everything downstream (awareness, is_navigate) already
+  // handles mounts.
+  for (const raw of parseMountEnv(process.env.IS_MOUNTS)) addMount(raw);
   // The remote/pullable tier of the catalog: the account's spaces not yet on
   // disk. Fetched once per session via the CLI `catalog` verb (a network call),
   // then cached; empty when logged out. Filled in the background so the first
