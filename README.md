@@ -106,6 +106,8 @@ On session start, the extension builds local awareness in-process from `@ideaspa
 
 The package still depends on `@ideaspaces/cli` for auth, sync, publish/setup, remote catalog discovery, and transitional write/commit verbs. It resolves the CLI for those calls and exposes the path to skills as `$IS_CLI_PATH` when available. Local status, path status, navigation, mounted orientation, capture nudges, and session awareness do not invoke it.
 
+A host that drives pi one process per turn (e.g. the desktop) owns the conversation's durable working set and passes it as `$IS_MOUNTS` (comma-separated absolute paths) on the inherited env; at load the extension seeds its mounts from it, so a mount survives across turns without the agent re-running `is_mount`.
+
 ## Auth and publish
 
 Auth is optional:
