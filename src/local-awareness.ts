@@ -2,6 +2,8 @@ import { promises as fs } from "node:fs";
 import { basename, resolve } from "node:path";
 import {
   assembleContentAwareness,
+  composeContractAlongPath,
+  discoverSkillEntries,
   gitState,
   pathStatus,
   readRootHandle,
@@ -213,6 +215,22 @@ export async function readMountedAwareness(
  * rendered as tool output. Never touches the persistent awareness block —
  * ambient orientation stays at depth 1; probing is deliberate and ephemeral.
  */
+/**
+ * Native Pi skill paths for the space at `cwd` — the SKILLS-2 placement model:
+ * only the space root's `_agent/skills/` entries are acquired at session start
+ * (the persona's abilities); branch skills stay awareness-discovered as focus
+ * moves. Entry paths are passed individually so the roster follows the
+ * protocol's rules (both forms, directory-beats-flat, README excluded) rather
+ * than Pi's own directory walk. Returns [] outside a foundation-marked space
+ * or when the root carries no skills.
+ */
+export async function discoverSpaceSkillPaths(cwd: string): Promise<string[]> {
+  const composed = await composeContractAlongPath(cwd);
+  if (!composed.spaceRoot) return [];
+  const entries = await discoverSkillEntries([composed.spaceRoot]);
+  return entries.map((entry) => entry.path);
+}
+
 export async function probeTree(position: string, treeDepth: number): Promise<string | null> {
   const manifest = await assembleContentAwareness({
     position: resolve(position),
