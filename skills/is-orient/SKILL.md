@@ -5,7 +5,7 @@ description: >
   when the user asks "where are we?", "what are we doing?", "what changed?",
   or when context feels unclear. Uses the injected awareness map as the first
   bounded overview; does not modify files.
-allowed-tools: "is_navigate is_status read bash"
+allowed-tools: "is_navigate is_inspect is_status read bash"
 ---
 
 # Orient
@@ -29,8 +29,8 @@ Stop as soon as the user's question is answered:
 1. Use `is_navigate` when the requested position is not the current focus or the map needs a bounded tree probe. Navigation changes awareness; it does not justify loading document bodies.
 2. Use `is_status` when capture or git state materially affects the answer.
 3. For change questions, inspect only the relevant `git status` or short recent history.
-4. Read a specific document only when the map leaves a material ambiguity or the user asks for exact detail. Load the smallest relevant portion available and do not cascade through its links.
-5. Inspect implementation evidence only for explicit verification questions such as whether documented work actually shipped.
+4. Use `is_inspect` only when one document needs deeper attention: start with its summary when the map does not already represent it, then request an outline before one exact section. Do not cascade through links.
+5. Use native `read` only when exact full-document or implementation evidence is required, such as verifying whether documented work actually shipped.
 
 Answer with the active purpose, current work, relevant pending changes, and drift signals needed to make the next action obvious. Keep orientation compact rather than turning it into an audit.
 

@@ -49,7 +49,7 @@ function makeSpace(root: string, now: string): void {
   );
   writeFileSync(
     join(root, "_agent", "now.md"),
-    `---\nname: Acme now\nsummary: ${JSON.stringify(now)}\n---\n# Now\n\n${now}\n\n## Detailed tasks\n\nACME_NOW_BODY_SENTINEL\n`,
+    `---\nname: Acme now\nsummary: ${JSON.stringify(now)}\n---\n# Now\n\n${now}\n\n## Detailed tasks\n\nACME_NOW_BODY_SENTINEL\n\n## Later\n\nACME_LATER_BODY_SENTINEL\n`,
   );
   writeFileSync(
     join(root, "README.md"),
@@ -63,6 +63,10 @@ function makeSpace(root: string, now: string): void {
     join(root, "work", "archive", "details.md"),
     '---\nname: Archived details\nsummary: "ACME_DEEP_SUMMARY_SENTINEL"\n---\n# Details\n\nACME_DEEP_BODY_SENTINEL\n',
   );
+  writeFileSync(
+    join(root, "work", "large.md"),
+    `# Large\n\n${"synthetic evidence\n".repeat(4_000)}`,
+  );
   git(root, "init", "-q", "-b", "main");
   git(root, "config", "user.name", "Test");
   git(root, "config", "user.email", "test@example.com");
@@ -73,11 +77,12 @@ function makeSpace(root: string, now: string): void {
 async function call(
   name: string,
   params: Record<string, unknown>,
-): Promise<{ content?: Array<{ type: string; text?: string }> }> {
+): Promise<{ content?: Array<{ type: string; text?: string }>; details?: Record<string, unknown> }> {
   const tool = runner.getToolDefinition(name);
   if (!tool) throw new Error(`tool not registered: ${name}`);
   return await tool.execute(`tc-${name}`, params, undefined, undefined, ctx) as {
     content?: Array<{ type: string; text?: string }>;
+    details?: Record<string, unknown>;
   };
 }
 
@@ -208,6 +213,44 @@ describe("Pi in-process local awareness", () => {
       in_tracked: true,
     });
 
+    const summary = text(await call("is_inspect", {
+      path: "_agent/now.md",
+      cwd: space,
+    }));
+    expect(summary).toContain("Summary of");
+    expect(summary).toContain("Home awareness.");
+    expect(summary).not.toContain("ACME_NOW_BODY_SENTINEL");
+    expect(summary).not.toContain("ACME_LATER_BODY_SENTINEL");
+
+    const outline = text(await call("is_inspect", {
+      path: "_agent/now.md",
+      cwd: space,
+      mode: "outline",
+    }));
+    expect(outline).toContain("## Detailed tasks");
+    expect(outline).toContain("## Later");
+    expect(outline).not.toContain("ACME_NOW_BODY_SENTINEL");
+    expect(outline).not.toContain("ACME_LATER_BODY_SENTINEL");
+
+    const section = text(await call("is_inspect", {
+      path: "_agent/now.md",
+      cwd: space,
+      mode: "section",
+      heading: "Detailed tasks",
+    }));
+    expect(section).toContain("ACME_NOW_BODY_SENTINEL");
+    expect(section).not.toContain("ACME_LATER_BODY_SENTINEL");
+
+    const largePath = join(space, "work", "large.md");
+    const large = await call("is_inspect", {
+      path: largePath,
+      mode: "section",
+      heading: "Large",
+    });
+    expect(text(large)).toContain("[Inspection truncated:");
+    expect(text(large)).toContain("Use native read with offsets");
+    expect(large.details?.truncation).toMatchObject({ truncated: true });
+
     const moved = await call("is_navigate", { path: "." });
     const movedText = text(moved);
     const injectedPrompt = injected?.systemPrompt ?? "";
@@ -248,7 +291,7 @@ describe("Pi in-process local awareness", () => {
     expect(text(mounted)).toContain("Now: Sibling awareness.");
 
     // The one permitted CLI call is the cached remote catalog fetch. Local
-    // status/navigate reads would hit the fake CLI's exit-99 branch.
+    // status/navigate/inspect reads would hit the fake CLI's exit-99 branch.
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(existsSync(cliLog)).toBe(true);
     const calls = readFileSync(cliLog, "utf-8").trim().split("\n").filter(Boolean);

@@ -38,6 +38,8 @@ describe("packaging", () => {
     expect(skill).toContain("Treat that map as the first disclosure rung, not as a list of files to reload.");
     expect(skill).toContain("Do not reread contract, current-state, or README files whose summaries are represented in awareness.");
     expect(skill).toContain("Do not follow links during basic orientation.");
+    expect(skill).toContain("then request an outline before one exact section");
+    expect(skill).toContain("Use native `read` only when exact full-document or implementation evidence is required");
     expect(skill).not.toContain("Read by position, not search");
   });
 });

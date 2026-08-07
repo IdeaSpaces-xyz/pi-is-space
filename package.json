@@ -33,7 +33,7 @@
   },
   "dependencies": {
     "@ideaspaces/cli": "github:IdeaSpaces-xyz/cli#959338d90887e55a6aa05fccc67fe6e62e979c96",
-    "@ideaspaces/protocol": "github:IdeaSpaces-xyz/ideaspace-protocol#f052e07ea9bc3de5d80001c4c72bacb775612f7b"
+    "@ideaspaces/protocol": "github:IdeaSpaces-xyz/ideaspace-protocol#7bfff9d9c0f8efa61ef6e97f56fa51fbeedf3630"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",

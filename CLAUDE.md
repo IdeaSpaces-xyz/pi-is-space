@@ -22,6 +22,7 @@ Agent (Pi) → pi-is-space → protocol (local reads)
 IdeaSpaces-aware primitives:
 
 - `is_navigate` — move home awareness focus, or inspect a mounted repo as read-only reference
+- `is_inspect` — deepen into one local Markdown file by summary, outline, or exact section without a full-body default
 - `is_mount` / `is_unmount` — manage the conversation's read-only working set without changing authority
 - `is_status` — inspect capture/git state and file `sha` for safe updates
 - `is_write` — capture primitive for frontmatter-aware Note writes; stages, tracks, and returns `sha`
@@ -48,7 +49,7 @@ Runtime guardrails:
 - Nested code repos inside a parent ideaspace stay silent unless they carry their own `_agent/`.
 - Session switch/fork prompts when staged captures are uncommitted; non-interactive mode cancels conservatively.
 
-Pi's native `read`, `edit`, `write`, and `bash` cover navigation, search, code/config editing, git, moves, and deletes.
+Pi's native `read`, `edit`, `write`, and `bash` cover exact full-document evidence, search, code/config editing, git, moves, and deletes.
 
 No `sw_*` tools in this package.
 
