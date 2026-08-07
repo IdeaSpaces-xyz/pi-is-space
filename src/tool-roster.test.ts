@@ -4,6 +4,7 @@ import registerIdeaSpaces from "./index.js";
 
 type RegisteredTool = {
   name: string;
+  promptGuidelines?: string[];
   execute: (...args: any[]) => Promise<unknown> | unknown;
 };
 
@@ -40,6 +41,13 @@ function registeredTools(): Map<string, RegisteredTool> {
 describe("Pi tool registration contract", () => {
   it("keeps the harness-owned roster exact", () => {
     expect([...registeredTools().keys()].sort()).toEqual([...EXPECTED_PI_TOOL_NAMES].sort());
+  });
+
+  it("keeps navigation awareness-first outside the explicit orient skill", () => {
+    const tool = registeredTools().get("is_navigate");
+    expect(tool?.promptGuidelines).toEqual([
+      "Treat the injected [IdeaSpaces Awareness] map as the first bounded orientation rung: use is_navigate only when focus or map depth must change, and do not reread represented contract or current-state files or follow their links unless the user's question requires deeper evidence.",
+    ]);
   });
 
   it("requires a handle or id before opening a Change", async () => {
