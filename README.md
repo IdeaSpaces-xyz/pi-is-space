@@ -30,6 +30,7 @@ Pi packages execute code with your user permissions. Review the source before in
 ## What you get
 
 - **Awareness on arrival** — Pi reads the active `_agent/` agreement, current direction, tree, and recent movement.
+- **Progressive inspection** — deepen from a document summary to its outline or one exact section before loading a full body.
 - **Your space's skills, natively** — root `_agent/skills/` entries register as Pi skills at session start (listed by description, `/skill:name` invocable); branch skills surface as you navigate.
 - **Deliberate capture** — when understanding crystallizes, Pi proposes preserving it, stages the agreed draft, and commits only after explicit confirmation.
 - **Knowledge that compounds** — decisions and context become ordinary Markdown rather than remaining trapped in transcripts.
@@ -63,11 +64,12 @@ The package has three surfaces:
 
 Local conversation/session hygiene lives in `pi-local-context` (`context_conversation`, `context_recall`, `context_cleanup`). This package stays focused on Space state: awareness, capture, commit, push, pull, auth, setup, publish.
 
-Pi's native `read`, `edit`, `write`, and `bash` cover navigation, inspection, and ordinary edits. `pi-is-space` adds IdeaSpaces-aware primitives used by the skills and commands:
+Pi's native `read`, `edit`, `write`, and `bash` cover exact full-document evidence and ordinary edits. `pi-is-space` adds IdeaSpaces-aware primitives used by the skills and commands:
 
 | Tool | What |
 |---|---|
 | `is_navigate` | Move home awareness focus, or inspect a mounted ideaspace as read-only reference. |
+| `is_inspect` | Inspect one local Markdown file by summary, ATX outline, or exact section; never defaults to the full body. |
 | `is_mount` / `is_unmount` | Add or remove read-only repositories from the conversation's working set. |
 | `is_status` | Inspect git/capture state, or return a file `sha` for safe Note updates. |
 | `is_write` | Capture primitive: create/update a markdown Note with Layer 1 frontmatter, stage it in git, and return a content `sha`. Normally reached through the `is-capture` skill. |
@@ -104,7 +106,7 @@ On session start, the extension builds local awareness in-process from `@ideaspa
 
 ## CLI
 
-The package still depends on `@ideaspaces/cli` for auth, sync, publish/setup, remote catalog discovery, and transitional write/commit verbs. It resolves the CLI for those calls and exposes the path to skills as `$IS_CLI_PATH` when available. Local status, path status, navigation, mounted orientation, capture nudges, and session awareness do not invoke it.
+The package still depends on `@ideaspaces/cli` for auth, sync, publish/setup, remote catalog discovery, and transitional write/commit verbs. It resolves the CLI for those calls and exposes the path to skills as `$IS_CLI_PATH` when available. Local status, path status, navigation, Markdown inspection, mounted orientation, capture nudges, and session awareness do not invoke it.
 
 A host that drives pi one process per turn (e.g. the desktop) owns the conversation's durable working set and passes it as `$IS_MOUNTS` (comma-separated absolute paths) on the inherited env; at load the extension seeds its mounts from it, so a mount survives across turns without the agent re-running `is_mount`.
 

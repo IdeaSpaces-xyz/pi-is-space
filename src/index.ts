@@ -1,4 +1,12 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+  DEFAULT_MAX_BYTES,
+  DEFAULT_MAX_LINES,
+  formatSize,
+  truncateHead,
+  type ExtensionAPI,
+  type ExtensionContext,
+  type TruncationResult,
+} from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { spawn, spawnSync } from "node:child_process";
@@ -9,7 +17,12 @@ import { fileURLToPath } from "node:url";
 import {
   findNearestAgent,
   gitState,
+  inspectMarkdownFile,
   isIdeaspacePath,
+  type MarkdownHeading,
+  type MarkdownInspection,
+  type MarkdownInspectionMode,
+  type MarkdownInspectionRequest,
 } from "@ideaspaces/protocol";
 import {
   appendVolatileTail,
@@ -108,6 +121,51 @@ const CHANGE_ID_PATTERN = CHANGE_ID_SHAPE;
 
 function ok(text: string): ToolResult {
   return { content: [{ type: "text", text }], details: {} };
+}
+
+function formatInspectionHeading(heading: MarkdownHeading): string {
+  return `${"#".repeat(heading.level)} ${heading.text} — line ${heading.line}, occurrence ${heading.occurrence}`;
+}
+
+function formatMarkdownInspection(path: string, inspection: MarkdownInspection): string {
+  if (inspection.mode === "summary") {
+    return [`Summary of ${path}:`, inspection.summary ?? "(no summary)"].join("\n\n");
+  }
+  if (inspection.mode === "outline") {
+    const outline = inspection.headings.length
+      ? inspection.headings.map(formatInspectionHeading).join("\n")
+      : "(no headings)";
+    return [`Outline of ${path}:`, outline].join("\n\n");
+  }
+  if (inspection.status === "found") {
+    return [
+      `Section from ${path} (${formatInspectionHeading(inspection.heading)}):`,
+      inspection.markdown,
+    ].join("\n\n");
+  }
+
+  const matches = inspection.matches.length
+    ? `\n${inspection.matches.map((heading) => `- ${formatInspectionHeading(heading)}`).join("\n")}`
+    : "";
+  if (inspection.status === "ambiguous") {
+    return `Section heading is ambiguous: ${inspection.query.heading}. Retry is_inspect with occurrence.${matches}`;
+  }
+  return `Section heading not found: ${inspection.query.heading}.${matches}`;
+}
+
+function truncateInspection(text: string, path: string): { text: string; truncation: TruncationResult } {
+  const truncation = truncateHead(text, {
+    maxLines: DEFAULT_MAX_LINES,
+    maxBytes: DEFAULT_MAX_BYTES,
+  });
+  if (!truncation.truncated) return { text: truncation.content, truncation };
+
+  const notice = [
+    `Inspection truncated: showing ${truncation.outputLines} of ${truncation.totalLines} lines`,
+    `(${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}).`,
+    `Use native read with offsets on ${path} only when exact evidence requires deeper content.`,
+  ].join(" ");
+  return { text: `${truncation.content}\n\n[${notice}]`, truncation };
 }
 
 function changeId(value: unknown, source: string): string {
@@ -1443,6 +1501,89 @@ export default function (pi: ExtensionAPI) {
         if (probed) lines.push("", "One-shot tree probe:", probed);
       }
       return ok(lines.join("\n"));
+    },
+  });
+
+  pi.registerTool({
+    name: "is_inspect",
+    label: "IS Inspect",
+    description:
+      `Inspect one local Markdown file in-process at a bounded progressive-disclosure rung: summary (default), ATX outline, or one exact section. There is no full-document mode. Output is capped at ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}; use native read only when exact evidence requires deeper content.`,
+    promptSnippet: "Inspect one Markdown file by summary, outline, or selected section without a full-body default",
+    promptGuidelines: [
+      "Use is_inspect only when the awareness/map summary leaves a material question: request an outline before a section, and a section before any native full-file read.",
+      "Use Pi's native read instead of is_inspect only when exact full-document or implementation evidence is required; is_inspect has no full-document mode.",
+    ],
+    parameters: Type.Object({
+      path: Type.String({
+        description:
+          "Local Markdown file: relative to the session working directory (or `cwd` when provided), or absolute. A leading @ is accepted.",
+      }),
+      mode: Type.Optional(
+        StringEnum(["summary", "outline", "section"] as const, {
+          description: "Inspection rung. Defaults to summary; full-document reads are intentionally absent.",
+        }),
+      ),
+      heading: Type.Optional(
+        Type.String({ description: "Exact, case-sensitive heading text required for section mode." }),
+      ),
+      occurrence: Type.Optional(
+        Type.Integer({
+          minimum: 1,
+          description: "One-based occurrence for duplicate exact headings in section mode.",
+        }),
+      ),
+      cwd: Type.Optional(
+        Type.String({
+          description:
+            "Absolute working directory for relative path resolution. Pass this when the intended cwd differs from the session start directory.",
+        }),
+      ),
+    }),
+    async execute(_id, params, signal, _onUpdate, ctx) {
+      signal?.throwIfAborted();
+      const mode: MarkdownInspectionMode = params.mode ?? "summary";
+      const heading = params.heading?.trim();
+      if (mode !== "section" && (params.heading !== undefined || params.occurrence !== undefined)) {
+        throw new Error("`heading` and `occurrence` require section mode.");
+      }
+      if (mode === "section" && !heading) {
+        throw new Error("Section mode requires a non-empty `heading`.");
+      }
+
+      let request: MarkdownInspectionRequest;
+      if (mode === "section") {
+        request = params.occurrence === undefined
+          ? { mode, heading: heading! }
+          : { mode, heading: heading!, occurrence: params.occurrence };
+      } else {
+        request = { mode };
+      }
+
+      const rawPath = params.path.trim().replace(/^@/, "");
+      if (!rawPath) throw new Error("Provide a Markdown file path.");
+      const path = resolvePath(params.cwd || ctx.cwd, rawPath);
+      let stats: ReturnType<typeof statSync>;
+      try {
+        stats = statSync(path);
+      } catch {
+        throw new Error(`No such file: ${path}`);
+      }
+      if (!stats.isFile()) throw new Error(`Not a file: ${path}`);
+
+      const inspection = await inspectMarkdownFile(path, request);
+      signal?.throwIfAborted();
+      const rendered = truncateInspection(formatMarkdownInspection(path, inspection), path);
+      const { content: _boundedContent, ...truncation } = rendered.truncation;
+      return {
+        content: [{ type: "text", text: rendered.text }],
+        details: {
+          path,
+          mode: inspection.mode,
+          ...(inspection.mode === "section" ? { status: inspection.status } : {}),
+          truncation,
+        },
+      };
     },
   });
 

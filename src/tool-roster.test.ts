@@ -13,6 +13,7 @@ type RegisteredTool = {
 // cross-surface semantics without recreating a shared signature literal.
 const EXPECTED_PI_TOOL_NAMES = [
   "is_navigate",
+  "is_inspect",
   "is_mount",
   "is_unmount",
   "is_auth",
@@ -48,6 +49,25 @@ describe("Pi tool registration contract", () => {
     expect(tool?.promptGuidelines).toEqual([
       "Treat the injected [IdeaSpaces Awareness] map as the first bounded orientation rung: use is_navigate only when focus or map depth must change, and do not reread represented contract or current-state files or follow their links unless the user's question requires deeper evidence.",
     ]);
+  });
+
+  it("keeps inspection on the progressive-disclosure ladder", () => {
+    const tool = registeredTools().get("is_inspect");
+    expect(tool?.promptGuidelines).toEqual([
+      "Use is_inspect only when the awareness/map summary leaves a material question: request an outline before a section, and a section before any native full-file read.",
+      "Use Pi's native read instead of is_inspect only when exact full-document or implementation evidence is required; is_inspect has no full-document mode.",
+    ]);
+  });
+
+  it("requires section-only parameters to match the selected rung", async () => {
+    const tool = registeredTools().get("is_inspect");
+    expect(tool).toBeDefined();
+    await expect(
+      tool!.execute("test", { path: "acme.md", mode: "section" }, undefined, undefined, { cwd: "." }),
+    ).rejects.toThrow("requires a non-empty `heading`");
+    await expect(
+      tool!.execute("test", { path: "acme.md", mode: "summary", heading: "Plan" }, undefined, undefined, { cwd: "." }),
+    ).rejects.toThrow("require section mode");
   });
 
   it("requires a handle or id before opening a Change", async () => {
