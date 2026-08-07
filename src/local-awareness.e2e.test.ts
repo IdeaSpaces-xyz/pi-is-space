@@ -30,10 +30,22 @@ function git(cwd: string, ...args: string[]): string {
 
 function makeSpace(root: string, now: string): void {
   mkdirSync(join(root, "_agent"), { recursive: true });
-  writeFileSync(join(root, "_agent", "foundation.md"), "# Foundation\n\nLocal fixture.\n");
-  writeFileSync(join(root, "_agent", "purpose.md"), "# Purpose\n\nStay local.\n");
-  writeFileSync(join(root, "_agent", "now.md"), `# Now\n\n${now}\n`);
-  writeFileSync(join(root, "README.md"), `# ${now}\n`);
+  writeFileSync(
+    join(root, "_agent", "foundation.md"),
+    '---\nname: Acme foundation\nsummary: "Baseline for a synthetic Acme workspace."\n---\n# Foundation\n\nACME_FOUNDATION_BODY_SENTINEL\n',
+  );
+  writeFileSync(
+    join(root, "_agent", "purpose.md"),
+    '---\nname: Acme purpose\nsummary: "Practice a generic planning workflow."\n---\n# Purpose\n\nACME_PURPOSE_BODY_SENTINEL\n',
+  );
+  writeFileSync(
+    join(root, "_agent", "now.md"),
+    `---\nname: Acme now\nsummary: ${JSON.stringify(now)}\n---\n# Now\n\n${now}\n\n## Detailed tasks\n\nACME_NOW_BODY_SENTINEL\n`,
+  );
+  writeFileSync(
+    join(root, "README.md"),
+    '---\nname: Acme space\nsummary: "Synthetic public acceptance fixture."\n---\n# Acme Space\n\nACME_README_BODY_SENTINEL\n',
+  );
   git(root, "init", "-q", "-b", "main");
   git(root, "config", "user.name", "Test");
   git(root, "config", "user.email", "test@example.com");
@@ -59,7 +71,7 @@ function text(result: { content?: Array<{ text?: string }> }): string {
 beforeAll(async () => {
   home = mkdtempSync(join(tmpdir(), "is-pi-local-home-"));
   workspace = mkdtempSync(join(tmpdir(), "is-pi-local-workspace-"));
-  space = join(workspace, "home");
+  space = join(workspace, "acme-space");
   sibling = join(workspace, "sibling");
   seeded = join(workspace, "seeded");
   mkdirSync(space);
@@ -136,7 +148,7 @@ describe("Pi in-process local awareness", () => {
   it("injects awareness and serves status/navigation while a local-read CLI would fail", async () => {
     // Session cwd is the workspace; move focus into the home repo so awareness
     // carries both deep home orientation and sibling workspace handles.
-    await call("is_navigate", { path: "home" });
+    await call("is_navigate", { path: "acme-space" });
     const injected = await runner.emitBeforeAgentStart(
       "orient",
       undefined,
@@ -145,6 +157,10 @@ describe("Pi in-process local awareness", () => {
     );
     expect(injected?.systemPrompt).toContain("[IdeaSpaces Awareness]");
     expect(injected?.systemPrompt).toContain("Now: Home awareness.");
+    expect(injected?.systemPrompt).not.toContain("ACME_FOUNDATION_BODY_SENTINEL");
+    expect(injected?.systemPrompt).not.toContain("ACME_PURPOSE_BODY_SENTINEL");
+    expect(injected?.systemPrompt).not.toContain("ACME_NOW_BODY_SENTINEL");
+    expect(injected?.systemPrompt).not.toContain("ACME_README_BODY_SENTINEL");
     // Volatile facts never enter the cached prefix (cache placement split).
     expect(injected?.systemPrompt).not.toContain("Repos in scope (local):");
     expect(injected?.systemPrompt).not.toContain("State:");

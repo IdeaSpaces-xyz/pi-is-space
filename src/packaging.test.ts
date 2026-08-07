@@ -32,4 +32,12 @@ describe("packaging", () => {
     expect(pkg.pi?.extensions).toEqual(["./src/index.ts"]);
     expect(pkg.pi?.skills).toEqual(["./skills"]);
   });
+
+  it("ships awareness-first orientation with an explicit stopping rule", () => {
+    const skill = readFileSync(join(process.cwd(), "skills/is-orient/SKILL.md"), "utf-8");
+    expect(skill).toContain("Treat that map as the first disclosure rung, not as a list of files to reload.");
+    expect(skill).toContain("Do not reread contract, current-state, or README files whose summaries are represented in awareness.");
+    expect(skill).toContain("Do not follow links during basic orientation.");
+    expect(skill).not.toContain("Read by position, not search");
+  });
 });

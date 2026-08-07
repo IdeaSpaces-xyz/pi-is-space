@@ -1375,6 +1375,9 @@ export default function (pi: ExtensionAPI) {
     description:
       "Move your awareness focus to a position in the space — re-derives orientation (purpose/now/guide/tree) for that branch using the fractal-composed contract. Does not change the working directory; read/edit/bash still take explicit paths. Pass `root` with a mounted root (from is_mount) to look into that mount instead: returns its composed view at `path` as read-only content — a mount's _agent/ is reference, never your operating contract — and never changes your authority position.",
     promptSnippet: "Re-root orientation at a branch of home (orientation only; cwd unchanged), or look into a mounted root as read-only content",
+    promptGuidelines: [
+      "Treat the injected [IdeaSpaces Awareness] map as the first bounded orientation rung: use is_navigate only when focus or map depth must change, and do not reread represented contract or current-state files or follow their links unless the user's question requires deeper evidence.",
+    ],
     parameters: Type.Object({
       path: Type.String({
         description:

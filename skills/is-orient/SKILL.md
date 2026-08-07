@@ -3,35 +3,42 @@ name: is-orient
 description: >
   Orient inside an ideaspace. Use at session start when orientation is missing,
   when the user asks "where are we?", "what are we doing?", "what changed?",
-  or when context feels unclear. Reads the position's agreement and current
-  state; does not modify files.
-allowed-tools: "is_status read bash"
+  or when context feels unclear. Uses the injected awareness map as the first
+  bounded overview; does not modify files.
+allowed-tools: "is_navigate is_status read bash"
 ---
 
 # Orient
 
 Orient is the first conscious step after arrival: understand the place before acting.
 
-The Pi extension already injects an awareness block at session start. Use this skill when the user asks for orientation, when you need to refresh your footing, or when the automatic block is not enough.
+Pi already injects an `[IdeaSpaces Awareness]` map with the position's composed agreement and current-state summaries. Treat that map as the first disclosure rung, not as a list of files to reload.
 
-## How
+## Start from awareness
 
-1. Inspect state with `is_status` when git/capture state matters.
-2. Read by position, not search:
-   - root `_agent/foundation.md`
-   - applicable `_agent/guide.md`
-   - `_agent/purpose.md`, `_agent/now.md`, `_agent/next.md` when present
-   - `README.md` along the path when it helps explain the place
-3. Inspect recent movement when relevant:
-   - `git log --oneline -5` for recent commits
-   - `git status --short` for local drift
-4. Answer with the active purpose, current work, relevant pending changes, and any drift signals.
+For a basic orientation question, answer directly from the injected map. It normally already carries the active purpose, current work, tree summaries, operating skills, and working-set handles.
+
+Stop as soon as the user's question is answered:
+
+- Do not reread contract, current-state, or README files whose summaries are represented in awareness.
+- Do not follow links during basic orientation.
+- Do not inspect git history, diffs, code, or implementation evidence unless the user asks what changed, needs pending-work detail, or asks to verify a status claim.
+
+## Deepen only when needed
+
+1. Use `is_navigate` when the requested position is not the current focus or the map needs a bounded tree probe. Navigation changes awareness; it does not justify loading document bodies.
+2. Use `is_status` when capture or git state materially affects the answer.
+3. For change questions, inspect only the relevant `git status` or short recent history.
+4. Read a specific document only when the map leaves a material ambiguity or the user asks for exact detail. Load the smallest relevant portion available and do not cascade through its links.
+5. Inspect implementation evidence only for explicit verification questions such as whether documented work actually shipped.
+
+Answer with the active purpose, current work, relevant pending changes, and drift signals needed to make the next action obvious. Keep orientation compact rather than turning it into an audit.
 
 ## Posture
 
 - Missing named `_agent/` files are drift signals, not errors.
-- `README.md` describes the place; `_agent/` carries the agent agreement.
-- Keep the answer compact. Orientation should make the next action obvious, not become a full audit.
+- Awareness summaries are handles for deeper inspection, not permission to preload their sources.
+- When deeper evidence is necessary, say what ambiguity or verification need caused the step down the ladder.
 
 ## Next intents
 
