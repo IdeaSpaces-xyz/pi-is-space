@@ -1373,7 +1373,7 @@ export default function (pi: ExtensionAPI) {
     name: "is_navigate",
     label: "IS Navigate",
     description:
-      "Move your awareness focus to a position in the space — re-derives orientation (purpose/now/guide/tree) for that branch using the fractal-composed contract. Does not change the working directory; read/edit/bash still take explicit paths. Pass `root` with a mounted root (from is_mount) to look into that mount instead: returns its composed view at `path` as read-only content — a mount's _agent/ is reference, never your operating contract — and never changes your authority position.",
+      "Move your awareness focus to a position in the space — re-derives and returns the canonical summary-level Position, Now, tree, contract, and operating-skill view for that branch using the fractal-composed contract. Does not change the working directory; read/edit/bash still take explicit paths. Pass `root` with a mounted root (from is_mount) to look into that mount instead: returns its composed view at `path` as read-only content — a mount's _agent/ is reference, never your operating contract — and never changes your authority position.",
     promptSnippet: "Re-root orientation at a branch of home (orientation only; cwd unchanged), or look into a mounted root as read-only content",
     promptGuidelines: [
       "Treat the injected [IdeaSpaces Awareness] map as the first bounded orientation rung: use is_navigate only when focus or map depth must change, and do not reread represented contract or current-state files or follow their links unless the user's question requires deeper evidence.",
@@ -1427,13 +1427,20 @@ export default function (pi: ExtensionAPI) {
       const rel = relative(repoRoot, target) || ".";
       const lines = [`Awareness focus moved to ${rel} (working directory unchanged).`];
       if (cachedRoot) lines.push(`space root: ${cachedRoot}`);
-      const nowLine = cachedStable?.split("\n").find((line) => line.startsWith("Now:"));
-      if (nowLine) lines.push(nowLine);
-      else if (cachedStable === null) lines.push("No _agent/ contract resolves at this position.");
+      if (cachedStable) {
+        // Return the same canonical summary register immediately. The ambient
+        // block will not refresh until the next agent turn, so a Now-only tool
+        // result would hide the newly composed Position/tree/contract/skills.
+        lines.push("", cachedStable);
+      } else {
+        lines.push("No _agent/ contract resolves at this position.");
+      }
       if (depth) {
         // One-shot probe in this result only; the per-turn block stays depth 1.
+        // Protocol tree probes add names below the summary-rung first level —
+        // more map, never document content.
         const probed = await probeTree(target, depth);
-        if (probed) lines.push("", probed);
+        if (probed) lines.push("", "One-shot tree probe:", probed);
       }
       return ok(lines.join("\n"));
     },

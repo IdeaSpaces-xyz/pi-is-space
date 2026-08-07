@@ -29,7 +29,8 @@ function git(cwd: string, ...args: string[]): string {
 }
 
 function makeSpace(root: string, now: string): void {
-  mkdirSync(join(root, "_agent"), { recursive: true });
+  mkdirSync(join(root, "_agent", "skills"), { recursive: true });
+  mkdirSync(join(root, "work", "archive"), { recursive: true });
   writeFileSync(
     join(root, "_agent", "foundation.md"),
     '---\nname: Acme foundation\nsummary: "Baseline for a synthetic Acme workspace."\n---\n# Foundation\n\nACME_FOUNDATION_BODY_SENTINEL\n',
@@ -39,12 +40,28 @@ function makeSpace(root: string, now: string): void {
     '---\nname: Acme purpose\nsummary: "Practice a generic planning workflow."\n---\n# Purpose\n\nACME_PURPOSE_BODY_SENTINEL\n',
   );
   writeFileSync(
+    join(root, "_agent", "guide.md"),
+    '---\nname: Acme guide\nsummary: "Work from bounded evidence."\n---\n# Guide\n\nACME_GUIDE_BODY_SENTINEL\n',
+  );
+  writeFileSync(
+    join(root, "_agent", "skills", "review.md"),
+    '---\nname: acme-review\nsummary: "Review an invented plan."\n---\n# Review\n\nACME_SKILL_BODY_SENTINEL\n',
+  );
+  writeFileSync(
     join(root, "_agent", "now.md"),
     `---\nname: Acme now\nsummary: ${JSON.stringify(now)}\n---\n# Now\n\n${now}\n\n## Detailed tasks\n\nACME_NOW_BODY_SENTINEL\n`,
   );
   writeFileSync(
     join(root, "README.md"),
     '---\nname: Acme space\nsummary: "Synthetic public acceptance fixture."\n---\n# Acme Space\n\nACME_README_BODY_SENTINEL\n',
+  );
+  writeFileSync(
+    join(root, "work", "README.md"),
+    '---\nname: Generic work\nsummary: "Invented work items."\n---\n# Work\n\nACME_WORK_BODY_SENTINEL\n',
+  );
+  writeFileSync(
+    join(root, "work", "archive", "details.md"),
+    '---\nname: Archived details\nsummary: "ACME_DEEP_SUMMARY_SENTINEL"\n---\n# Details\n\nACME_DEEP_BODY_SENTINEL\n',
   );
   git(root, "init", "-q", "-b", "main");
   git(root, "config", "user.name", "Test");
@@ -192,7 +209,38 @@ describe("Pi in-process local awareness", () => {
     });
 
     const moved = await call("is_navigate", { path: "." });
-    expect(text(moved)).toContain("Awareness focus moved to .");
+    const movedText = text(moved);
+    const injectedPrompt = injected?.systemPrompt ?? "";
+    const injectedStable = injectedPrompt.split("[IdeaSpaces Awareness]\n")[1] ?? "";
+    expect(injectedStable).not.toBe("");
+    expect(movedText).toContain("Awareness focus moved to .");
+    expect(movedText.endsWith(injectedStable)).toBe(true);
+    expect(movedText).toContain("Position:");
+    expect(movedText).toContain("Now: Home awareness.");
+    expect(movedText).toContain("Tree (");
+    expect(movedText).toContain("Agent context:");
+    expect(movedText).toContain("  guide — Work from bounded evidence.");
+    expect(movedText).toContain("Operating skills:");
+    expect(movedText).toContain("  review — Review an invented plan.");
+    expect(movedText).not.toContain("ACME_GUIDE_BODY_SENTINEL");
+    expect(movedText).not.toContain("ACME_SKILL_BODY_SENTINEL");
+
+    const probed = text(await call("is_navigate", { path: ".", depth: 3 }));
+    expect(probed).toContain("One-shot tree probe:");
+    expect(probed).toContain("    archive/ (1)");
+    expect(probed).toContain("      details.md");
+    expect(probed).not.toContain("ACME_DEEP_SUMMARY_SENTINEL");
+    expect(probed).not.toContain("ACME_DEEP_BODY_SENTINEL");
+
+    const afterProbe = await runner.emitBeforeAgentStart(
+      "continue",
+      undefined,
+      "base prompt",
+      { cwd: space } as any,
+    );
+    expect(afterProbe?.systemPrompt).not.toContain("archive/ (1)");
+    expect(afterProbe?.systemPrompt).not.toContain("details.md");
+    expect(afterProbe?.systemPrompt).not.toContain("One-shot tree probe:");
 
     await call("is_mount", { path: sibling });
     const mounted = await call("is_navigate", { root: "sibling", path: "." });
