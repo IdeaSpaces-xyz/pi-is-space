@@ -215,6 +215,38 @@ describe("write → commit conformance", () => {
 describe("Change lifecycle", () => {
   let changeId: string;
 
+  test("is_commit refuses a local-only path, and --all leaves it alone", { timeout: T }, async () => {
+    // Drift caught by behaviour rather than by pin distance. This surface has
+    // been stale before — the whole premise of the bump that added this test —
+    // and a stale CLI would silently commit the one file the product promises
+    // stays on the person's machine.
+    writeFileSync(join(space, ".gitignore"), "\n# ideaspace defaults\n*.local.md\n");
+    git(["add", ".gitignore"]);
+    git(["commit", "-q", "-m", "Ignore local-only files"]);
+    writeFileSync(join(space, "progress.local.md"), "# done: first space\n");
+
+    const head = git(["rev-parse", "HEAD"]);
+    const named = await call("is_commit", {
+      message: "Save progress",
+      paths: ["progress.local.md"],
+    });
+    expect(named.error, "naming a local-only path must be refused").toBeDefined();
+    expect(git(["rev-parse", "HEAD"]), "nothing may be committed").toBe(head);
+
+    // The other shape Pi uses: --all sweeps staged knowledge, and an ignored
+    // file cannot reach the index to be swept.
+    await call("is_write", {
+      path: "notes/kept.md",
+      content: "# Kept\n\nBody.\n",
+      name: "Kept",
+      summary: "Kept note.",
+    });
+    const all = await call("is_commit", { message: "Save captures", all: true });
+    expect(all.error, all.error).toBeUndefined();
+    expect(git(["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"])).toBe("notes/kept.md");
+    expect(existsSync(join(space, "progress.local.md")), "the file stays on disk").toBe(true);
+  });
+
   test("is_change_open mints a conformant Change-Id", { timeout: T }, async () => {
     const r = await call("is_change_open", { handle: "pi conformance run" });
     expect(r.error, r.error).toBeUndefined();
