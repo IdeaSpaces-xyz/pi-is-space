@@ -27,7 +27,7 @@ Elicit progressively — don't demand the full structure up front. Start from a 
 
 Primitives and perspectives live in `_agent/` at the level where they apply; everything in `_agent/` composes along the path root → current position.
 
-Use native `write` / `edit` for `_agent/skills/*`, `_agent/perspectives/*`, and other agent-context primitives because they use `name` + `description` frontmatter, not Note `name` + `summary` frontmatter. Use `is_write` only when shaping ordinary Notes such as `_agent/purpose.md` or `_agent/now.md` that should carry Note-style summary frontmatter.
+Use native `write` / `edit` for `_agent/skills/*`, `_agent/perspectives/*`, and other agent-context primitives because they use `name` + `description` frontmatter, not Note `name` + `summary` frontmatter. For a skill, its entry id and frontmatter `name` must be the same portable id — follow the exact rule and worked example in [form primitive](../../reference/form-primitive.md). Pi warns at startup when a loaded skill violates it. Use `is_write` only when shaping ordinary Notes such as `_agent/purpose.md` or `_agent/now.md` that should carry Note-style summary frontmatter.
 
 Preview, confirm, then write — the write gate in [guide](../../reference/guide.md) applies to shaping like any capture.
 

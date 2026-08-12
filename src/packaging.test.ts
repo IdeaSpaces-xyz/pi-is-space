@@ -33,6 +33,13 @@ describe("packaging", () => {
     expect(pkg.pi?.skills).toEqual(["./skills"]);
   });
 
+  it("points skill-name authoring at the canonical rule and names Pi's consequence", () => {
+    const skill = readFileSync(join(process.cwd(), "skills/is-shape/SKILL.md"), "utf-8");
+    expect(skill).toContain("follow the exact rule and worked example in [form primitive]");
+    expect(skill).toContain("Pi warns at startup when a loaded skill violates it");
+    expect(skill).not.toContain("1–64 lowercase ASCII letters");
+  });
+
   it("ships awareness-first orientation with an explicit stopping rule", () => {
     const skill = readFileSync(join(process.cwd(), "skills/is-orient/SKILL.md"), "utf-8");
     expect(skill).toContain("Treat that map as the first disclosure rung, not as a list of files to reload.");
