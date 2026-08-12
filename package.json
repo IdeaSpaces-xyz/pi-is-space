@@ -1,6 +1,6 @@
 {
   "name": "@ideaspaces/pi-is-space",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "Ideaspace Protocol extension for Pi — durable awareness, deliberate capture, optional sync",
   "license": "MIT",
@@ -32,7 +32,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ideaspaces/cli": "github:IdeaSpaces-xyz/cli#ea9279e3ff6582c752fe12206670849681efd864",
+    "@ideaspaces/cli": "github:IdeaSpaces-xyz/cli#de5a1f38f26739d445c8cd98c254b0bb8051145e",
     "@ideaspaces/protocol": "github:IdeaSpaces-xyz/ideaspace-protocol#342f78f255fbf981018540a5241ada9061d610e9"
   },
   "peerDependencies": {
