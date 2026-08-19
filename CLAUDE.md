@@ -14,7 +14,7 @@ The agent chooses intent; the extension/skills choose mechanism. Keep the wrappe
 
 ```txt
 Agent (Pi) → pi-is-space → protocol (local reads)
-                         → CLI (auth/sync/publish + transitional writes)
+                         → CLI (auth/sync/publish/share + transitional writes)
 ```
 
 ## Tool Surface
@@ -62,6 +62,7 @@ On session start, assemble local awareness in-process from `@ideaspaces/protocol
 Use-case layer shipped in `skills/`, grouped by role:
 
 - Daily loop: is-orient, is-capture, is-push, is-pull, is-reflect
+- Access: is-share for people, teams, and public/private visibility
 - Space lifecycle: is-setup, is-publish, is-shape
 - Reference: is-space, is-writing
 

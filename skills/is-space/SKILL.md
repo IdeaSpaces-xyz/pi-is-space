@@ -4,7 +4,7 @@ description: >
   Reference for working in an ideaspace — the five-file `_agent/` contract,
   Two Roles convention, and Pi tool surface. Use as a compatibility/reference
   entrypoint when the user asks how an ideaspace works. For active intents,
-  prefer the loop skills: is-orient, is-capture, is-push, is-pull, is-reflect, is-shape.
+  prefer is-orient, is-capture, is-share, is-push, is-pull, is-reflect, and is-shape.
 allowed-tools: "is_write is_status is_commit is_push is_pull is_auth read edit write bash"
 ---
 
@@ -21,6 +21,7 @@ arrive → orient → inspect → act → capture → push/pull → reflect
 Pi handles **arrive** automatically with session-start awareness. For active work, pick the intent skill by tier:
 
 **Daily loop** — `is-orient`, `is-capture`, `is-push` / `is-pull`, `is-reflect`.
+**Access** — `is-share` for people, teams, and public/private visibility.
 **Space lifecycle** — `is-setup`, `is-publish`, `is-shape`.
 **Reference** — `is-space`, `is-writing`.
 
@@ -143,3 +144,4 @@ To host a space remotely after login, run `/is-publish` or `ideaspaces publish` 
 - **is-writing** — quality standard for summaries, sections, entities
 - **is-setup** — conversational layer over `ideaspaces create` for a new or existing space
 - **is-shape** — create `_agent/` primitives and perspectives
+- **is-share** — manage people, teams, and public/private visibility without exposing backend coordinates
