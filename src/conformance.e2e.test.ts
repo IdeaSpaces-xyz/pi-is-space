@@ -180,7 +180,8 @@ describe("write → commit conformance", () => {
 
     const trailers = parseTrailers(message);
     expect(trailers.op).toBe("create");
-    expect(trailers.coAuthoredBy?.join()).toMatch(/agent:[a-z0-9._-]+/i);
+    expect(trailers.coAuthoredBy).toContain("tester-pi <agent:tester-pi@ideaspaces>");
+    expect(trailers.coAuthoredBy?.join()).not.toContain("@ideaspaces@ideaspaces");
     // The Conversation trailer carries the REAL session id from Pi's runtime —
     // ctx.sessionManager.getSessionId() — not a bridged cache file.
     const sessionId = sessionManager.getSessionId();

@@ -13,9 +13,9 @@ function read(relative: string): string {
 describe("recipient-shaped Share distribution", () => {
   it("pins the CLI release used by tool subprocesses", () => {
     const pkg = JSON.parse(read("package.json"));
-    expect(pkg.version).toBe("0.1.4");
+    expect(pkg.version).toBe("0.1.5");
     expect(pkg.dependencies?.["@ideaspaces/cli"]).toBe(
-      "github:IdeaSpaces-xyz/cli#1923add1806811a741f88ddfc0957bf9d072b7d9",
+      "github:IdeaSpaces-xyz/cli#604c55bcb89c26fc60b6e1eb22b9c6610455602f",
     );
   });
 
