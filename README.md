@@ -48,8 +48,8 @@ arrive → orient → inspect → act → capture → sync → reflect
 The agent chooses the intent; the package chooses the mechanism. Architecture stays thin:
 
 ```txt
-Agent (Pi) → pi-is-space → @ideaspaces/protocol (portable local reads)
-                         → IdeaSpaces CLI (auth/sync/publish/share + transitional writes)
+Agent (Pi) → pi-is-space → @ideaspaces/protocol (local reads + explicit local effects)
+                         → IdeaSpaces CLI (auth/sync/publish/share/setup + remote catalog)
 ```
 
 The wrapper keeps harness placement and session behavior local while reusing the protocol's shape and the CLI's platform capabilities.
@@ -71,9 +71,9 @@ Pi's native `read`, `edit`, `write`, and `bash` cover exact full-document eviden
 | `is_navigate` | Move home awareness focus, or inspect a mounted ideaspace as read-only reference. |
 | `is_inspect` | Inspect one local Markdown file by summary, ATX outline, or exact section; never defaults to the full body. |
 | `is_mount` / `is_unmount` | Add or remove read-only repositories from the conversation's working set. |
-| `is_status` | Inspect git/capture state, or return a file `sha` for safe Note updates. |
-| `is_write` | Capture primitive: create/update a markdown Note with Layer 1 frontmatter, stage it in git, and return a content `sha`. Normally reached through the `is-capture` skill. |
-| `is_commit` | Capture primitive: commit only explicit paths or all staged knowledge after confirmation; never sweep unrelated staged work. |
+| `is_status` | Inspect git/capture state, or return a file's full revision and compatibility `sha` for safe Note updates. |
+| `is_write` | Capture primitive: create/update a markdown Note with Layer 1 frontmatter, stage it in git, record its session revision, and return a content `sha`. Normally reached through the `is-capture` skill. |
+| `is_commit` | Capture primitive: commit only explicit reviewed paths or this Pi session's captured paths after confirmation; never adopt unknown staged work. |
 | `is_change_open` / `is_change_close` | Carry one decision's `Change-Id` across commits and repositories. |
 | `is_pull` | Pull primitive: integrate remote changes into the local space; never pushes; refuses to integrate on staged/dirty tree. |
 | `is_push` | Push primitive: send committed captures to the remote; refuses on uncommitted captures, and when behind — pull first. |
@@ -106,7 +106,7 @@ On session start, the extension builds local awareness in-process from `@ideaspa
 
 ## CLI
 
-The package still depends on `@ideaspaces/cli` for auth, sync, publish/setup, recipient-shaped Share, remote catalog discovery, and transitional write/commit verbs. It resolves the CLI for those calls and exposes the path to skills as `$IS_CLI_PATH` when available. Share is intentionally skill-mediated and CLI-backed in this release rather than exposed as a native `is_share` tool. Local status, path status, navigation, Markdown inspection, mounted orientation, capture nudges, and session awareness do not invoke it.
+The package still depends on `@ideaspaces/cli` for auth, sync, publish/setup, recipient-shaped Share, and remote catalog discovery. It resolves the CLI for those calls and exposes the path to skills as `$IS_CLI_PATH` when available. Share is intentionally skill-mediated and CLI-backed in this release rather than exposed as a native `is_share` tool. Local path status, Markdown write, exact-path commit, Change minting, navigation, inspection, mounted orientation, and capture nudges execute in-process; remote-catalog refresh remains a best-effort platform call.
 
 A host that drives pi one process per turn (e.g. the desktop) owns the conversation's durable working set and passes it as `$IS_MOUNTS` (comma-separated absolute paths) on the inherited env; at load the extension seeds its mounts from it, so a mount survives across turns without the agent re-running `is_mount`.
 

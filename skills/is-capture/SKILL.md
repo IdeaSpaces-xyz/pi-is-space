@@ -57,7 +57,7 @@ If yes:
    - refinement of a file just written: use the prior `is_write` response `sha`
    - `force: true` only after re-reading and reconciling divergent content
 4. Show what changed when useful. The user confirms the capture boundary.
-5. Commit with `is_commit({ message, all: true })` for staged knowledge, or explicit `paths` for native edits. Never sweep unrelated staged work.
+5. Commit with `is_commit({ message, all: true })` for paths captured by this Pi session, or explicit `paths` for confirmed native edits. Never adopt unrelated staged work.
 6. Optionally use **is-push** / `is_push` to share with the remote (or **is-pull** first to get the latest).
 7. Cleanup is separate from capture and is owned by `pi-local-context`. After a meaningful capture or any natural boundary where context is cluttered, offer a cleanup preview and use the `context-cleanup` skill / `context_cleanup` tool if it appears in your available tools. If `context_cleanup` is not available, skip the cleanup offer.
 

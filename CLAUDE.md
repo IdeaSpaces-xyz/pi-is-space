@@ -10,11 +10,11 @@ Implement the ideaspace inhabitation loop as a natural Pi surface:
 arrive → orient → inspect → act → capture → sync → reflect
 ```
 
-The agent chooses intent; the extension/skills choose mechanism. Keep the wrapper thin. Portable local shape reads come from `@ideaspaces/protocol`; platform interactions and transitional local writes stay in the IdeaSpaces CLI.
+The agent chooses intent; the extension/skills choose mechanism. Keep the wrapper thin. Portable local shape reads and exact-path write/commit effects come from `@ideaspaces/protocol`; platform and transport interactions stay in the IdeaSpaces CLI.
 
 ```txt
-Agent (Pi) → pi-is-space → protocol (local reads)
-                         → CLI (auth/sync/publish/share + transitional writes)
+Agent (Pi) → pi-is-space → protocol (local reads + explicit local effects)
+                         → CLI (auth/sync/publish/share/setup + remote catalog)
 ```
 
 ## Tool Surface
@@ -24,9 +24,9 @@ IdeaSpaces-aware primitives:
 - `is_navigate` — move home awareness focus, or inspect a mounted repo as read-only reference
 - `is_inspect` — deepen into one local Markdown file by summary, outline, or exact section without a full-body default
 - `is_mount` / `is_unmount` — manage the conversation's read-only working set without changing authority
-- `is_status` — inspect capture/git state and file `sha` for safe updates
-- `is_write` — capture primitive for frontmatter-aware Note writes; stages, tracks, and returns `sha`
-- `is_commit` — capture primitive; commits only tracked or explicit capture paths
+- `is_status` — inspect capture/git state and full file revision, with compatibility `sha` for safe updates
+- `is_write` — in-process capture primitive for frontmatter-aware Note writes; stages, session-tracks, and returns `sha`
+- `is_commit` — in-process capture primitive; commits only explicit paths or this session's captured paths
 - `is_change_open` / `is_change_close` — carry one decision's `Change-Id` across commits and repos
 - `is_pull` — pull primitive; integrates remote changes into the local space (never pushes)
 - `is_push` — push primitive; sends committed captures to the remote (refuses when behind — pull first)
@@ -38,7 +38,7 @@ Pi-native commands for human-facing flow:
 
 - `/is-setup` — preview and scaffold the `_agent/` seed contract with confirmation
 - `/is-status` — show capture/sync state and refresh UI
-- `/is-commit` — review staged captures, collect a message, confirm, commit staged knowledge
+- `/is-commit` — review staged knowledge, collect a message, confirm, commit that exact path list
 - `/is-pull` — dry-run, confirm, integrate remote changes into the local space
 - `/is-push` — dry-run, confirm, push committed captures to the remote
 - `/is-publish` — check scaffold/branch state, confirm destination, publish remotely, retry through login if needed

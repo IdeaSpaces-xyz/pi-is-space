@@ -4,7 +4,8 @@
  * The extension is loaded through Pi's genuine loader (discoverAndLoadExtensions
  * → jiti) and its tools execute with an ExtensionRunner-built context — real
  * SessionManager (in-memory), real ctx.cwd — into a temp space scaffolded by
- * the dependency-installed CLI. Results are validated with
+ * the dependency-installed CLI before load. The loaded extension receives a
+ * failing CLI marker, so local capture proves its in-process boundary. Results are validated with
  * @ideaspaces/protocol: validateSpace over the tree, parseTrailers +
  * CHANGE_ID_PATTERN over the commits produced.
  *
@@ -42,6 +43,7 @@ const T = 30_000;
 
 let home: string;
 let space: string;
+let cliMarker: string;
 let ctx: import("@earendil-works/pi-coding-agent").ExtensionContext;
 let sessionManager: SessionManager;
 let tools: Map<string, { definition: { execute: Function } }>;
@@ -111,6 +113,17 @@ beforeAll(async () => {
 
   // Real scaffold path: create inits git and commits the seed contract.
   sh("node", [CLI, "create", "--yes"], space);
+
+  // After setup, make the outer CLI boundary fail loudly and leave evidence.
+  // Local status/write/commit/Change must never touch it.
+  cliMarker = join(home, "cli-invoked");
+  const failingCli = join(home, "failing-cli.js");
+  writeFileSync(
+    failingCli,
+    `import { writeFileSync } from "node:fs";\nconst args = process.argv.slice(2);\nif (!args.includes("catalog")) writeFileSync(${JSON.stringify(cliMarker)}, args.join(" ") + "\\n");\nprocess.exit(73);\n`,
+  );
+  savedEnv.IS_CLI_PATH = process.env.IS_CLI_PATH;
+  process.env.IS_CLI_PATH = failingCli;
 
   // Load the extension through Pi's genuine loader; execute with a
   // runner-built context. agentDir points into the sandbox so no user-global
@@ -234,8 +247,10 @@ describe("Change lifecycle", () => {
     expect(named.error, "naming a local-only path must be refused").toBeDefined();
     expect(git(["rev-parse", "HEAD"]), "nothing may be committed").toBe(head);
 
-    // The other shape Pi uses: --all sweeps staged knowledge, and an ignored
-    // file cannot reach the index to be swept.
+    // Tool `all` selects only this extension session's write ledger. Another
+    // session's staged Markdown is unknown and must remain in the index.
+    writeFileSync(join(space, "other-session.md"), "# Other session\n");
+    git(["add", "other-session.md"]);
     await call("is_write", {
       path: "notes/kept.md",
       content: "# Kept\n\nBody.\n",
@@ -245,7 +260,10 @@ describe("Change lifecycle", () => {
     const all = await call("is_commit", { message: "Save captures", all: true });
     expect(all.error, all.error).toBeUndefined();
     expect(git(["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"])).toBe("notes/kept.md");
+    expect(git(["diff", "--cached", "--name-only"])).toBe("other-session.md");
     expect(existsSync(join(space, "progress.local.md")), "the file stays on disk").toBe(true);
+    git(["restore", "--staged", "other-session.md"]);
+    rmSync(join(space, "other-session.md"));
   });
 
   test("is_change_open mints a conformant Change-Id", { timeout: T }, async () => {
@@ -358,6 +376,7 @@ describe("space conformance", () => {
     expect(errors, JSON.stringify(errors, null, 2)).toEqual([]);
     expect(report.ok).toBe(true);
     expect(report.notesChecked).toBeGreaterThanOrEqual(5);
+    expect(existsSync(cliMarker), "the local loop must not invoke the failing CLI").toBe(false);
   });
 });
 
@@ -548,5 +567,15 @@ describe("close never deletes another surface's newer record", () => {
     } finally {
       rmSync(qspace, { recursive: true, force: true });
     }
+  });
+});
+
+describe("intentional CLI boundary", () => {
+  test("a platform verb reaches the failing marker only after the local loop", { timeout: T }, async () => {
+    expect(existsSync(cliMarker)).toBe(false);
+    const result = await call("is_pull", { dry_run: true });
+    expect(result.error).toBeTruthy();
+    expect(existsSync(cliMarker)).toBe(true);
+    expect(readFileSync(cliMarker, "utf8")).toContain("pull");
   });
 });

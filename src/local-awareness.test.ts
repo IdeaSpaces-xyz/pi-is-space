@@ -12,7 +12,6 @@ import {
   probeTree,
   readCaptureStatus,
   readMountedAwareness,
-  readPathStatusText,
 } from "./local-awareness.js";
 
 const CLI = join(process.cwd(), "node_modules/@ideaspaces/cli/bundle/ideaspaces.js");
@@ -256,7 +255,7 @@ describe("local awareness", () => {
     expect(result.volatile).toBe(JSON.parse(cliRun.stdout).text);
   });
 
-  it("returns path status and staged capture facts in-process", async () => {
+  it("returns staged capture facts in-process", async () => {
     const home = join(workspace, "home");
     await fs.mkdir(home);
     await makeSpace(home, "Home.");
@@ -265,15 +264,6 @@ describe("local awareness", () => {
 
     const status = await readCaptureStatus(home);
     expect(status?.tracked_captures).toEqual(["note.md"]);
-    const path = JSON.parse(await readPathStatusText(home, "note.md"));
-    expect(path).toMatchObject({
-      path: "note.md",
-      exists: true,
-      in_index: true,
-      modified: false,
-      in_tracked: true,
-    });
-    expect(path.sha).toMatch(/^[0-9a-f]{40}$/);
   });
 
   it("renders mounted Content without operating state or workspace catalog", async () => {
