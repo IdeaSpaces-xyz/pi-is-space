@@ -22,7 +22,7 @@ describe("packaging", () => {
   });
 
   it("pins the protocol release that supplies explicit local effects", () => {
-    expect(pkg.version).toBe("0.1.6");
+    expect(pkg.version).toBe("0.1.7");
     expect(pkg.dependencies?.["@ideaspaces/protocol"]).toBe(
       "github:IdeaSpaces-xyz/ideaspace-protocol#bfc8080c30edd74f3177356a4a40254562020e62",
     );
