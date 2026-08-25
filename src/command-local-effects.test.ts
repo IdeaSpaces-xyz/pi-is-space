@@ -29,6 +29,43 @@ function makeSpace(): string {
   return root;
 }
 
+function commandHarness(root: string): {
+  command: { handler: (args: string, ctx: ExtensionContext) => Promise<void> };
+  ctx: ExtensionContext;
+  notices: string[];
+} {
+  const commands = new Map<string, { handler: (args: string, ctx: ExtensionContext) => Promise<void> }>();
+  const pi = {
+    on() {},
+    registerTool() {},
+    registerCommand(name: string, command: { handler: (args: string, ctx: ExtensionContext) => Promise<void> }) {
+      commands.set(name, command);
+    },
+  } as unknown as ExtensionAPI;
+  registerIdeaSpaces(pi);
+
+  const notices: string[] = [];
+  const ctx = {
+    cwd: root,
+    hasUI: true,
+    sessionManager: { getSessionId: () => "sess-command" },
+    ui: {
+      setStatus() {},
+      setWidget() {},
+      notify(message: string) {
+        notices.push(message);
+      },
+      async editor() {
+        return "Capture reviewed knowledge";
+      },
+      async confirm() {
+        return true;
+      },
+    },
+  } as unknown as ExtensionContext;
+  return { command: commands.get("is-commit")!, ctx, notices };
+}
+
 describe("Pi human commit command", () => {
   it("commits the exact reviewed knowledge list in-process and preserves bystanders", async () => {
     const root = makeSpace();
@@ -36,42 +73,29 @@ describe("Pi human commit command", () => {
     writeFileSync(join(root, "source.ts"), "export {};\n");
     git(root, "add", "capture.md", "source.ts");
 
-    const commands = new Map<string, { handler: (args: string, ctx: ExtensionContext) => Promise<void> }>();
-    const pi = {
-      on() {},
-      registerTool() {},
-      registerCommand(name: string, command: { handler: (args: string, ctx: ExtensionContext) => Promise<void> }) {
-        commands.set(name, command);
-      },
-    } as unknown as ExtensionAPI;
-    registerIdeaSpaces(pi);
-
-    const notices: string[] = [];
-    const ctx = {
-      cwd: root,
-      hasUI: true,
-      sessionManager: { getSessionId: () => "sess-command" },
-      ui: {
-        setStatus() {},
-        setWidget() {},
-        notify(message: string) {
-          notices.push(message);
-        },
-        async editor() {
-          return "Capture reviewed knowledge";
-        },
-        async confirm() {
-          return true;
-        },
-      },
-    } as unknown as ExtensionContext;
-
-    await commands.get("is-commit")!.handler("", ctx);
+    const { command, ctx, notices } = commandHarness(root);
+    await command.handler("", ctx);
 
     expect(git(root, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD")).toBe(
       "capture.md",
     );
     expect(git(root, "diff", "--cached", "--name-only")).toBe("source.ts");
     expect(notices.at(-1)).toMatch(/^Committed 1 path\(s\): [0-9a-f]+$/);
+  });
+
+  it("renders a human failure instead of dumping the typed tool JSON", async () => {
+    const root = makeSpace();
+    writeFileSync(join(root, "capture.md"), "# Capture\n");
+    git(root, "add", "capture.md");
+    git(root, "config", "user.name", "");
+    git(root, "config", "user.email", "");
+    const { command, ctx, notices } = commandHarness(root);
+
+    await command.handler("", ctx);
+
+    const failure = notices.at(-1) ?? "";
+    expect(failure).toContain("Commit failed:\nNo complete Git identity.");
+    expect(failure).not.toContain('"status": "error"');
+    expect(git(root, "diff", "--cached", "--name-only")).toBe("capture.md");
   });
 });

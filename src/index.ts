@@ -433,6 +433,28 @@ function localToolResult(result: LocalToolResult): ToolResult {
   return ok(result.text);
 }
 
+function humanLocalToolError(text: string): string {
+  try {
+    const parsed = JSON.parse(text) as {
+      message?: unknown;
+      detail?: unknown;
+      recovery_hint?: unknown;
+    };
+    if (typeof parsed.message !== "string" || !parsed.message.trim()) return text;
+    return [
+      parsed.message,
+      ...(typeof parsed.detail === "string" && parsed.detail.trim()
+        ? [`Detail: ${parsed.detail}`]
+        : []),
+      ...(typeof parsed.recovery_hint === "string" && parsed.recovery_hint.trim()
+        ? [`Recovery: ${parsed.recovery_hint}`]
+        : []),
+    ].join("\n");
+  } catch {
+    return text;
+  }
+}
+
 async function runJson<T>(args: string[], cwd?: string): Promise<JsonCliResult<T>> {
   const { out, err, code } = await cli(["--json", ...args], undefined, cwd);
   const text = out.trim() || err.trim();
@@ -873,7 +895,7 @@ export default function (pi: ExtensionAPI) {
       localDependencies(ctx),
     );
     if (!result.ok) {
-      ctx.ui.notify(`Commit failed:\n${result.text}`, "error");
+      ctx.ui.notify(`Commit failed:\n${humanLocalToolError(result.text)}`, "error");
       await refreshSpaceUi(ctx);
       return false;
     }
