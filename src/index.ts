@@ -19,6 +19,7 @@ import {
   gitState,
   inspectMarkdownFile,
   isIdeaspacePath,
+  mintChangeId,
   type MarkdownHeading,
   type MarkdownInspection,
   type MarkdownInspectionMode,
@@ -32,9 +33,17 @@ import {
   readCaptureStatus,
   readMountedAwareness,
   probeTree,
-  readPathStatusText,
   type CaptureStatus,
 } from "./local-awareness.js";
+import { SessionCaptureLedger } from "./capture-ledger.js";
+import { localEffectCapabilities } from "./local-effects-adapter.js";
+import {
+  runLocalCommit,
+  runLocalStatus,
+  runLocalWrite,
+  type LocalToolDependencies,
+  type LocalToolResult,
+} from "./local-tools.js";
 import { parseMountEnv } from "./mounts.js";
 import {
   CHANGE_ID_SHAPE,
@@ -46,9 +55,9 @@ import {
   writePersistedChange,
   type PersistedChange,
 } from "./change-state.js";
-// Local shape reads come directly from @ideaspaces/protocol. The CLI remains
-// the platform/transitional-write client for auth, sync, publish, setup, write,
-// commit, and remote catalog discovery.
+// Local shape reads and write/commit effects come directly from
+// @ideaspaces/protocol. The CLI remains only the platform/transport client for
+// auth, sync, publish, setup, Share, and remote catalog discovery.
 
 type CliResult = { out: string; err: string; code: number };
 
@@ -419,6 +428,33 @@ async function runTool(args: string[], stdin?: string, cwd?: string): Promise<To
   return ok(result.text);
 }
 
+function localToolResult(result: LocalToolResult): ToolResult {
+  if (!result.ok) throw new Error(result.text);
+  return ok(result.text);
+}
+
+function humanLocalToolError(text: string): string {
+  try {
+    const parsed = JSON.parse(text) as {
+      message?: unknown;
+      detail?: unknown;
+      recovery_hint?: unknown;
+    };
+    if (typeof parsed.message !== "string" || !parsed.message.trim()) return text;
+    return [
+      parsed.message,
+      ...(typeof parsed.detail === "string" && parsed.detail.trim()
+        ? [`Detail: ${parsed.detail}`]
+        : []),
+      ...(typeof parsed.recovery_hint === "string" && parsed.recovery_hint.trim()
+        ? [`Recovery: ${parsed.recovery_hint}`]
+        : []),
+    ].join("\n");
+  } catch {
+    return text;
+  }
+}
+
 async function runJson<T>(args: string[], cwd?: string): Promise<JsonCliResult<T>> {
   const { out, err, code } = await cli(["--json", ...args], undefined, cwd);
   const text = out.trim() || err.trim();
@@ -571,40 +607,6 @@ async function shouldNudgeKnowledgeWrite(
   return { path: absPath, spaceRoot };
 }
 
-/** Wrap a bare id or principal into `agent:<id>@ideaspaces` (domain platform-set). */
-function agentPrincipalFromId(id: string): string {
-  const bare = id.replace(/^agent:/, "").replace(/@.*$/, "").trim();
-  return `agent:${bare}@ideaspaces`;
-}
-
-/** Local git `user.email` for the repo at `cwd`, or null. Offline, read-only. */
-function gitConfigUserEmail(cwd: string): string | null {
-  try {
-    const r = spawnSync("git", ["config", "user.email"], { cwd, encoding: "utf-8" });
-    const v = (r.stdout ?? "").trim();
-    return v || null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Resolve the local agent's signing principal, offline: an explicit
- * `IDEASPACES_AGENT_ID` override wins; otherwise derive `agent:<username>-pi`
- * from the person identity the CLI writes to git `user.email`
- * (`person:<username>@ideaspaces`). Returns null when neither is available yet
- * (e.g. a fresh clone before its first identity-bearing commit) — the caller
- * simply omits `Co-authored-by`, which is additive.
- */
-function resolveAgentPrincipal(cwd: string): string | null {
-  const override = process.env.IDEASPACES_AGENT_ID?.trim();
-  if (override) return agentPrincipalFromId(override);
-  const email = gitConfigUserEmail(cwd);
-  const m = email?.match(/^person:(.+)@ideaspaces$/);
-  if (m) return `agent:${m[1]}-pi@ideaspaces`;
-  return null;
-}
-
 export default function (pi: ExtensionAPI) {
   let cachedStable: string | null = null;
   let cachedVolatile: string | null = null;
@@ -646,6 +648,9 @@ export default function (pi: ExtensionAPI) {
   // pi restart doesn't silently drop it; openChangeState() is the read path.
   // Unset and nothing re-armable persisted → commits carry no Change-Id.
   let currentChangeId: string | null = null;
+  // Full revision snapshots and `all` ownership live only for this loaded Pi
+  // extension. A reload safely loses broad commit authority.
+  const captureLedger = new SessionCaptureLedger();
 
   // Where the open Change persists for this session. Keyed by the session's
   // start cwd (pi's analog of CLAUDE_PROJECT_DIR) — never a per-call cwd
@@ -682,10 +687,18 @@ export default function (pi: ExtensionAPI) {
       // Never fail the open on a cache write; memory still carries it.
     }
   }
-  // The local agent's signing principal (`agent:<id>@ideaspaces`), resolved once
-  // and cached: `IDEASPACES_AGENT_ID` override, else derived from the person
-  // identity in git `user.email`. Null until resolved (retried each commit).
-  let agentPrincipal: string | null = null;
+
+  function localDependencies(ctx: ExtensionContext): LocalToolDependencies {
+    return {
+      capabilities: localEffectCapabilities,
+      ledger: captureLedger,
+      sessionId: () => ctx.sessionManager.getSessionId(),
+      changeId: () => openChangeState(ctx).armed ?? undefined,
+      agentIdEnv: process.env.IDEASPACES_AGENT_ID,
+      processCwd: ctx.cwd,
+    };
+  }
+
   const fdCommand = resolveFdCommand();
   const gitRootCache = new Map<string, string | null>();
   let autocompleteFailureShown = false;
@@ -870,16 +883,30 @@ export default function (pi: ExtensionAPI) {
       return false;
     }
 
-    const result = await runJson<{ commit_sha: string; committed_paths: string[] }>(["commit", "-m", trimmed, "--all"], ctx.cwd);
+    // The person just reviewed this exact list. Pass canonical absolute paths
+    // to the same in-process adapter as the tool rather than broadening to `all`.
+    const reviewedRoot = await localEffectCapabilities.filesystem.realpath(status.repoRoot);
+    const result = await runLocalCommit(
+      {
+        message: trimmed,
+        paths: status.tracked_captures.map((path) => join(reviewedRoot, ...path.split("/"))),
+        cwd: reviewedRoot,
+      },
+      localDependencies(ctx),
+    );
     if (!result.ok) {
-      ctx.ui.notify(`Commit failed:\n${result.error}`, "error");
+      ctx.ui.notify(`Commit failed:\n${humanLocalToolError(result.text)}`, "error");
       await refreshSpaceUi(ctx);
       return false;
     }
 
+    const committed = JSON.parse(result.text) as {
+      commit_sha: string;
+      committed_paths: string[];
+    };
     await refreshAwareness(ctx.cwd);
     await refreshSpaceUi(ctx);
-    ctx.ui.notify(`Committed ${result.data.committed_paths.length} path(s): ${result.data.commit_sha}`, "info");
+    ctx.ui.notify(`Committed ${committed.committed_paths.length} path(s): ${committed.commit_sha}`, "info");
     return true;
   }
 
@@ -1695,7 +1722,7 @@ export default function (pi: ExtensionAPI) {
     name: "is_write",
     label: "IS Write",
     description:
-      "Capture primitive for Notes: create or update a Note with Layer 1 frontmatter (name, summary), stage it in git, and return its content sha for safe refinement. Normally use through the is-capture skill; native file tools cover code/config and ordinary edits.",
+      "Capture primitive for Notes: create or update a Note with Layer 1 frontmatter (name, summary), stage it in git, record its full path revision for this session, and return its content sha for safe refinement. Normally use through the is-capture skill; native file tools cover code/config and ordinary edits.",
     promptSnippet: "Capture primitive: create/update a markdown Note with frontmatter; stages + returns sha",
     parameters: Type.Object({
       path: Type.String({ description: "File path within the ideaspace" }),
@@ -1737,18 +1764,10 @@ export default function (pi: ExtensionAPI) {
     },
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const cwd = params.cwd || ctx.cwd;
-      const args = ["write", params.path];
-      if (params.name) args.push("--name", params.name);
-      if (params.summary) args.push("--summary", params.summary);
-      if (params.tags?.length) args.push("--tags", params.tags.join(","));
-      if (params.attached_to) args.push("--attached-to", params.attached_to);
-      if (params.if_match) args.push("--if-match", params.if_match);
-      if (params.force) args.push("--force");
-
-      const result = await runTool(args, params.content, cwd);
+      const result = await runLocalWrite({ ...params, cwd }, localDependencies(ctx));
       await refreshAwareness(cwd);
       await refreshSpaceUi(ctx, cwd);
-      return result;
+      return localToolResult(result);
     },
   });
 
@@ -1756,13 +1775,13 @@ export default function (pi: ExtensionAPI) {
     name: "is_status",
     label: "IS Status",
     description:
-      "Show IdeaSpaces capture state. Without path: returns JSON for git position plus staged captures and refreshes the UI. With path: returns single-file state text including sha for is_write if_match, without refreshing the UI. The `change` field always reflects the session's own open-Change record (a Change is session-scoped, spanning repos) — it does not follow a `cwd` override.",
+      "Show IdeaSpaces capture state. Without path: returns JSON for git position, staged knowledge, and this session's captured paths, then refreshes the UI. With path: returns the full worktree/index/HEAD revision plus compatibility fields for safe refinement, without refreshing the UI. The `change` field always reflects the session's own open-Change record (a Change is session-scoped, spanning repos) — it does not follow a `cwd` override.",
     promptSnippet: "Inspect IdeaSpaces capture state or get a file sha for safe updates",
     parameters: Type.Object({
       path: Type.Optional(
         Type.String({
           description:
-            "Optional file path. When present, returns { exists, sha, in_index, modified, in_tracked }; use sha as is_write.if_match.",
+            "Optional file path. When present, returns { exists, sha, in_index, modified, in_tracked, revision, session_owned }; use sha as is_write.if_match.",
         }),
       ),
       cwd: Type.Optional(
@@ -1774,13 +1793,16 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const cwd = params.cwd || ctx.cwd;
-      if (params.path) return ok(await readPathStatusText(cwd, params.path));
+      const result = await runLocalStatus({ ...params, cwd }, localDependencies(ctx));
+      if (!result.ok) return localToolResult(result);
+      if (params.path) return localToolResult(result);
 
-      // A global status read is also a deliberate UI refresh; single-path sha
-      // queries are local concurrency checks and should not rewrite the widget.
+      // A global status read is also a deliberate UI refresh; single-path
+      // revision queries should not rewrite the widget.
       await refreshAwareness(cwd);
-      const status = await readCaptureStatus(cwd);
-      if (!status) throw new Error("not inside a git repository");
+      const status = JSON.parse(result.text) as CaptureStatus & {
+        session_captures: string[];
+      };
       updateSpaceUi(ctx, status);
 
       // Merge the surface-owned Change state so capture state is one answer:
@@ -1805,15 +1827,15 @@ export default function (pi: ExtensionAPI) {
     name: "is_commit",
     label: "IS Commit",
     description:
-      "Capture primitive: commit agreed IdeaSpaces changes. Commits only explicit paths, or all staged IdeaSpaces knowledge when all=true; never sweeps unrelated staged user work. Confirm with the user before calling.",
-    promptSnippet: "Capture primitive: commit only captured/staged IdeaSpaces paths after confirmation",
+      "Capture primitive: commit agreed IdeaSpaces changes. Commits only explicit reviewed paths, or this Pi session's captured paths when all=true; never adopts unknown staged work. Confirm with the user before calling.",
+    promptSnippet: "Capture primitive: commit explicit paths or this session's captures after confirmation",
     parameters: Type.Object({
       message: Type.String({ description: "Commit message, user-provided or user-confirmed" }),
       paths: Type.Optional(
         Type.Array(Type.String({ description: "Exact path to commit; omit only when all=true" })),
       ),
       all: Type.Optional(
-        Type.Boolean({ description: "Commit all staged IdeaSpaces knowledge (markdown + _agent/) instead of explicit paths" }),
+        Type.Boolean({ description: "Commit all paths captured by this Pi extension session instead of explicit paths" }),
       ),
       op: Type.Optional(
         StringEnum(
@@ -1829,31 +1851,14 @@ export default function (pi: ExtensionAPI) {
       ),
     }),
     async execute(_id, params, _signal, _onUpdate, ctx) {
-      // Stamp the Change layer by handing the trailer inputs to `cli commit`,
-      // which folds them into the message — the CLI orchestrates the command
-      // and the protocol owns trailer format and validation. Per-commit provenance rides
-      // every agent-driven commit: Co-authored-by (the agent principal that
-      // assisted) + Conversation (the pi session id); Change-Id + Op ride only
-      // when set. Author stays the person (CLI-set). All additive.
+      // The protocol owns exact-path CAS, staging, commit membership, identity,
+      // and trailer validation. Pi supplies only reviewed selection and its
+      // session-owned Change/Conversation/co-author context.
       const cwd = params.cwd || ctx.cwd;
-      if (!agentPrincipal) agentPrincipal = resolveAgentPrincipal(cwd);
-      const sessionId = ctx.sessionManager.getSessionId();
-      // Lazy resolution: a same-session pi restart re-arms the persisted
-      // Change here; other sessions' records never arm (openChangeState).
-      const { armed } = openChangeState(ctx);
-
-      const args = ["commit", "-m", params.message];
-      if (params.all) args.push("--all");
-      else if (params.paths?.length) args.push(...params.paths);
-      if (params.op) args.push("--op", params.op);
-      if (armed) args.push("--change-id", armed);
-      if (agentPrincipal) args.push("--co-author", agentPrincipal);
-      if (sessionId) args.push("--conversation", sessionId);
-
-      const result = await runTool(args, undefined, cwd);
+      const result = await runLocalCommit({ ...params, cwd }, localDependencies(ctx));
       await refreshAwareness(cwd);
       await refreshSpaceUi(ctx, cwd);
-      return result;
+      return localToolResult(result);
     },
   });
 
@@ -1881,10 +1886,8 @@ export default function (pi: ExtensionAPI) {
       if (id) {
         currentChangeId = changeId(id, "Provided id");
       } else if (handle) {
-        // Mint offline via the CLI — a repo-agnostic, pure mint.
-        const minted = await runJson<{ change_id: unknown }>(["change", "new", handle]);
-        if (!minted.ok) throw new Error(minted.error);
-        currentChangeId = changeId(minted.data.change_id, "CLI response");
+        // Repo-agnostic and pure: local Change minting has no CLI boundary.
+        currentChangeId = changeId(mintChangeId(handle), "Protocol mint");
       } else {
         throw new Error("Provide `handle` to mint a new Change, or `id` to continue one.");
       }

@@ -72,7 +72,7 @@ Use inside capture when the target is a Note. Carries the writing standard. Bett
 - `is_write path="analysis.md" content="..." name="Analysis" summary="Dense orientation"` — create or update the Note's frontmatter and body, stage it in git, and return a content `sha`
 - Optional fields: `tags`, `attached_to`, `if_match`, `force`, `cwd`
 
-Replace-semantics: callers specify all Layer 1 + 2 fields they want set; existing frontmatter is replaced wholesale and the body is preserved. For local file moves, deletions, and metadata-only edits, use native `bash` (`git mv`, `rm`) and `edit`.
+Preserve-semantics: supplied Layer 1 + 2 fields patch existing frontmatter; unspecified and unknown fields survive. The supplied Markdown body replaces the prior body. For local file moves, deletions, and metadata-only edits, use native `bash` (`git mv`, `rm`) and `edit`.
 
 Layer 1 (required): `name`, `summary`.
 Layer 2 (optional): `tags`, `attached_to`.
@@ -83,19 +83,19 @@ Safe update flow:
 - Refinement of a file just written: use the `sha` returned by the previous `is_write` response as the next `if_match`.
 - `force: true` is the escape hatch after you've re-read and reconciled divergent content.
 
-### `is_status` — capture state and file sha
+### `is_status` — capture state and file revision
 
-- No path: shows git position plus staged IdeaSpaces captures awaiting commit.
-- With `path`: returns single-file state, including `sha` for `is_write.if_match`.
+- No path: shows git position, staged IdeaSpaces knowledge, and paths captured by this Pi session.
+- With `path`: returns worktree/index/HEAD revision facts plus the compatibility `sha` for `is_write.if_match`; status review alone does not make the path eligible for `all`.
 
 ### `is_commit` — explicit capture commit
 
 Use inside capture after user confirmation. Commit only captured paths:
 
-- `is_commit message="Capture decision" all=true` — commit all staged knowledge (markdown + `_agent/`)
+- `is_commit message="Capture decision" all=true` — commit all paths captured by this Pi session
 - `is_commit message="Capture decision" paths=["notes/decision.md"]` — commit explicit paths
 
-It never sweeps unrelated staged user work into the capture commit.
+Tool `all` never adopts unrelated staged user work. Explicit paths remain available for confirmed native edits, moves, and deletes.
 
 ### `is_push` / `is_pull` — the two directions
 

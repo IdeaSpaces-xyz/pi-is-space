@@ -19,8 +19,9 @@
 - Tool surface is now local-capture focused: `is_write`, `is_status`, `is_commit`, `is_pull`, `is_push`, `is_auth`.
 - Local markdown is the source of truth; sync is optional.
 - `_agent/`, git/capture, path-status, mounted-root, and workspace-handle reads run in-process through `@ideaspaces/protocol`; Pi owns their awareness placement and role rendering.
+- Frontmatter-aware Markdown write, exact-path commit, and Change minting also run in-process over the protocol's explicit local-effects boundary.
 - Setup/publish flows are Pi-native commands over the CLI: `/is-setup`, `/is-publish`.
-- The CLI remains the platform/transitional-write client for auth, sync, publish/setup, write, and commit. Portable local shape reads no longer shell it.
+- The CLI remains the platform/transport client for auth, sync, publish/setup, Share, and remote catalog discovery.
 
 ## Suggested rollout
 

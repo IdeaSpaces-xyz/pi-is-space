@@ -5,7 +5,6 @@ import {
   composeContractAlongPath,
   discoverSkillEntries,
   gitState,
-  pathStatus,
   readRootHandle,
   readWorkspaceRepositories,
   renderContentAwareness,
@@ -85,27 +84,6 @@ export async function readCaptureStatus(cwd: string): Promise<CaptureStatus | nu
     stagedIdeaspacePaths(repoRoot),
   ]);
   return captureStatus(state, captures);
-}
-
-export async function readPathStatusText(
-  cwd: string,
-  rawPath: string,
-): Promise<string> {
-  const repoRoot = await resolveRepoRoot(resolve(cwd));
-  if (!repoRoot) throw new Error("not inside a git repository");
-  const status = await pathStatus(resolve(cwd, rawPath), repoRoot);
-  return JSON.stringify(
-    {
-      path: rawPath,
-      exists: status.exists,
-      sha: status.sha,
-      in_index: status.inIndex,
-      modified: status.modified,
-      in_tracked: status.inTracked,
-    },
-    null,
-    2,
-  );
 }
 
 /** Compose Pi's combined awareness while keeping placement and workspace roles local. */
