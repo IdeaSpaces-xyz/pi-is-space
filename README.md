@@ -90,7 +90,7 @@ Human-facing IdeaSpaces actions are Pi-native commands:
 | `/is-commit` | Review staged captures, enter a commit message, confirm, then commit them. |
 | `/is-pull` | Run `pull --dry-run`, confirm the plan, then integrate remote changes. |
 | `/is-push` | Run `push --dry-run`, confirm the plan, then push committed captures. |
-| `/is-publish` | Confirm destination, retry through login if needed, then publish the space remotely. |
+| `/is-publish` | Verify committed root identity, confirm destination, retry through login if needed, then publish. |
 
 When captures await commit, the extension shows a small widget near the editor so state stays visible without reminder spam.
 
@@ -117,7 +117,7 @@ Auth is optional:
 - `is_auth` — login (opens browser OAuth)
 - `is_auth action="logout"` — clear credentials
 
-To host a local space remotely, use `/is-publish`. It checks scaffold/branch state, confirms destination, then runs `ideaspaces publish`; if the CLI reports missing credentials, it offers login and retries.
+Shared setup mints portable `root_node_id` before login; private gitignored code-repo context stays unstamped. To host a local Space, use `/is-publish`. It checks the committed declaration against index/worktree, canonical origin, and local registry evidence, then confirms the destination and runs `ideaspaces publish`. First publish asks Keeper to adopt that identity exactly. Missing credentials trigger login/retry; drift refuses, and `--force` never forks or rekeys.
 
 ## Skills and reference
 

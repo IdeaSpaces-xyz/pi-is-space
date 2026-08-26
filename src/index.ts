@@ -100,15 +100,29 @@ type CreateResult = {
   shape: string;
   privateAgent: boolean;
   scaffolded: true;
+  root_node_id: string | null;
+  identity_state: "local_only" | "unstamped_private";
+};
+
+type RootIdentityPreflight = {
+  state: string;
+  root_node_id: string | null;
+  declaration: { dirty: boolean };
+};
+
+type CliStatusResult = {
+  root_identity: RootIdentityPreflight;
 };
 
 type PublishResult = {
   repo_id: string;
+  root_node_id: string | null;
   slug: string;
   namespace: string;
   remote_url: string;
   web_url: string;
   identity_email: string;
+  identity_state: string;
 };
 
 type AtMention = {
@@ -1228,9 +1242,30 @@ export default function (pi: ExtensionAPI) {
         }
       }
 
+      const identityStatus = await runJson<CliStatusResult>(["status"], ctx.cwd);
+      if (!identityStatus.ok) {
+        ctx.ui.notify(`Could not inspect portable Space identity:\n${identityStatus.error}`, "error");
+        return;
+      }
+      const rootIdentity = identityStatus.data.root_identity;
+      if (
+        rootIdentity.declaration.dirty ||
+        ["invalid", "drift", "ambiguous"].includes(rootIdentity.state)
+      ) {
+        ctx.ui.notify(
+          `Publish refused: root identity is ${rootIdentity.declaration.dirty ? "dirty" : rootIdentity.state}. ` +
+            "Commit or restore _agent/foundation.md and repair any origin/registry conflict before retrying.",
+          "error",
+        );
+        return;
+      }
+      const identitySummary = rootIdentity.root_node_id
+        ? `Space identity: ${rootIdentity.root_node_id} (${rootIdentity.state})`
+        : `Space identity: ${rootIdentity.state} (legacy absence remains valid)`;
+
       const folderName = basename(ctx.cwd);
       const publishArgs = ["publish"];
-      let summary = "Using folder defaults. If this folder is already published, the CLI will reuse its existing remote mapping.";
+      let summary = `${identitySummary}\nUsing folder defaults. If this folder is already published, the CLI will reuse its verified identity and remote mapping.`;
 
       const choice = await ctx.ui.select("Publish destination", ["Use folder defaults", "Customize first publish", "Cancel"]);
       if (choice === "Cancel" || choice === undefined) {
@@ -1260,6 +1295,7 @@ export default function (pi: ExtensionAPI) {
         publishArgs.push("--name", displayName, "--slug", slug);
         if (hostname) publishArgs.push("--hostname", hostname);
         summary = [
+          identitySummary,
           `name:      ${displayName}`,
           `slug:      ${slug} (CLI normalizes before creating the remote)`,
           `namespace: ${hostname || "your personal namespace"}`,
@@ -1270,7 +1306,7 @@ export default function (pi: ExtensionAPI) {
 
       const confirmed = await ctx.ui.confirm(
         "Publish ideaspace?",
-        `${summary}\n\nPublishing sets this repo's local git identity to your IdeaSpaces identity. On first publish, the CLI may amend the tip commit author so server attribution passes; review git history afterward if that matters. Continue?`,
+        `${summary}\n\nFirst publish asks Keeper to adopt the committed root identity exactly. Publishing also sets this repo's local Git attribution; the CLI may amend the first-publish tip author so server checks pass. It never forks or rekeys through --force. Continue?`,
       );
       if (!confirmed) {
         ctx.ui.notify("Publish cancelled", "info");
@@ -1305,7 +1341,7 @@ export default function (pi: ExtensionAPI) {
       await refreshAwareness(ctx.cwd);
       await refreshSpaceUi(ctx);
       ctx.ui.notify(
-        `Published ${published.data.namespace}/${published.data.slug}.\nView: ${published.data.web_url}\nGit remote: ${published.data.remote_url}\nLocal identity: ${published.data.identity_email}`,
+        `Published ${published.data.namespace}/${published.data.slug}.\nView: ${published.data.web_url}\nGit remote: ${published.data.remote_url}\nSpace identity: ${published.data.root_node_id ?? published.data.identity_state}\nLocal Git identity: ${published.data.identity_email}`,
         "info",
       );
     },

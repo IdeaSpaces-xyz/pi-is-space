@@ -21,13 +21,13 @@ describe("packaging", () => {
     expect(devDeps).not.toContain("@ideaspaces/cli");
   });
 
-  it("pins the local-effects protocol and cross-platform CLI", () => {
-    expect(pkg.version).toBe("0.1.9");
+  it("pins the root-identity protocol and lifecycle CLI", () => {
+    expect(pkg.version).toBe("0.1.10");
     expect(pkg.dependencies?.["@ideaspaces/protocol"]).toBe(
-      "github:IdeaSpaces-xyz/ideaspace-protocol#bfc8080c30edd74f3177356a4a40254562020e62",
+      "github:IdeaSpaces-xyz/ideaspace-protocol#e9b13e8d79da5fbd4c3cdd535e818ed9781258b2",
     );
     expect(pkg.dependencies?.["@ideaspaces/cli"]).toBe(
-      "github:IdeaSpaces-xyz/cli#0407cf30eacc703d3cf4f04afbbe89af8cad6196",
+      "github:IdeaSpaces-xyz/cli#65a6204d15fa99562af2af45337720a1221764c9",
     );
   });
 
