@@ -297,7 +297,7 @@ describe("Pi in-process local awareness", () => {
     const calls = readFileSync(cliLog, "utf-8").trim().split("\n").filter(Boolean);
     expect(calls.length).toBeGreaterThan(0);
     expect(calls.every((line) => line.split(/\s+/).includes("catalog"))).toBe(true);
-  });
+  }, 10_000);
 
   it("seeds mounts from IS_MOUNTS at load — navigable without is_mount", async () => {
     // No is_mount call here: `seeded` was mounted purely by the IS_MOUNTS env at

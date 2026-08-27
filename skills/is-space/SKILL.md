@@ -123,7 +123,7 @@ Default falls back to the Pi session cwd.
 
 Sync is opt-in. The extension works locally without auth.
 
-A shared Space created by the current CLI already carries portable `root_node_id` before login; private gitignored code-repo context remains unstamped. To host it remotely, run `/is-publish` or `ideaspaces publish` from the Space root. First publish asks Keeper to adopt the committed declaration exactly, sets repo-local Git attribution, and pushes. Later publication reuses the same verified binding; drift refuses, and `--force` never forks or rekeys.
+A shared Space created by the current CLI already carries portable `root_node_id` before login; private gitignored code-repo context remains unstamped. A public, copy-enabled Space can come home without an account through `ideaspaces fork <space-url> [dir]`: the CLI creates one independent unpublished commit with fresh identity, no source history, and no remote. To host either kind of local Space, run `/is-publish` or `ideaspaces publish` from its root. First publish asks Keeper to adopt the committed declaration exactly, sets repo-local Git attribution, and pushes. Later publication reuses the same verified binding; drift refuses, and `--force` never forks or rekeys.
 
 ## Native tools for the rest
 

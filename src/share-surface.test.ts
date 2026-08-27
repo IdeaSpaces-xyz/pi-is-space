@@ -13,9 +13,9 @@ function read(relative: string): string {
 describe("recipient-shaped Share distribution", () => {
   it("pins the CLI release used by tool subprocesses", () => {
     const pkg = JSON.parse(read("package.json"));
-    expect(pkg.version).toBe("0.1.10");
+    expect(pkg.version).toBe("0.1.11");
     expect(pkg.dependencies?.["@ideaspaces/cli"]).toBe(
-      "github:IdeaSpaces-xyz/cli#65a6204d15fa99562af2af45337720a1221764c9",
+      "github:IdeaSpaces-xyz/cli#ce8d9454f6c6c34902f69ef37a1970d6a40c58e2",
     );
   });
 
@@ -30,6 +30,9 @@ describe("recipient-shaped Share distribution", () => {
     expect(help).toContain("--grade collaborate");
     expect(help).toContain("share visibility public");
     expect(help).toContain("share visibility private");
+    expect(read("skills/is-share/SKILL.md")).toContain(
+      "anyone may View and materialize a local Fork without an account",
+    );
     expect(help).not.toContain("share <invite|");
     expect(help).not.toContain("set-access");
   });
