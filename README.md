@@ -49,7 +49,7 @@ The agent chooses the intent; the package chooses the mechanism. Architecture st
 
 ```txt
 Agent (Pi) → pi-is-space → @ideaspaces/protocol (local reads + explicit local effects)
-                         → IdeaSpaces CLI (auth/sync/publish/share/setup + remote catalog)
+                         → IdeaSpaces CLI (auth/sync/publish/fork/share/setup + remote catalog)
 ```
 
 The wrapper keeps harness placement and session behavior local while reusing the protocol's shape and the CLI's platform capabilities.
@@ -106,7 +106,7 @@ On session start, the extension builds local awareness in-process from `@ideaspa
 
 ## CLI
 
-The package still depends on `@ideaspaces/cli` for auth, sync, publish/setup, recipient-shaped Share, and remote catalog discovery. It resolves the CLI for those calls and exposes the path to skills as `$IS_CLI_PATH` when available. Share is intentionally skill-mediated and CLI-backed in this release rather than exposed as a native `is_share` tool. Local path status, Markdown write, exact-path commit, Change minting, navigation, inspection, mounted orientation, and capture nudges execute in-process; remote-catalog refresh remains a best-effort platform call.
+The package still depends on `@ideaspaces/cli` for auth, sync, publish/setup, account-free local Fork, recipient-shaped Share, and remote catalog discovery. It resolves the CLI for those calls and exposes the path to skills as `$IS_CLI_PATH` when available. Fork and Share remain CLI-backed platform flows rather than duplicate native tools. Local path status, Markdown write, exact-path commit, Change minting, navigation, inspection, mounted orientation, and capture nudges execute in-process; remote-catalog refresh remains a best-effort platform call.
 
 A host that drives pi one process per turn (e.g. the desktop) owns the conversation's durable working set and passes it as `$IS_MOUNTS` (comma-separated absolute paths) on the inherited env; at load the extension seeds its mounts from it, so a mount survives across turns without the agent re-running `is_mount`.
 
@@ -117,7 +117,7 @@ Auth is optional:
 - `is_auth` — login (opens browser OAuth)
 - `is_auth action="logout"` — clear credentials
 
-Shared setup mints portable `root_node_id` before login; private gitignored code-repo context stays unstamped. To host a local Space, use `/is-publish`. It checks the committed declaration against index/worktree, canonical origin, and local registry evidence, then confirms the destination and runs `ideaspaces publish`. First publish asks Keeper to adopt that identity exactly. Missing credentials trigger login/retry; drift refuses, and `--force` never forks or rekeys.
+Shared setup mints portable `root_node_id` before login; private gitignored code-repo context stays unstamped. `ideaspaces fork <space-url> [dir]` can also materialize a public, copy-enabled Space locally without an account, source history, remote, or hosted destination. To host a local Space, use `/is-publish`. It checks the committed declaration against index/worktree, canonical origin, and local registry evidence, then confirms the destination and runs `ideaspaces publish`. First publish asks Keeper to adopt that identity exactly. Missing credentials trigger login/retry; drift refuses, and `--force` never forks or rekeys.
 
 ## Skills and reference
 
@@ -135,6 +135,7 @@ Pi ships surface-specific entrypoint skills:
 
 **Space lifecycle**
 - `is-setup` — create the seed `_agent/` contract.
+- `is-fork` — bring a copy-enabled Space home as an independent unpublished local repository.
 - `is-publish` — host a local space remotely for the first time.
 - `is-shape` — evolve the `_agent/` agreement or reusable agent behavior.
 

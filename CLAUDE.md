@@ -14,7 +14,7 @@ The agent chooses intent; the extension/skills choose mechanism. Keep the wrappe
 
 ```txt
 Agent (Pi) → pi-is-space → protocol (local reads + explicit local effects)
-                         → CLI (auth/sync/publish/share/setup + remote catalog)
+                         → CLI (auth/sync/publish/fork/share/setup + remote catalog)
 ```
 
 ## Tool Surface
@@ -63,7 +63,7 @@ Use-case layer shipped in `skills/`, grouped by role:
 
 - Daily loop: is-orient, is-capture, is-push, is-pull, is-reflect
 - Access: is-share for people, teams, and public/private visibility
-- Space lifecycle: is-setup, is-publish, is-shape
+- Space lifecycle: is-setup, is-fork, is-publish, is-shape
 - Reference: is-space, is-writing
 
 Conversation hygiene lives in `pi-local-context` (`context-conversation`, `context-cleanup`, `context-recall`), not this Space connector.
