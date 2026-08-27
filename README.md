@@ -135,6 +135,7 @@ Pi ships surface-specific entrypoint skills:
 
 **Space lifecycle**
 - `is-setup` — create the seed `_agent/` contract.
+- `is-fork` — bring a copy-enabled Space home as an independent unpublished local repository.
 - `is-publish` — host a local space remotely for the first time.
 - `is-shape` — evolve the `_agent/` agreement or reusable agent behavior.
 
