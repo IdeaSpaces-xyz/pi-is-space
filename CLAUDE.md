@@ -14,7 +14,7 @@ The agent chooses intent; the extension/skills choose mechanism. Keep the wrappe
 
 ```txt
 Agent (Pi) → pi-is-space → protocol (local reads + explicit local effects)
-                         → CLI (auth/sync/publish/fork/share/setup + remote catalog)
+                         → CLI (auth/sync/publish/fork/update/share/setup + remote catalog)
 ```
 
 ## Tool Surface
