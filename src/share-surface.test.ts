@@ -13,9 +13,9 @@ function read(relative: string): string {
 describe("recipient-shaped Share distribution", () => {
   it("pins the CLI release used by tool subprocesses", () => {
     const pkg = JSON.parse(read("package.json"));
-    expect(pkg.version).toBe("0.1.11");
+    expect(pkg.version).toBe("0.1.12");
     expect(pkg.dependencies?.["@ideaspaces/cli"]).toBe(
-      "github:IdeaSpaces-xyz/cli#ce8d9454f6c6c34902f69ef37a1970d6a40c58e2",
+      "github:IdeaSpaces-xyz/cli#4518c4dbc90c68e9e42c52642ab598899378edc6",
     );
   });
 
@@ -49,6 +49,8 @@ describe("recipient-shaped Share distribution", () => {
     expect(share).toContain("there is no\nnative `is_share` tool");
     expect(share).toContain("Never ask for internal user, organization, Grant, userset, or repository");
     expect(fork).toContain('is_cli fork "<space-url>" "<destination>"');
+    expect(fork).toContain("is_cli update --yes");
+    expect(fork).toContain("A public source remains account-free");
     expect(fork).toContain("Publishing is the account boundary;\nFork itself is not");
     expect(push).toContain("Push is not access sharing");
     expect(push).toContain("belong to **is-share**");
