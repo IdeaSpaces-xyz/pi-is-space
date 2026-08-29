@@ -22,12 +22,12 @@ describe("packaging", () => {
   });
 
   it("pins the root-identity protocol and account-free Fork/update CLI", () => {
-    expect(pkg.version).toBe("0.1.12");
+    expect(pkg.version).toBe("0.1.13");
     expect(pkg.dependencies?.["@ideaspaces/protocol"]).toBe(
       "github:IdeaSpaces-xyz/ideaspace-protocol#e9b13e8d79da5fbd4c3cdd535e818ed9781258b2",
     );
     expect(pkg.dependencies?.["@ideaspaces/cli"]).toBe(
-      "github:IdeaSpaces-xyz/cli#4518c4dbc90c68e9e42c52642ab598899378edc6",
+      "github:IdeaSpaces-xyz/cli#aabc9f2af43045c40cf2a425a9bbc3ac918dc2b3",
     );
   });
 
