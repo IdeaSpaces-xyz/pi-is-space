@@ -49,7 +49,7 @@ The agent chooses the intent; the package chooses the mechanism. Architecture st
 
 ```txt
 Agent (Pi) → pi-is-space → @ideaspaces/protocol (local reads + explicit local effects)
-                         → IdeaSpaces CLI (auth/sync/publish/fork/share/setup + remote catalog)
+                         → IdeaSpaces CLI (auth/sync/publish/fork/share/inbox/setup + remote catalog)
 ```
 
 The wrapper keeps harness placement and session behavior local while reusing the protocol's shape and the CLI's platform capabilities.
@@ -58,11 +58,11 @@ The wrapper keeps harness placement and session behavior local while reusing the
 
 The package has three surfaces:
 
-- **Skills** — agent procedures for user intent (`is-capture`, `is-share`, `is-push`, `is-pull`).
+- **Skills** — agent procedures for user intent (`is-capture`, `is-share`, `is-inbox`, `is-push`, `is-pull`).
 - **Tools** — low-level primitives the skills call (`is_write`, `is_commit`).
 - **Commands** — human-triggered Pi UI flows (`/is-push`, `/is-pull`, `/is-commit`).
 
-Local conversation/session hygiene lives in `pi-local-context` (`context_conversation`, `context_recall`, `context_cleanup`). This package stays focused on Space state: awareness, capture, commit, push, pull, auth, setup, publish, and Share access.
+Local conversation/session hygiene lives in `pi-local-context` (`context_conversation`, `context_recall`, `context_cleanup`). This package stays focused on Space state: awareness, capture, commit, push, pull, auth, setup, publish, Share access, and person-accountable Inbox exchange.
 
 Pi's native `read`, `edit`, `write`, and `bash` cover exact full-document evidence and ordinary edits. `pi-is-space` adds IdeaSpaces-aware primitives used by the skills and commands:
 
@@ -106,7 +106,7 @@ On session start, the extension builds local awareness in-process from `@ideaspa
 
 ## CLI
 
-The package still depends on `@ideaspaces/cli` for auth, sync, publish/setup, account-free local Fork and maintained source updates, recipient-shaped Share, and remote catalog discovery. It resolves the CLI for those calls and exposes the path to skills as `$IS_CLI_PATH` when available. Fork/update and Share remain CLI-backed platform flows rather than duplicate native tools. Local path status, Markdown write, exact-path commit, Change minting, navigation, inspection, mounted orientation, and capture nudges execute in-process; remote-catalog refresh remains a best-effort platform call.
+The package still depends on `@ideaspaces/cli` for auth, sync, publish/setup, account-free local Fork and maintained source updates, recipient-shaped Share, direct Inbox exchange, and remote catalog discovery. It resolves the CLI for those calls and exposes the path to skills as `$IS_CLI_PATH` when available. Fork/update, Share, and Inbox remain CLI-backed platform flows rather than duplicate native tools. Local path status, Markdown write, exact-path commit, Change minting, navigation, inspection, mounted orientation, and capture nudges execute in-process; remote-catalog refresh remains a best-effort platform call.
 
 A host that drives pi one process per turn (e.g. the desktop) owns the conversation's durable working set and passes it as `$IS_MOUNTS` (comma-separated absolute paths) on the inherited env; at load the extension seeds its mounts from it, so a mount survives across turns without the agent re-running `is_mount`.
 
@@ -130,8 +130,9 @@ Pi ships surface-specific entrypoint skills:
 - `is-pull` — integrate remote changes into the local space.
 - `is-reflect` — check whether declared direction still matches reality.
 
-**Access**
+**Access and exchange**
 - `is-share` — manage people, teams, and public/private visibility through recipient-shaped choices.
+- `is-inbox` — ask, read, and reply through person-accountable exchanges about shared Content.
 
 **Space lifecycle**
 - `is-setup` — create the seed `_agent/` contract.
