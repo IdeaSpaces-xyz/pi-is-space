@@ -21,13 +21,13 @@ describe("packaging", () => {
     expect(devDeps).not.toContain("@ideaspaces/cli");
   });
 
-  it("pins the root-identity protocol and account-free Fork/update CLI", () => {
-    expect(pkg.version).toBe("0.1.13");
+  it("pins the full-depth Content tree protocol and derived-Map CLI", () => {
+    expect(pkg.version).toBe("0.1.14");
     expect(pkg.dependencies?.["@ideaspaces/protocol"]).toBe(
-      "github:IdeaSpaces-xyz/ideaspace-protocol#e9b13e8d79da5fbd4c3cdd535e818ed9781258b2",
+      "github:IdeaSpaces-xyz/ideaspace-protocol#075cb7e326760614d62cb2236bccf0eaba62fa12",
     );
     expect(pkg.dependencies?.["@ideaspaces/cli"]).toBe(
-      "github:IdeaSpaces-xyz/cli#aabc9f2af43045c40cf2a425a9bbc3ac918dc2b3",
+      "github:IdeaSpaces-xyz/cli#5e34fed47e9ebd85c201a2ee41537ca7a0e72cab",
     );
   });
 

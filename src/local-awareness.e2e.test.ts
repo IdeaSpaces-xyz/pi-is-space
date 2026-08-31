@@ -307,9 +307,9 @@ describe("Pi in-process local awareness", () => {
     expect(text(mounted)).toContain("Now: Seeded awareness.");
   });
 
-  it("pins the protocol version that supplies workspace handles", () => {
+  it("pins the protocol version that supplies full-depth Content trees", () => {
     expect(
       readFileSync(join(ROOT, "node_modules/@ideaspaces/protocol/VERSION"), "utf-8").trim(),
-    ).toBe("0.10.0");
+    ).toBe("0.13.1");
   });
 });
