@@ -39,6 +39,26 @@ Canonical protocols: read [capture](../../reference/capture.md) and [writing](..
 
 `is_write` is a capture primitive, not the outer intent. Reach for it inside this skill when the target is a Note that should carry Layer 1 frontmatter (`name`, `summary`) and optional Layer 2 fields (`tags`, `attached_to`). Use native edits for README/spec/docs and `_agent/` primitives that are not Note-style files; still end at the same capture boundary with `is_commit` unless the user explicitly wants local draft state.
 
+### Derived local Map inspection
+
+When the user asks to map a repository, or a durable navigation frame may be worth curating, inspect the candidate territory through the installed CLI rather than rebuilding a walker:
+
+```bash
+is_cli() {
+  if [ -n "$IS_CLI_PATH" ] && [ -f "$IS_CLI_PATH" ]; then
+    case "$IS_CLI_PATH" in
+      *.js) node "$IS_CLI_PATH" "$@" ;;
+      *) "$IS_CLI_PATH" "$@" ;;
+    esac
+  else
+    ideaspaces "$@"
+  fi
+}
+is_cli map <repo> --depth full --json
+```
+
+This is an offline working-tree observation, not an automatic capture. Review `portable`, `dirty`, and `local_only_paths`; selection still needs agreement. Numeric depth remains bounded to 1–4, and `full` is explicit enumeration rather than ambient orientation.
+
 ## How
 
 Brief. Don't interrupt flow.
