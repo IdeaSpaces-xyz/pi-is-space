@@ -1,12 +1,13 @@
 ---
 name: is-capture
 description: >
-  Preserve agreed understanding in the ideaspace when the user says capture,
-  remember, save this, write this into the space, or when a decision/finding has
-  crystallized. The skill chooses the mechanism: `is_write` for Notes, native
-  edits for existing docs/specs, then `is_commit` for the agreement boundary.
+  Write something down so it is not lost — a decision, a finding, a piece of
+  context worth keeping. Use when someone says write this down, note this, save
+  this, keep this somewhere, don't let me forget, remember this, put this in my
+  notes, or add this to the knowledge base; or when a decision has just been made
+  that would be expensive to relitigate. Not for saving an ordinary source or
+  config file — that is a plain file write.
 allowed-tools: "is_write is_status is_commit is_push context_cleanup read edit write bash"
-user-invocable: false
 ---
 
 # Capture
@@ -61,11 +62,22 @@ This is an offline working-tree observation, not an automatic capture. Review `p
 
 ## How
 
-Brief. Don't interrupt flow.
+Two arrivals, different consent. A local commit is one revert from undone — narration beats
+permission at this tier.
+
+**The user asked** — "save this", "write that down", "note this", or ran `/is-commit`. The ask IS
+the agreement: write, commit, and narrate in one line ("Saved the auth decision to the space.").
+Never answer a save request with "shall I commit?" — that is asking permission for permission.
+
+**You noticed a boundary** — a decision just landed, a milestone wrapped, the session is closing
+meaningful work. Offer once, lightly:
 
 > "That decision about [X] is worth capturing. Want me to write it to the space?"
 
-If yes:
+If the user says no, drop it and don't re-ask. **Mid-flow with neither signal: stay silent** —
+keep working; captures settle at boundaries, not per thought.
+
+Either way, the mechanics:
 
 1. Search first (`bash` with `find`/`rg`) to avoid duplicates; `read` the target area for context.
 2. Choose the mechanism:
@@ -76,12 +88,10 @@ If yes:
    - first update to an existing file: `is_status({ path })` → use returned `sha` as `if_match`
    - refinement of a file just written: use the prior `is_write` response `sha`
    - `force: true` only after re-reading and reconciling divergent content
-4. Show what changed when useful. The user confirms the capture boundary.
+4. Show what changed when useful.
 5. Commit with `is_commit({ message, all: true })` for paths captured by this Pi session, or explicit `paths` for confirmed native edits. Never adopt unrelated staged work.
-6. Optionally use **is-push** / `is_push` to share with the remote (or **is-pull** first to get the latest).
+6. Say what was saved. Optionally use **is-push** / `is_push` to share with the remote (or **is-pull** first to get the latest).
 7. Cleanup is separate from capture and is owned by `pi-local-context`. After a meaningful capture or any natural boundary where context is cluttered, offer a cleanup preview and use the `context-cleanup` skill / `context_cleanup` tool if it appears in your available tools. If `context_cleanup` is not available, skip the cleanup offer.
-
-If the user runs `/is-commit`, treat that as confirmation and don't re-ask. If the user says no, drop it and don't re-ask.
 
 ## Commit message
 

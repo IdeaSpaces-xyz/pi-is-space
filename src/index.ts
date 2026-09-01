@@ -125,6 +125,22 @@ type PublishResult = {
   identity_state: string;
 };
 
+// `publish` without --yes: the CLI's plan-first payload. Zero mutations have
+// happened when this comes back.
+type PublishPlan = {
+  plan: {
+    action: "publish" | "re-publish";
+    namespace: string;
+    slug: string;
+    root_node_id: string | null;
+    remote_url: string;
+    identity_email: string;
+    tip_author_rewrite?: boolean;
+    commits: number | null;
+  };
+  applied: false;
+};
+
 type AtMention = {
   prefix: string;
   query: string;
@@ -878,22 +894,18 @@ export default function (pi: ExtensionAPI) {
     }
 
     const paths = formatPathList(status.tracked_captures);
+    // One gate, not three: the person invoked the command (or chose "Save
+    // now"), and the message editor shows exactly what will be committed.
+    // Accepting the message is the agreement; a further "are you sure?" is the
+    // settle-tier double-charge users reported (agreement-tiers).
+    ctx.ui.notify(`Committing the staged IdeaSpaces knowledge:\n\n${paths}`, "info");
     const defaultMessage = status.tracked_captures.length === 1
       ? `Capture ${basename(status.tracked_captures[0])}`
       : "Capture IdeaSpaces notes";
-    const message = await ctx.ui.editor("Commit message", defaultMessage);
+    const message = await ctx.ui.editor("Commit message (empty cancels)", defaultMessage);
     const trimmed = message?.trim();
     if (!trimmed) {
       ctx.ui.notify("Commit cancelled — no message", "info");
-      return false;
-    }
-
-    const confirmed = await ctx.ui.confirm(
-      "Commit staged captures?",
-      `This commits the staged IdeaSpaces knowledge:\n\n${paths}\n\nMessage: ${trimmed}`,
-    );
-    if (!confirmed) {
-      ctx.ui.notify("Commit cancelled", "info");
       return false;
     }
 
@@ -1265,7 +1277,6 @@ export default function (pi: ExtensionAPI) {
 
       const folderName = basename(ctx.cwd);
       const publishArgs = ["publish"];
-      let summary = `${identitySummary}\nUsing folder defaults. If this folder is already published, the CLI will reuse its verified identity and remote mapping.`;
 
       const choice = await ctx.ui.select("Publish destination", ["Use folder defaults", "Customize first publish", "Cancel"]);
       if (choice === "Cancel" || choice === undefined) {
@@ -1294,30 +1305,17 @@ export default function (pi: ExtensionAPI) {
         const hostname = hostnameInput.trim();
         publishArgs.push("--name", displayName, "--slug", slug);
         if (hostname) publishArgs.push("--hostname", hostname);
-        summary = [
-          identitySummary,
-          `name:      ${displayName}`,
-          `slug:      ${slug} (CLI normalizes before creating the remote)`,
-          `namespace: ${hostname || "your personal namespace"}`,
-          "",
-          "If this folder is already published, the CLI will refuse these first-publish flags instead of silently ignoring them.",
-        ].join("\n");
       }
 
-      const confirmed = await ctx.ui.confirm(
-        "Publish ideaspace?",
-        `${summary}\n\nFirst publish asks Keeper to adopt the committed root identity exactly. Publishing also sets this repo's local Git attribution; the CLI may amend the first-publish tip author so server checks pass. It never forks or rekeys through --force. Continue?`,
-      );
-      if (!confirmed) {
-        ctx.ui.notify("Publish cancelled", "info");
-        return;
-      }
-
-      let published = await runJson<PublishResult>(publishArgs, ctx.cwd);
-      if (!published.ok && published.error.includes("Not logged in")) {
+      // Plan-first: the CLI without --yes runs every preflight and returns the
+      // exact plan with zero mutations. That plan — not a hand-written summary —
+      // is what the person agrees to; --yes applies it (the outward tier of
+      // agreement-tiers).
+      let planResult = await runJson<PublishPlan>(publishArgs, ctx.cwd);
+      if (!planResult.ok && planResult.error.includes("Not logged in")) {
         const login = await ctx.ui.confirm(
           "Log in to IdeaSpaces?",
-          "Publishing requires IdeaSpaces credentials. I'll open the browser login flow and save credentials locally, then retry publish. Continue?",
+          "Publishing requires IdeaSpaces credentials. I'll open the browser login flow and save credentials locally, then show you the publish plan. Continue?",
         );
         if (!login) {
           ctx.ui.notify("Publish cancelled — login required", "info");
@@ -1328,13 +1326,49 @@ export default function (pi: ExtensionAPI) {
           ctx.ui.notify(`Login failed:\n${loginResult.error}`, "error");
           return;
         }
-        published = await runJson<PublishResult>(publishArgs, ctx.cwd);
+        planResult = await runJson<PublishPlan>(publishArgs, ctx.cwd);
       }
+      if (!planResult.ok) {
+        const hint = planResult.error.includes("Local branch is")
+          ? "\n\nRename the current branch with `git branch -m main` and re-run /is-publish."
+          : "";
+        ctx.ui.notify(`Publish preflight failed:\n${planResult.error}${hint}`, "error");
+        return;
+      }
+      const plan = planResult.data.plan;
+      const commitNoun = plan.commits === 1 ? "commit" : "commits";
+      const planLines = [
+        identitySummary,
+        plan.action === "re-publish"
+          ? `Re-publish to ${plan.namespace}/${plan.slug} — existing Space identity`
+          : `Create ${plan.namespace}/${plan.slug}${plan.root_node_id ? ` — adopts committed identity ${plan.root_node_id}` : ""}`,
+        `Remote: ${plan.remote_url}`,
+        `Local Git identity for this folder only: ${plan.identity_email}`,
+        ...(plan.tip_author_rewrite ? ["The first-publish tip commit author will be rewritten to match."] : []),
+        `Push: main (${plan.commits ?? "?"} ${commitNoun})`,
+      ].join("\n");
+
+      const confirmed = await ctx.ui.confirm(
+        "Publish ideaspace?",
+        `${planLines}\n\nNothing has happened yet — this is the CLI's plan. The Space stays private to your account until you share it. Continue?`,
+      );
+      if (!confirmed) {
+        ctx.ui.notify("Publish cancelled — nothing was changed", "info");
+        return;
+      }
+
+      const published = await runJson<PublishResult>([...publishArgs, "--yes"], ctx.cwd);
       if (!published.ok) {
         const hint = published.error.includes("Local branch is")
           ? "\n\nRename the current branch with `git branch -m main` and re-run /is-publish."
           : "";
         ctx.ui.notify(`Publish failed:\n${published.error}${hint}`, "error");
+        return;
+      }
+      // A plan payload must never be reported as a publish — the guard against
+      // any CLI/flag mismatch reintroducing the confusion in reverse.
+      if ((published.data as { applied?: boolean }).applied === false) {
+        ctx.ui.notify("Publish did not apply: the CLI returned a plan where an applied result was expected. Nothing was changed.", "error");
         return;
       }
 
@@ -1863,10 +1897,10 @@ export default function (pi: ExtensionAPI) {
     name: "is_commit",
     label: "IS Commit",
     description:
-      "Capture primitive: commit agreed IdeaSpaces changes. Commits only explicit reviewed paths, or this Pi session's captured paths when all=true; never adopts unknown staged work. Confirm with the user before calling.",
-    promptSnippet: "Capture primitive: commit explicit paths or this session's captures after confirmation",
+      "Capture primitive: commit agreed IdeaSpaces changes. Commits only explicit reviewed paths, or this Pi session's captured paths when all=true; never adopts unknown staged work. Timing: an explicit ask to save IS the agreement — act, don't re-ask; at a natural ending, commit and tell the user what was saved; with neither signal, hold and keep staging silently.",
+    promptSnippet: "Capture primitive: commit explicit paths or this session's captures — an explicit save-ask is the agreement; narrate, don't re-ask",
     parameters: Type.Object({
-      message: Type.String({ description: "Commit message, user-provided or user-confirmed" }),
+      message: Type.String({ description: "Commit message — what understanding this saves, in the user's terms" }),
       paths: Type.Optional(
         Type.Array(Type.String({ description: "Exact path to commit; omit only when all=true" })),
       ),

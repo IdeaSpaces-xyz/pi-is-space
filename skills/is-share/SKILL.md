@@ -1,10 +1,12 @@
 ---
 name: is-share
 description: >
-  Manage who can access an ideaspace and whether it is public. Use when the user
-  asks to share with a person or team, list or remove recipients, choose
-  Explore/Fork/Collaborate, or make a Space public/private. Do not use for
-  pushing committed captures to the remote; that is is-push.
+  Let someone in — give a person or a team access to this space, or open it to
+  everyone. Use when someone says let her see this, share this with my team,
+  give them access, she needs to get up to speed on this, make it public, let
+  people copy it — or asks who can see it, or to take someone's access away.
+  Access grades: Explore (look around), Fork (take a copy home), Collaborate.
+  Not for sending committed work to the remote; that is is-push.
 allowed-tools: "is_auth read bash"
 ---
 
@@ -79,9 +81,16 @@ is_cli share remove "someone@example.com"
 is_cli share remove "team:acme.com"
 
 # Public/private choice
-is_cli share visibility public
+# Going public is plan-first: without --yes the CLI states what opens up and
+# applies nothing — show that to the user, and add --yes only on their
+# agreement. Going private applies directly.
+is_cli share visibility public          # plan only
+is_cli share visibility public --yes    # apply, after the user's yes
 is_cli share visibility private
 ```
+
+**Non-interactive sessions never add `--yes` to `visibility public` on their own** — with nobody
+to agree, the plan is the honest result.
 
 Append `--space "<url>"` when targeting a Space other than the current folder. Use the normal human
 output rather than `--json`: report recipients, grades, direct standing, and surviving effective
