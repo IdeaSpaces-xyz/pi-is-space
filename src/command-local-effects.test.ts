@@ -33,6 +33,7 @@ function commandHarness(root: string): {
   command: { handler: (args: string, ctx: ExtensionContext) => Promise<void> };
   ctx: ExtensionContext;
   notices: string[];
+  confirmCalls: { count: number };
 } {
   const commands = new Map<string, { handler: (args: string, ctx: ExtensionContext) => Promise<void> }>();
   const pi = {
@@ -45,6 +46,7 @@ function commandHarness(root: string): {
   registerIdeaSpaces(pi);
 
   const notices: string[] = [];
+  const confirmCalls = { count: 0 };
   const ctx = {
     cwd: root,
     hasUI: true,
@@ -59,11 +61,12 @@ function commandHarness(root: string): {
         return "Capture reviewed knowledge";
       },
       async confirm() {
+        confirmCalls.count += 1;
         return true;
       },
     },
   } as unknown as ExtensionContext;
-  return { command: commands.get("is-commit")!, ctx, notices };
+  return { command: commands.get("is-commit")!, ctx, notices, confirmCalls };
 }
 
 describe("Pi human commit command", () => {
@@ -73,7 +76,7 @@ describe("Pi human commit command", () => {
     writeFileSync(join(root, "source.ts"), "export {};\n");
     git(root, "add", "capture.md", "source.ts");
 
-    const { command, ctx, notices } = commandHarness(root);
+    const { command, ctx, notices, confirmCalls } = commandHarness(root);
     await command.handler("", ctx);
 
     expect(git(root, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD")).toBe(
@@ -81,6 +84,9 @@ describe("Pi human commit command", () => {
     );
     expect(git(root, "diff", "--cached", "--name-only")).toBe("source.ts");
     expect(notices.at(-1)).toMatch(/^Committed 1 path\(s\): [0-9a-f]+$/);
+    // Settle tier: the typed command plus an accepted message is the
+    // agreement — no third "are you sure?" (agreement-tiers).
+    expect(confirmCalls.count).toBe(0);
   });
 
   it("renders a human failure instead of dumping the typed tool JSON", async () => {

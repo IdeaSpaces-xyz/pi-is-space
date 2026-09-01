@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = process.cwd();
 const CLI = join(ROOT, "node_modules/@ideaspaces/cli/bundle/ideaspaces.js");
-const CLI_COMMIT = "5e34fed47e9ebd85c201a2ee41537ca7a0e72cab";
+const CLI_COMMIT = "99cb787687c8702ab5ad440150db50d954360c24";
 
 function read(relative: string): string {
   return readFileSync(join(ROOT, relative), "utf-8");
@@ -14,7 +14,7 @@ function read(relative: string): string {
 describe("direct Inbox distribution", () => {
   it("pins the CLI release carrying direct exchanges", () => {
     const pkg = JSON.parse(read("package.json"));
-    expect(pkg.version).toBe("0.1.14");
+    expect(pkg.version).toBe("0.1.15");
     expect(pkg.dependencies?.["@ideaspaces/cli"]).toBe(
       `github:IdeaSpaces-xyz/cli#${CLI_COMMIT}`,
     );

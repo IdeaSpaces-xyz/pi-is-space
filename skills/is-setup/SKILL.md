@@ -1,13 +1,16 @@
 ---
 name: is-setup
 description: >
-  Conversational onboarding for an ideaspace or an agent. Inspects what's here
-  (greenfield, existing markdowns, old `_agent/`, code repo), reflects findings,
-  gets confirmation, then runs `ideaspaces create` via the resolved CLI —
-  with `--agent` for an agent vantage plus character elicitation. Captures
-  purpose / now / next as real files in conversation when content emerges. Use
-  when: user says "set up a space", "add ideaspaces here", "create an agent",
-  "make me an agent", or asks about the contract.
+  Set up the place someone is describing — a space for their knowledge, or an
+  agent with a role. Use when someone names a thing they want to keep, track,
+  or organize — a knowledge base, a vault for transcripts, a repository for
+  the team's KPIs, notes on a topic, a small CRM — or a helper they want to
+  work with: an assistant, a sales agent, a critique partner. Also on the
+  direct asks: "set up a space", "add ideaspaces here", "create an agent",
+  "make me an agent", or questions about the contract. Inspects what's here,
+  confirms, then runs `ideaspaces create` via the resolved CLI (`--agent` for
+  an agent vantage plus character elicitation). Not for building software —
+  someone coding an app wants code, not a space.
 allowed-tools: "is_write is_commit is_auth edit read write bash"
 ---
 

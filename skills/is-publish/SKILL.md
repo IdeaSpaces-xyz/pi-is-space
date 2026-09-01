@@ -1,17 +1,21 @@
 ---
 name: is-publish
 description: >
-  Conversational layer over `ideaspaces publish` — host the current folder
-  as a remote ideaspace. Checks local publish readiness, login state, existing
-  folder mapping, confirms destination, then runs the resolved CLI. Use when:
-  the user says "publish this", "host it remotely", "make it accessible from
-  another device", or after `/is-setup` finishes.
+  Put this space online — host the current folder as a remote ideaspace, so it
+  outlives this machine and the team or another device can reach it. Use when
+  someone says put it online, publish this, host it, back this up, get this on
+  my other computer, or make it available to the team; or after `/is-setup`
+  finishes. Hosting starts private — who gets in is is-share. Plan-first: the
+  resolved CLI shows exactly what would happen and mutates nothing until the
+  user agrees and it runs again with --yes.
 allowed-tools: "read bash"
 ---
 
 # Publish an Ideaspace
 
-**Goal:** login check → confirm destination → run `ideaspaces publish` → narrate result.
+**Goal:** login check → plan (`publish` without `--yes`, zero mutations) → the user agrees →
+apply (`publish --yes`) → narrate result. The plan-then-apply split is the CLI's contract, not a
+courtesy — the outward tier of the agreement principle.
 
 **Pi command available:** for human-triggered publishing, prefer `/is-publish`. It checks scaffold/branch state, confirms destination, runs the same CLI publish command, and offers login/retry if the CLI reports missing credentials. Use this skill when the agent needs the protocol, when `/is-publish` is unavailable, or for recovery reasoning after a failed publish.
 
@@ -56,7 +60,7 @@ Otherwise, if output isn't `main`, ask before proceeding:
 
 > "You're on `<current-branch>`. IdeaSpaces uses `main` as the default — keeping local and remote consistent makes future `git pull` / clones work without surprises. Rename `<current-branch>` → `main` for this folder?"
 
-If yes, run `git branch -m main`. If the rename fails (most common cause: a local `main` branch already exists — perhaps stale or orphaned), surface git's error verbatim and stop with: *"You may already have a local `main` branch. Resolve manually (`git branch -d main` if it's stale, or `git checkout main` if it's the one you want) and re-run `/is-publish`."* On success, continue. If the user declines the rename, abort: *"Switch to `main` and re-run `/is-publish` when ready."* — don't try to push a non-main branch; `ideaspaces publish` refuses anyway.
+In a non-interactive session there is nobody to answer — never rename on your own; stop with the question as the result. If yes, run `git branch -m main`. If the rename fails (most common cause: a local `main` branch already exists — perhaps stale or orphaned), surface git's error verbatim and stop with: *"You may already have a local `main` branch. Resolve manually (`git branch -d main` if it's stale, or `git checkout main` if it's the one you want) and re-run `/is-publish`."* On success, continue. If the user declines the rename, abort: *"Switch to `main` and re-run `/is-publish` when ready."* — don't try to push a non-main branch; `ideaspaces publish` refuses anyway.
 
 **Logged in?** Check the credentials file directly — its presence is the login signal:
 
@@ -92,28 +96,31 @@ is_cli login
 
 If the user is in a remote shell or browser open fails, surface the CLI output and let them decide the next step.
 
-## 3. Confirm destination
+## 3. Plan — run publish without `--yes`
 
-Default values:
-
-- **Slug** — derived from folder basename. Override with `--slug <name>`.
-- **Name** — display name; defaults to folder basename. Override with `--name "<display>"`.
-- **Hostname** — personal space by default. Override with `--hostname <host>` for org spaces.
-
-Example:
-
-> "I'll publish this as your personal space using the folder name as slug. Want a different slug/display name, or publish to an organization?"
-
-For re-publish, don't re-ask names:
-
-> "This folder is already published as `<namespace>/<slug>`. I'll re-push the same committed Space identity to its existing remote."
-
-## 4. Run publish
-
-Once confirmed:
+The CLI is plan-first: without `--yes` it runs every preflight, prints exactly what would happen —
+destination `namespace/slug`, the dir-local git identity write, whether the tip-commit author gets
+rewritten, the origin URL, the commit count — and **changes nothing**, local or remote.
 
 ```bash
 is_cli publish [--slug ...] [--name ...] [--hostname ...]
+```
+
+Show the user the plan and get their yes. Publishing is an outward action: even when the user
+already said "publish this", the plan surfaces side effects they haven't seen — one look before it
+happens is the agreement, not friction. Flag overrides: `--slug <name>`, `--name "<display>"`,
+`--hostname <host>` for org spaces (first publish only). For re-publish the plan says it reuses
+the existing Space identity — don't re-ask names.
+
+**Non-interactive sessions stop here.** With nobody to agree, the plan output *is* the honest
+result; never add `--yes` on the user's behalf.
+
+## 4. Apply — run with `--yes`
+
+On the user's yes:
+
+```bash
+is_cli publish --yes [same flags as the plan]
 ```
 
 The CLI:
