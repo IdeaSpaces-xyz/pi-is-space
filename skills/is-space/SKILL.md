@@ -2,9 +2,10 @@
 name: is-space
 description: >
   Reference for working in an ideaspace — the five-file `_agent/` contract,
-  Two Roles convention, and Pi tool surface. Use as a compatibility/reference
-  entrypoint when the user asks how an ideaspace works. For active intents,
-  prefer is-orient, is-capture, is-share, is-push, is-pull, is-reflect, and is-shape.
+  Two Roles convention, and Pi tool surface. Use when the agent needs the
+  contract or tool-surface details mid-work. For explaining IdeaSpaces to a
+  person, prefer is-guide; for active intents, prefer is-orient, is-capture,
+  is-share, is-push, is-pull, is-reflect, and is-shape.
 allowed-tools: "is_write is_status is_commit is_push is_pull is_auth read edit write bash"
 ---
 

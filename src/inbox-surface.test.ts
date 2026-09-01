@@ -14,7 +14,7 @@ function read(relative: string): string {
 describe("direct Inbox distribution", () => {
   it("pins the CLI release carrying direct exchanges", () => {
     const pkg = JSON.parse(read("package.json"));
-    expect(pkg.version).toBe("0.1.15");
+    expect(pkg.version).toBe("0.1.16");
     expect(pkg.dependencies?.["@ideaspaces/cli"]).toBe(
       `github:IdeaSpaces-xyz/cli#${CLI_COMMIT}`,
     );
