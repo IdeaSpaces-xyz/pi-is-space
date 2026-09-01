@@ -310,6 +310,6 @@ describe("Pi in-process local awareness", () => {
   it("pins the protocol version that supplies full-depth Content trees", () => {
     expect(
       readFileSync(join(ROOT, "node_modules/@ideaspaces/protocol/VERSION"), "utf-8").trim(),
-    ).toBe("0.13.2");
+    ).toBe("0.13.3");
   });
 });
