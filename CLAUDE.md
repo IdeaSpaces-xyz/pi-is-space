@@ -62,7 +62,7 @@ On session start, assemble local awareness in-process from `@ideaspaces/protocol
 Use-case layer shipped in `skills/`, grouped by role:
 
 - Daily loop: is-orient, is-capture, is-push, is-pull, is-reflect
-- Access and exchange: is-share for people, teams, and public/private visibility; is-inbox for direct person-accountable questions and replies
+- Access and Inbox: is-share for people, teams, and public/private visibility; is-inbox for direct person-accountable questions and replies
 - Space lifecycle: is-setup, is-fork, is-publish, is-shape
 - Guidance: is-guide (explaining IdeaSpaces to the person)
 - Reference: is-space, is-writing
