@@ -38,7 +38,7 @@ Listing and reading are read-only and need no confirmation:
 
 ```bash
 is_cli inbox list
-is_cli inbox read "<exchange-id>"
+is_cli inbox read "<thread-id>"
 ```
 
 Use normal human output unless exact structured fields are needed; then append `--json`. Preserve the
@@ -76,7 +76,7 @@ is_cli inbox send "@owner" \
   --message "What should happen next?"
 
 printf '%s\n' "# Answer" "" "Keep the boundary narrow." | \
-  is_cli inbox reply "<exchange-id>" \
+  is_cli inbox reply "<thread-id>" \
     --name "Answer" \
     --summary "A bounded answer" \
     --send-id "<stable-reply-id>"
