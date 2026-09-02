@@ -9,7 +9,8 @@ description: >
   direct asks: "set up a space", "add ideaspaces here", "create an agent",
   "make me an agent", or questions about the contract. Inspects what's here,
   confirms, then runs `ideaspaces create` via the resolved CLI (`--agent` for
-  an agent vantage plus character elicitation). Not for building software —
+  an agent with its own character and point of view, drawn out in
+  conversation). Not for building software —
   someone coding an app wants code, not a space.
 allowed-tools: "is_write is_commit is_auth edit read write bash"
 ---
@@ -43,7 +44,7 @@ Don't offer unprompted. Wait for a signal — "set up a space", "add ideaspaces 
 
 ## Create an agent
 
-An agent is a **vantage-shaped space**: the five-file `_agent/` contract *is* the character (see [form-primitive](../../reference/form-primitive.md), Creating Agents). The space is not knowledge *about* the agent — it is the position the agent looks from, and the tree becomes its memory.
+An agent is a space shaped as a **point of view**: the five-file `_agent/` contract *is* the character (see [form-primitive](../../reference/form-primitive.md), Creating Agents). The space is not knowledge *about* the agent — it is the position the agent looks from, and the tree becomes its memory.
 
 1. **Name it.** Ask what the agent should be called (letters, digits, spaces, `. _ -`; the CLI refuses names that would not survive frontmatter). The agent gets its own folder.
 2. **Scaffold.** Dry-run, confirm, apply:
@@ -53,13 +54,13 @@ An agent is a **vantage-shaped space**: the five-file `_agent/` contract *is* th
    is_cli create <name> --agent --yes
    ```
 
-   The vantage foundation lands with **elicitation prompts** in Character, Boundaries, and What-this-vantage-is-not — placeholders meant to be replaced, never left standing.
+   The foundation lands with **placeholder prompts** in Character, Boundaries, and What-this-agent-is-not — meant to be replaced in conversation, never left standing.
 3. **Elicit the character — the heart of the flow.** Draw it out from real examples, not adjectives: *"Walk me through a task you'd hand this agent. What did a good result look like? Where would you not trust it?"* Three to five traits grounded in practice; boundaries as things it refuses or never claims without checking; one neighboring role it should not be confused with.
 4. **Replace the prompts.** Use native `edit` on `_agent/foundation.md` (contract files carry the character, not Note frontmatter), show the result, and on confirmation commit with `is_commit` using explicit paths.
 5. **Offer skills.** If a repeatable procedure surfaced, capture it into `_agent/skills/` (is-shape). A Pi session launched in the agent's folder acquires its root skills natively at session start.
 6. **Purpose / now stay emergent** — elicit when there is real signal, or let the drift rule surface them next session.
 
-The agent is used by launching Pi in its folder: the session inhabits the vantage. Publishing works like any space.
+The agent is used by launching Pi in its folder: the session reads who the agent is and inhabits it. Publishing works like any space.
 
 ## 1. Inspect (read-only)
 

@@ -5,7 +5,7 @@ description: >
   everyone. Use when someone says let her see this, share this with my team,
   give them access, she needs to get up to speed on this, make it public, let
   people copy it — or asks who can see it, or to take someone's access away.
-  Access grades: Explore (look around), Fork (take a copy home), Collaborate.
+  Access levels: Explore (look around), Fork (take a copy home), Collaborate.
   Not for sending committed work to the remote; that is is-push.
 allowed-tools: "is_auth read bash"
 ---
@@ -93,7 +93,7 @@ is_cli share visibility private
 to agree, the plan is the honest result.
 
 Append `--space "<url>"` when targeting a Space other than the current folder. Use the normal human
-output rather than `--json`: report recipients, grades, direct standing, and surviving effective
+output rather than `--json`: report recipients, levels, direct standing, and surviving effective
 access, but do not surface backend coordinates.
 
 If authentication is required, offer `is_auth action="login"`, then retry the same command. Do not
