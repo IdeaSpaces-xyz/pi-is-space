@@ -13,9 +13,9 @@ function read(relative: string): string {
 describe("recipient-shaped Share distribution", () => {
   it("pins the CLI release used by tool subprocesses", () => {
     const pkg = JSON.parse(read("package.json"));
-    expect(pkg.version).toBe("0.1.22");
+    expect(pkg.version).toBe("0.1.23");
     expect(pkg.dependencies?.["@ideaspaces/cli"]).toBe(
-      "github:IdeaSpaces-xyz/cli#0526fe0ae8e7e497e01cbd70c61281ad9e6fb7f0",
+      "github:IdeaSpaces-xyz/cli#8c6b5f3a62409705c872bdd1187a466ae538c44c",
     );
   });
 
@@ -24,10 +24,12 @@ describe("recipient-shaped Share distribution", () => {
     const help = `${result.stdout}${result.stderr}`;
 
     expect(result.status).toBe(0);
-    expect(help).toContain("share <person|team|list|remove|visibility>");
+    expect(help).toContain("share <person|team|list|remove|resend|history|visibility>");
     expect(help).toContain("--grade explore");
     expect(help).toContain("--grade fork");
     expect(help).toContain("--grade collaborate");
+    expect(help).toContain("share resend someone@example.com");
+    expect(help).toContain("share history @someone off");
     expect(help).toContain("share visibility public");
     expect(help).toContain("share visibility private");
     expect(read("skills/is-share/SKILL.md")).toContain(
@@ -44,6 +46,8 @@ describe("recipient-shaped Share distribution", () => {
 
     expect(share).toContain("share person");
     expect(share).toContain("share team");
+    expect(share).toContain("share resend");
+    expect(share).toContain("share history");
     expect(share).toContain("share visibility public");
     expect(share).toContain("$IS_CLI_PATH");
     expect(share).toContain("there is no\nnative `is_share` tool");

@@ -76,6 +76,13 @@ is_cli share team "acme.com" --grade collaborate
 # Combined people, invitations, and teams
 is_cli share list
 
+# Pending invitation recovery
+is_cli share resend "someone@example.com"
+
+# Independent hosted-history control for a direct person share
+is_cli share history "@someone" on
+is_cli share history "@someone" off
+
 # Aggregate removal by recipient
 is_cli share remove "someone@example.com"
 is_cli share remove "team:acme.com"
@@ -96,13 +103,15 @@ Append `--space "<url>"` when targeting a Space other than the current folder. U
 output rather than `--json`: report recipients, levels, direct standing, and surviving effective
 access, but do not surface backend coordinates.
 
-If authentication is required, offer `is_auth action="login"`, then retry the same command. Do not
-fall back to legacy compatibility subcommands unless the user explicitly asks to manage legacy
-access.
+If authentication is required, offer `is_auth action="login"`, then retry the same command. Never
+invoke retired repository-shaped membership or invitation subcommands; the CLI rejects them locally
+with migration guidance.
 
 ## Report the result
 
 - Say who or which team changed, at which level, and whether hosted history was included.
+- For resend, report delivery failure or the remaining cooldown without inventing a successful send.
+- For history, repeat that Content, Copy, and Git transport are unchanged.
 - After removal, preserve the CLI's distinction between removed direct access and access surviving
   through another person, team, owner, or policy path.
 - After visibility changes, repeat that named grants are unchanged. For Public, distinguish the
