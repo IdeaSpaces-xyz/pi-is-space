@@ -48,7 +48,7 @@ if (has("status")) {
     plan: {
       action: "publish", namespace: "tester", slug: "plan-space",
       root_node_id: "n_0123456789abcdef01234567",
-      remote_url: "https://git.test/spaces/n_0123456789abcdef01234567.git",
+      remote_url: "https://git.test/repos/n_0123456789abcdef01234567.git",
       identity_email: "person:tester@ideaspaces", tip_author_rewrite: false, commits: 1,
     },
     applied: false,
@@ -57,8 +57,8 @@ if (has("status")) {
   process.stdout.write(JSON.stringify({
     repo_id: "repo_plan", root_node_id: "n_0123456789abcdef01234567",
     slug: "plan-space", namespace: "tester",
-    remote_url: "https://git.test/spaces/n_0123456789abcdef01234567.git",
-    web_url: "https://web.test/spaces/n_0123456789abcdef01234567",
+    remote_url: "https://git.test/repos/n_0123456789abcdef01234567.git",
+    web_url: "https://web.test/repos/n_0123456789abcdef01234567",
     identity_email: "person:tester@ideaspaces", identity_state: "aligned",
   }));
 } else {
