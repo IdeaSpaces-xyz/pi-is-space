@@ -9,7 +9,7 @@ Useful decisions, findings, plans, and context should not disappear with the cha
 
 The [protocol](https://github.com/IdeaSpaces-xyz/ideaspace-protocol) defines the repository shape and operating loop. `pi-is-space` makes that standard native to Pi through session awareness, capture skills, and safe commit/sync tools. Everything stays on your machine unless you choose to publish or sync it.
 
-[Install IdeaSpaces](#install) · [Explore the protocol as an Ideaspace](https://ideaspaces.xyz/spaces/n_64dbf7878f05362337a6cda6) · [Use IdeaSpaces with Claude](https://github.com/IdeaSpaces-xyz/claude-code-plugin)
+[Install IdeaSpaces](#install) · [Explore the protocol as an Ideaspace](https://ideaspaces.xyz/repos/n_64dbf7878f05362337a6cda6) · [Use IdeaSpaces with Claude](https://github.com/IdeaSpaces-xyz/claude-code-plugin)
 
 ## Install
 
