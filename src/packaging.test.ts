@@ -22,12 +22,12 @@ describe("packaging", () => {
   });
 
   it("pins the full-depth Content tree protocol and derived-Map CLI", () => {
-    expect(pkg.version).toBe("0.1.25");
+    expect(pkg.version).toBe("0.1.26");
     expect(pkg.dependencies?.["@ideaspaces/protocol"]).toBe(
       "github:IdeaSpaces-xyz/ideaspace-protocol#6b6bae869127845d22bd4989457c0b61ef38874b",
     );
     expect(pkg.dependencies?.["@ideaspaces/cli"]).toBe(
-      "github:IdeaSpaces-xyz/cli#dec09e8741f40ff497710c25611b5596fb5348d9",
+      "github:IdeaSpaces-xyz/cli#d5a319d856f0daa9f75002b3530879af9e202b7d",
     );
   });
 
