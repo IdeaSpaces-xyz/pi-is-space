@@ -288,12 +288,11 @@ describe("Pi in-process local awareness", () => {
     expect(afterProbe?.systemPrompt).not.toContain("One-shot tree probe:");
     expect(afterProbe?.systemPrompt?.split("[IdeaSpaces Awareness]\n")[1]).toBe(injectedStable);
 
-    await call("is_mount", { path: sibling });
-    const mounted = await call("is_navigate", { root: "sibling", path: "." });
-    expect(text(mounted)).toContain("Mounted content (read-only)");
-    expect(text(mounted)).toContain("Focus:");
-    expect(text(mounted)).toContain("now — Sibling awareness.");
-    expect(text(mounted)).not.toContain("Now:");
+    const siblingFocus = await call("is_navigate", { path: "sibling" });
+    expect(text(siblingFocus)).toContain("Focus:");
+    expect(text(siblingFocus)).toContain("now — Sibling awareness.");
+    expect(text(siblingFocus)).not.toContain("Mounted content (read-only)");
+    expect(text(siblingFocus)).not.toContain("Now:");
 
     // The one permitted CLI call is the cached remote catalog fetch. Local
     // status/navigate/inspect reads would hit the fake CLI's exit-99 branch.
