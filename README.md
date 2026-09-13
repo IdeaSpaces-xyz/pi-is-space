@@ -68,7 +68,7 @@ Pi's native `read`, `edit`, `write`, and `bash` cover exact full-document eviden
 
 | Tool | What |
 |---|---|
-| `is_navigate` | Move home awareness focus, or inspect a mounted ideaspace as read-only reference. |
+| `is_navigate` | Read a home or mounted position as bounded history reference without changing authority. |
 | `is_inspect` | Inspect one local Markdown file by summary, ATX outline, or exact section; never defaults to the full body. |
 | `is_mount` / `is_unmount` | Add or remove read-only repositories from the conversation's working set. |
 | `is_status` | Inspect git/capture state, or return a file's full revision and compatibility `sha` for safe Note updates. |

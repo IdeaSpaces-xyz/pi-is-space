@@ -223,9 +223,10 @@ describe("local awareness", () => {
       position: workspace,
       workspace,
     });
-    expect(result.root).toBeNull();
+    expect(result.root).toBe(workspace);
     expect(result.repoRoot).toBeNull();
-    expect(result.stable).toBeNull();
+    expect(result.stable).toContain("Position:");
+    expect(result.stable).toContain("Tree (");
     expect(result.volatile).toContain("Repos in scope (local):");
     expect(result.volatile).toContain("Navigate into a repo below");
 
@@ -235,7 +236,7 @@ describe("local awareness", () => {
       { cwd: workspace, encoding: "utf-8" },
     );
     expect(cliRun.status, cliRun.stderr).toBe(0);
-    expect(result.volatile).toBe(JSON.parse(cliRun.stdout).text);
+    expect(`${result.stable}\n\n${result.volatile}`).toBe(JSON.parse(cliRun.stdout).text);
   });
 
   it("matches the CLI clone hint in an empty bare workspace", async () => {
@@ -252,7 +253,7 @@ describe("local awareness", () => {
       { cwd: workspace, encoding: "utf-8" },
     );
     expect(cliRun.status, cliRun.stderr).toBe(0);
-    expect(result.volatile).toBe(JSON.parse(cliRun.stdout).text);
+    expect(`${result.stable}\n\n${result.volatile}`).toBe(JSON.parse(cliRun.stdout).text);
   });
 
   it("returns staged capture facts in-process", async () => {
@@ -273,12 +274,23 @@ describe("local awareness", () => {
 
     const result = await readMountedAwareness(mount);
     expect(result.root).toBe(mount);
-    expect(result.text).toContain("Position:");
-    expect(result.text).toContain("Now: Mounted focus.");
+    expect(result.text).toContain("Focus:");
+    expect(result.text).toContain("contract role: reference — read, never composed");
+    expect(result.text).toContain("now — Mounted focus.");
+    expect(result.text).not.toContain("Position:");
+    expect(result.text).not.toContain("Now:");
     expect(result.text).not.toContain("State:");
     expect(result.text).not.toContain("Working set:");
     expect(result.text).not.toContain("Repos in scope");
     expect(result.text).not.toContain("Git:");
+
+    const cliRun = spawnSync(
+      "node",
+      [CLI, "--json", "navigate", mount, "--focus"],
+      { cwd: mount, encoding: "utf-8" },
+    );
+    expect(cliRun.status, cliRun.stderr).toBe(0);
+    expect(result.text).toBe(JSON.parse(cliRun.stdout).text);
   });
 });
 

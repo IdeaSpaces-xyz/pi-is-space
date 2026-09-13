@@ -31,8 +31,7 @@ import {
   discoverSpaceSkillPaths,
   LOCAL_WORKSPACE_EXCLUDES,
   readCaptureStatus,
-  readMountedAwareness,
-  probeTree,
+  readFocusedAwareness,
   type CaptureStatus,
 } from "./local-awareness.js";
 import { SessionCaptureLedger } from "./capture-ledger.js";
@@ -642,12 +641,9 @@ export default function (pi: ExtensionAPI) {
   let cachedVolatile: string | null = null;
   let cachedRoot: string | null = null;
   let cachedRepoRoot: string | null = null;
-  // Session-persistent orientation focus. Unset → awareness roots at ctx.cwd.
-  // `navigate` moves this; it never touches the session cwd or file-op paths.
-  let position: string | null = null;
   // The conversation's working set beyond home: mounted roots (absolute, deduped).
   // Mounts are content, never authority — read-only reference surfaced as thin
-  // handles. Mounting never changes `position`/authority, cwd, or file-op paths.
+  // handles. Mounting never changes authority, cwd, or file-op paths.
   let mounts: string[] = [];
   // Seed the working set from the host's durable set: the desktop owns the
   // conversation's mounts and passes them as `IS_MOUNTS` (comma-separated), the
@@ -733,16 +729,6 @@ export default function (pi: ExtensionAPI) {
   const gitRootCache = new Map<string, string | null>();
   let autocompleteFailureShown = false;
 
-  // The position awareness is rooted at: the navigated focus, or the cwd.
-  function effectivePosition(cwd: string): string {
-    return position ?? cwd;
-  }
-
-  async function setPosition(next: string | null, cwd: string): Promise<void> {
-    position = next;
-    await refreshAwareness(cwd);
-  }
-
   // Add a mounted root (absolute, deduped). Returns false if already mounted.
   function addMount(root: string): boolean {
     const abs = resolvePath(root);
@@ -769,10 +755,8 @@ export default function (pi: ExtensionAPI) {
     return mounts.find((mount) => mount === abs || basename(mount) === name) ?? null;
   }
 
-  // Look into a mount: compose its view at `subPath` and return it as read-only
-  // content. Never changes `position`/authority — the mount's _agent/ is
-  // reference, not the operating contract. Returns the view in the tool result,
-  // not the persistent awareness.
+  // Read one mount position through the canonical reference focus. It never
+  // changes caller authority or persistent awareness.
   async function navigateMount(
     rootArg: string,
     rawPath: string,
@@ -799,10 +783,10 @@ export default function (pi: ExtensionAPI) {
       throw new Error(`Not a directory: ${subPath}`);
     }
 
-    const awareness = await readMountedAwareness(subPath, treeDepth);
+    const awareness = await readFocusedAwareness(subPath, treeDepth);
     const rel = relative(mountRoot, subPath) || ".";
     const header = [
-      "Mounted content (read-only) — its `_agent/` is reference, not your operating contract.",
+      "Mounted content (read-only):",
       `mount: ${mountRoot}`,
       `position: ${rel}`,
     ];
@@ -843,7 +827,7 @@ export default function (pi: ExtensionAPI) {
     refreshPullable(cwd);
     try {
       const awareness = await buildLocalAwareness({
-        position: effectivePosition(cwd),
+        position: cwd,
         mounts,
         workspace: cwd,
         pullable,
@@ -1528,8 +1512,8 @@ export default function (pi: ExtensionAPI) {
     name: "is_navigate",
     label: "IS Navigate",
     description:
-      "Move your awareness focus to a position in the space — re-derives and returns the canonical summary-level Position, Now, tree, contract, and operating-skill view for that branch using the fractal-composed contract. Does not change the working directory; read/edit/bash still take explicit paths. Pass `root` with a mounted root (from is_mount) to look into that mount instead: returns its composed view at `path` as read-only content — a mount's _agent/ is reference, never your operating contract — and never changes your authority position.",
-    promptSnippet: "Re-root orientation at a branch of home (orientation only; cwd unchanged), or look into a mounted root as read-only content",
+      "Read a position as bounded reference focus — its selected agent context, depth-one Content tree, and skills at history placement. The target contract is reference, never caller authority. Does not change the working directory or operating frame; read/edit/bash still take explicit paths. Pass `root` to focus inside a mounted root.",
+    promptSnippet: "Read a home or mounted position as bounded reference context without changing authority",
     promptGuidelines: [
       "Treat the injected [IdeaSpaces Awareness] map as the first bounded orientation rung: use is_navigate only when focus or map depth must change, and do not reread represented contract or current-state files or follow their links unless the user's question requires deeper evidence.",
     ],
@@ -1541,7 +1525,7 @@ export default function (pi: ExtensionAPI) {
       root: Type.Optional(
         Type.String({
           description:
-            "Omit or \"home\" to move your home awareness focus (authority re-roots). Pass a mounted root (absolute path or basename) to look into that mount as read-only content without changing authority.",
+            "Omit or \"home\" to focus inside the home root. Pass a mounted root (absolute path or basename) to focus inside that mount. Neither changes authority.",
         }),
       ),
       depth: Type.Optional(
@@ -1577,27 +1561,11 @@ export default function (pi: ExtensionAPI) {
         throw new Error(`Refusing to navigate outside the repo root (${repoRoot}): ${target}`);
       }
 
-      await setPosition(target, ctx.cwd);
-
-      const rel = relative(repoRoot, target) || ".";
-      const lines = [`Awareness focus moved to ${rel} (working directory unchanged).`];
-      if (cachedRoot) lines.push(`space root: ${cachedRoot}`);
-      if (cachedStable) {
-        // Return the same canonical summary register immediately. The ambient
-        // block will not refresh until the next agent turn, so a Now-only tool
-        // result would hide the newly composed Position/tree/contract/skills.
-        lines.push("", cachedStable);
-      } else {
-        lines.push("No _agent/ contract resolves at this position.");
+      const focus = await readFocusedAwareness(target, depth);
+      if (!focus.text) {
+        throw new Error(`Not a Content position: ${target}`);
       }
-      if (depth) {
-        // One-shot probe in this result only; the per-turn block stays depth 1.
-        // Protocol tree probes add names below the summary-rung first level —
-        // more map, never document content.
-        const probed = await probeTree(target, depth);
-        if (probed) lines.push("", "One-shot tree probe:", probed);
-      }
-      return ok(lines.join("\n"));
+      return ok(focus.text);
     },
   });
 

@@ -21,13 +21,13 @@ describe("packaging", () => {
     expect(devDeps).not.toContain("@ideaspaces/cli");
   });
 
-  it("pins the full-depth Content tree protocol and derived-Map CLI", () => {
-    expect(pkg.version).toBe("0.1.26");
+  it("pins bounded reference focus in the protocol and CLI", () => {
+    expect(pkg.version).toBe("0.1.27");
     expect(pkg.dependencies?.["@ideaspaces/protocol"]).toBe(
-      "github:IdeaSpaces-xyz/ideaspace-protocol#6b6bae869127845d22bd4989457c0b61ef38874b",
+      "github:IdeaSpaces-xyz/ideaspace-protocol#c8635e23b00189166439365b7e206ddfcf35d270",
     );
     expect(pkg.dependencies?.["@ideaspaces/cli"]).toBe(
-      "github:IdeaSpaces-xyz/cli#d5a319d856f0daa9f75002b3530879af9e202b7d",
+      "github:IdeaSpaces-xyz/cli#b60747a814e3549415be9c862963cf1bab0ceab6",
     );
   });
 
