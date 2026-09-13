@@ -70,6 +70,14 @@ const BARE_FOLDER_HINT =
 const EMPTY_FOLDER_HINT =
   "You're at a workspace folder with no repos yet. Clone one to get started (`ideaspaces clone`).";
 
+function floorHint(
+  repoRoot: string | null,
+  catalog: string | null,
+): string | null {
+  if (repoRoot || catalog?.startsWith("⚠")) return null;
+  return catalog ? BARE_FOLDER_HINT : EMPTY_FOLDER_HINT;
+}
+
 export async function readCaptureStatus(cwd: string): Promise<CaptureStatus | null> {
   const repoRoot = await resolveRepoRoot(resolve(cwd));
   if (!repoRoot) return null;
@@ -116,11 +124,7 @@ export async function buildLocalAwareness(opts: {
 
   const manifest = manifestRead.value;
   if (!manifest) {
-    const hint = !focusedRepoRoot && !catalog?.startsWith("⚠")
-      ? catalog
-        ? BARE_FOLDER_HINT
-        : EMPTY_FOLDER_HINT
-      : null;
+    const hint = floorHint(focusedRepoRoot, catalog);
     // No contract resolves: everything is workspace/session state — volatile
     // by nature, and keeping the system prompt untouched is cache-optimal.
     const volatile = joinSections([state, catalog, hint]);
@@ -134,11 +138,7 @@ export async function buildLocalAwareness(opts: {
     ? null
     : await formatWorkingSetSection(manifest.spaceRoot, mounts);
   const drift = renderContentAwareness(manifest, { sections: DRIFT_SECTIONS });
-  const hint = isFloor && !focusedRepoRoot && !catalog?.startsWith("⚠")
-    ? catalog
-      ? BARE_FOLDER_HINT
-      : EMPTY_FOLDER_HINT
-    : null;
+  const hint = isFloor ? floorHint(focusedRepoRoot, catalog) : null;
   return {
     root: manifest.spaceRoot,
     repoRoot: manifest.position.repoRoot,
@@ -186,20 +186,20 @@ export async function readFocusedAwareness(
   }
   if (!focus) return { root: null, text: null };
   const rendered = renderContentFocus(focus);
+  // An interactive focus surfaces diagnostics as tool errors; ambient assembly
+  // separately catches its throw so session start can preserve volatile state.
+  if (focus.status !== "ok") throw new Error(rendered);
   const probe = treeDepth && treeDepth > 1
     ? await probeTree(position, treeDepth)
     : null;
   return {
-    root: focus.status === "ok" ? focus.spaceRoot : null,
+    root: focus.spaceRoot,
     text: joinSections([
       rendered,
       probe ? `One-shot tree probe:\n${probe}` : null,
     ]),
   };
 }
-
-/** @deprecated Mounts and home navigation now share one focus reader. */
-export const readMountedAwareness = readFocusedAwareness;
 
 /**
  * Native Pi skill paths for the space at `cwd` — the SKILLS-2 placement model:

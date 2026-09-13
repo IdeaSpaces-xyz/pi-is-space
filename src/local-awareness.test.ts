@@ -11,7 +11,7 @@ import {
   discoverSpaceSkillPaths,
   probeTree,
   readCaptureStatus,
-  readMountedAwareness,
+  readFocusedAwareness,
 } from "./local-awareness.js";
 
 const CLI = join(process.cwd(), "node_modules/@ideaspaces/cli/bundle/ideaspaces.js");
@@ -70,7 +70,7 @@ describe("local awareness", () => {
     expect(probed).toContain("research/ (2) — EU landscape sweep.");
     expect(probed).toContain("    deep/ (1)");
     // Depth is a one-shot render; the ambient block is built elsewhere at depth 1.
-    const ambient = await readMountedAwareness(home);
+    const ambient = await readFocusedAwareness(home);
     expect(ambient.text).not.toContain("    deep/ (1)");
   });
 
@@ -272,7 +272,7 @@ describe("local awareness", () => {
     await fs.mkdir(mount);
     await makeSpace(mount, "Mounted focus.");
 
-    const result = await readMountedAwareness(mount);
+    const result = await readFocusedAwareness(mount);
     expect(result.root).toBe(mount);
     expect(result.text).toContain("Focus:");
     expect(result.text).toContain("contract role: reference — read, never composed");
@@ -291,6 +291,19 @@ describe("local awareness", () => {
     );
     expect(cliRun.status, cliRun.stderr).toBe(0);
     expect(result.text).toBe(JSON.parse(cliRun.stdout).text);
+  });
+
+  it("surfaces invalid target contracts as focus errors", async () => {
+    const target = join(workspace, "invalid-focus");
+    await fs.mkdir(join(target, "_agent"), { recursive: true });
+    await fs.writeFile(
+      join(target, "_agent", "agreement.md"),
+      "---\ncontext:\n  full: [../outside.md]\n---\n# Agreement\n",
+    );
+
+    await expect(readFocusedAwareness(target)).rejects.toThrow(
+      "Agreement contract is invalid",
+    );
   });
 });
 
