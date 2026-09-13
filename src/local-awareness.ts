@@ -2,12 +2,14 @@ import { promises as fs } from "node:fs";
 import { basename, resolve } from "node:path";
 import {
   assembleContentAwareness,
+  assembleContentFocus,
   composeContractAlongPath,
   discoverSkillEntries,
   gitState,
   readRootHandle,
   readWorkspaceRepositories,
   renderContentAwareness,
+  renderContentFocus,
   resolveRepoRoot,
   stagedIdeaspacePaths,
   type GitState,
@@ -34,7 +36,7 @@ export interface LocalAwarenessResult {
    * The cache-stable register: position, Now, tree, contract, skills, working
    * set. Deterministic bytes for unchanged state — safe in the system prompt;
    * a changed byte is a legitimate, content-hash invalidation (a capture
-   * landed, focus moved), never per-turn churn.
+   * landed or the starting coordinate changed), never per-turn churn.
    */
   stable: string | null;
   /**
@@ -61,20 +63,20 @@ const STABLE_SECTIONS = [
   "skills",
 ] as const;
 
-const CORE_SECTIONS = [
-  "position",
-  "now",
-  "tree",
-  "contract",
-  "skills",
-  "activity",
-] as const;
 const DRIFT_SECTIONS = ["stale-docs", "direction-drift"] as const;
 
 const BARE_FOLDER_HINT =
   "You're at a workspace folder (no `_agent/` contract here). Navigate into a repo below (`ideaspaces navigate <repo>`), or pull one that's behind.";
 const EMPTY_FOLDER_HINT =
   "You're at a workspace folder with no repos yet. Clone one to get started (`ideaspaces clone`).";
+
+function floorHint(
+  repoRoot: string | null,
+  catalog: string | null,
+): string | null {
+  if (repoRoot || catalog?.startsWith("⚠")) return null;
+  return catalog ? BARE_FOLDER_HINT : EMPTY_FOLDER_HINT;
+}
 
 export async function readCaptureStatus(cwd: string): Promise<CaptureStatus | null> {
   const repoRoot = await resolveRepoRoot(resolve(cwd));
@@ -104,7 +106,7 @@ export async function buildLocalAwareness(opts: {
       console.warn(`IdeaSpaces: status read failed: ${errorMessage(error)}`);
       return null;
     }),
-    settle(assembleContentAwareness({ position })),
+    settle(assemblePreferredContentAwareness(position)),
     focusedRepoRootPromise,
     formatCatalogSection(workspace, focusedRepoRootPromise, mounts, pullable).catch(
       (error) => `⚠ workspace catalog read failed: ${errorMessage(error)}`,
@@ -122,11 +124,7 @@ export async function buildLocalAwareness(opts: {
 
   const manifest = manifestRead.value;
   if (!manifest) {
-    const hint = !focusedRepoRoot && !catalog?.startsWith("⚠")
-      ? catalog
-        ? BARE_FOLDER_HINT
-        : EMPTY_FOLDER_HINT
-      : null;
+    const hint = floorHint(focusedRepoRoot, catalog);
     // No contract resolves: everything is workspace/session state — volatile
     // by nature, and keeping the system prompt untouched is cache-optimal.
     const volatile = joinSections([state, catalog, hint]);
@@ -135,13 +133,17 @@ export async function buildLocalAwareness(opts: {
 
   const stableCore = renderContentAwareness(manifest, { sections: STABLE_SECTIONS });
   const activity = renderContentAwareness(manifest, { sections: ["activity"] });
-  const workingSet = await formatWorkingSetSection(manifest.spaceRoot, mounts);
+  const isFloor = manifest.contractSource === null;
+  const workingSet = isFloor
+    ? null
+    : await formatWorkingSetSection(manifest.spaceRoot, mounts);
   const drift = renderContentAwareness(manifest, { sections: DRIFT_SECTIONS });
+  const hint = isFloor ? floorHint(focusedRepoRoot, catalog) : null;
   return {
     root: manifest.spaceRoot,
     repoRoot: manifest.position.repoRoot,
     stable: joinSections([stableCore, workingSet]),
-    volatile: joinSections([state, activity, catalog, drift]),
+    volatile: joinSections([state, activity, catalog, drift, hint]),
   };
 }
 
@@ -167,24 +169,35 @@ export function appendVolatileTail(payload: unknown, text: string): boolean {
   return false;
 }
 
-/** Render a mounted Content position without importing its contract as authority. */
-export async function readMountedAwareness(
+/** Render a Content position as history reference without importing its contract as authority. */
+export async function readFocusedAwareness(
   position: string,
   treeDepth?: number,
 ): Promise<{
   root: string | null;
   text: string | null;
 }> {
-  const manifest = await assembleContentAwareness({
-    position: resolve(position),
-    ...(treeDepth ? { treeDepth } : {}),
-  });
-  if (!manifest) return { root: null, text: null };
+  let focus = await assembleContentFocus({ position: resolve(position) });
+  if (focus?.status === "contract_choice_required") {
+    focus = await assembleContentFocus({
+      position: resolve(position),
+      contractSource: "agreement",
+    });
+  }
+  if (!focus) return { root: null, text: null };
+  const rendered = renderContentFocus(focus);
+  // An interactive focus surfaces diagnostics as tool errors; ambient assembly
+  // separately catches its throw so session start can preserve volatile state.
+  if (focus.status !== "ok") throw new Error(rendered);
+  const probe = treeDepth && treeDepth > 1
+    ? await probeTree(position, treeDepth)
+    : null;
   return {
-    root: manifest.spaceRoot,
-    text: renderContentAwareness(manifest, {
-      sections: [...CORE_SECTIONS, ...DRIFT_SECTIONS],
-    }) || null,
+    root: focus.spaceRoot,
+    text: joinSections([
+      rendered,
+      probe ? `One-shot tree probe:\n${probe}` : null,
+    ]),
   };
 }
 
@@ -217,13 +230,30 @@ export async function discoverSpaceSkillPaths(cwd: string): Promise<string[]> {
  * ambient orientation stays at depth 1; probing is deliberate and ephemeral.
  */
 export async function probeTree(position: string, treeDepth: number): Promise<string | null> {
-  const manifest = await assembleContentAwareness({
-    position: resolve(position),
-    lastSha: null,
-    treeDepth,
-  });
+  const manifest = await assemblePreferredContentAwareness(position, treeDepth);
   if (!manifest) return null;
   return renderContentAwareness(manifest, { sections: ["tree"] }) || null;
+}
+
+async function assemblePreferredContentAwareness(
+  position: string,
+  treeDepth?: number,
+) {
+  const opts = {
+    position: resolve(position),
+    ...(treeDepth ? { treeDepth } : {}),
+  };
+  let manifest = await assembleContentAwareness(opts);
+  if (manifest?.status === "contract_choice_required") {
+    manifest = await assembleContentAwareness({
+      ...opts,
+      contractSource: "agreement",
+    });
+  }
+  if (manifest && manifest.status !== "ok") {
+    throw new Error(renderContentAwareness(manifest));
+  }
+  return manifest;
 }
 
 function captureStatus(state: GitState, captures: string[]): CaptureStatus {

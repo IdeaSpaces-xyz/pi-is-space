@@ -11,7 +11,7 @@ import {
   discoverSpaceSkillPaths,
   probeTree,
   readCaptureStatus,
-  readMountedAwareness,
+  readFocusedAwareness,
 } from "./local-awareness.js";
 
 const CLI = join(process.cwd(), "node_modules/@ideaspaces/cli/bundle/ideaspaces.js");
@@ -70,7 +70,7 @@ describe("local awareness", () => {
     expect(probed).toContain("research/ (2) — EU landscape sweep.");
     expect(probed).toContain("    deep/ (1)");
     // Depth is a one-shot render; the ambient block is built elsewhere at depth 1.
-    const ambient = await readMountedAwareness(home);
+    const ambient = await readFocusedAwareness(home);
     expect(ambient.text).not.toContain("    deep/ (1)");
   });
 
@@ -223,9 +223,10 @@ describe("local awareness", () => {
       position: workspace,
       workspace,
     });
-    expect(result.root).toBeNull();
+    expect(result.root).toBe(workspace);
     expect(result.repoRoot).toBeNull();
-    expect(result.stable).toBeNull();
+    expect(result.stable).toContain("Position:");
+    expect(result.stable).toContain("Tree (");
     expect(result.volatile).toContain("Repos in scope (local):");
     expect(result.volatile).toContain("Navigate into a repo below");
 
@@ -235,7 +236,7 @@ describe("local awareness", () => {
       { cwd: workspace, encoding: "utf-8" },
     );
     expect(cliRun.status, cliRun.stderr).toBe(0);
-    expect(result.volatile).toBe(JSON.parse(cliRun.stdout).text);
+    expect(`${result.stable}\n\n${result.volatile}`).toBe(JSON.parse(cliRun.stdout).text);
   });
 
   it("matches the CLI clone hint in an empty bare workspace", async () => {
@@ -252,7 +253,7 @@ describe("local awareness", () => {
       { cwd: workspace, encoding: "utf-8" },
     );
     expect(cliRun.status, cliRun.stderr).toBe(0);
-    expect(result.volatile).toBe(JSON.parse(cliRun.stdout).text);
+    expect(`${result.stable}\n\n${result.volatile}`).toBe(JSON.parse(cliRun.stdout).text);
   });
 
   it("returns staged capture facts in-process", async () => {
@@ -271,14 +272,38 @@ describe("local awareness", () => {
     await fs.mkdir(mount);
     await makeSpace(mount, "Mounted focus.");
 
-    const result = await readMountedAwareness(mount);
+    const result = await readFocusedAwareness(mount);
     expect(result.root).toBe(mount);
-    expect(result.text).toContain("Position:");
-    expect(result.text).toContain("Now: Mounted focus.");
+    expect(result.text).toContain("Focus:");
+    expect(result.text).toContain("contract role: reference — read, never composed");
+    expect(result.text).toContain("now — Mounted focus.");
+    expect(result.text).not.toContain("Position:");
+    expect(result.text).not.toContain("Now:");
     expect(result.text).not.toContain("State:");
     expect(result.text).not.toContain("Working set:");
     expect(result.text).not.toContain("Repos in scope");
     expect(result.text).not.toContain("Git:");
+
+    const cliRun = spawnSync(
+      "node",
+      [CLI, "--json", "navigate", mount, "--focus"],
+      { cwd: mount, encoding: "utf-8" },
+    );
+    expect(cliRun.status, cliRun.stderr).toBe(0);
+    expect(result.text).toBe(JSON.parse(cliRun.stdout).text);
+  });
+
+  it("surfaces invalid target contracts as focus errors", async () => {
+    const target = join(workspace, "invalid-focus");
+    await fs.mkdir(join(target, "_agent"), { recursive: true });
+    await fs.writeFile(
+      join(target, "_agent", "agreement.md"),
+      "---\ncontext:\n  full: [../outside.md]\n---\n# Agreement\n",
+    );
+
+    await expect(readFocusedAwareness(target)).rejects.toThrow(
+      "Agreement contract is invalid",
+    );
   });
 });
 

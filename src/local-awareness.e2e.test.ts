@@ -167,10 +167,9 @@ afterAll(() => {
 });
 
 describe("Pi in-process local awareness", () => {
-  it("injects awareness and serves status/navigation while a local-read CLI would fail", async () => {
-    // Session cwd is the workspace; move focus into the home repo so awareness
-    // carries both deep home orientation and sibling workspace handles.
-    await call("is_navigate", { path: "acme-space" });
+  it("keeps the session head stable while navigation appends reference focus", async () => {
+    // Session cwd is the workspace. Its floor orientation is the authority head;
+    // reading acme-space later must not replace it.
     const injected = await runner.emitBeforeAgentStart(
       "orient",
       undefined,
@@ -178,7 +177,9 @@ describe("Pi in-process local awareness", () => {
       { cwd: space } as any,
     );
     expect(injected?.systemPrompt).toContain("[IdeaSpaces Awareness]");
-    expect(injected?.systemPrompt).toContain("Now: Home awareness.");
+    expect(injected?.systemPrompt).toContain("Position:");
+    expect(injected?.systemPrompt).toContain("acme-space/ (4)");
+    expect(injected?.systemPrompt).not.toContain("Now: Home awareness.");
     expect(injected?.systemPrompt).not.toContain("ACME_FOUNDATION_BODY_SENTINEL");
     expect(injected?.systemPrompt).not.toContain("ACME_PURPOSE_BODY_SENTINEL");
     expect(injected?.systemPrompt).not.toContain("ACME_NOW_BODY_SENTINEL");
@@ -251,24 +252,25 @@ describe("Pi in-process local awareness", () => {
     expect(text(large)).toContain("Use native read with offsets");
     expect(large.details?.truncation).toMatchObject({ truncated: true });
 
-    const moved = await call("is_navigate", { path: "." });
-    const movedText = text(moved);
+    const focused = await call("is_navigate", { path: "acme-space" });
+    const focusedText = text(focused);
     const injectedPrompt = injected?.systemPrompt ?? "";
     const injectedStable = injectedPrompt.split("[IdeaSpaces Awareness]\n")[1] ?? "";
     expect(injectedStable).not.toBe("");
-    expect(movedText).toContain("Awareness focus moved to .");
-    expect(movedText.endsWith(injectedStable)).toBe(true);
-    expect(movedText).toContain("Position:");
-    expect(movedText).toContain("Now: Home awareness.");
-    expect(movedText).toContain("Tree (");
-    expect(movedText).toContain("Agent context:");
-    expect(movedText).toContain("  guide — Work from bounded evidence.");
-    expect(movedText).toContain("Operating skills:");
-    expect(movedText).toContain("  review — Review an invented plan.");
-    expect(movedText).not.toContain("ACME_GUIDE_BODY_SENTINEL");
-    expect(movedText).not.toContain("ACME_SKILL_BODY_SENTINEL");
+    expect(focusedText).toContain("Focus:");
+    expect(focusedText).toContain("contract role: reference — read, never composed");
+    expect(focusedText).toContain("Tree (");
+    expect(focusedText).toContain("Agent context:");
+    expect(focusedText).toContain("  guide — Work from bounded evidence.");
+    expect(focusedText).toContain("  now — Home awareness.");
+    expect(focusedText).toContain("Operating skills:");
+    expect(focusedText).toContain("  review — Review an invented plan.");
+    expect(focusedText).not.toContain("Position:");
+    expect(focusedText).not.toContain("Now:");
+    expect(focusedText).not.toContain("ACME_GUIDE_BODY_SENTINEL");
+    expect(focusedText).not.toContain("ACME_SKILL_BODY_SENTINEL");
 
-    const probed = text(await call("is_navigate", { path: ".", depth: 3 }));
+    const probed = text(await call("is_navigate", { path: "acme-space", depth: 3 }));
     expect(probed).toContain("One-shot tree probe:");
     expect(probed).toContain("    archive/ (1)");
     expect(probed).toContain("      details.md");
@@ -284,11 +286,13 @@ describe("Pi in-process local awareness", () => {
     expect(afterProbe?.systemPrompt).not.toContain("archive/ (1)");
     expect(afterProbe?.systemPrompt).not.toContain("details.md");
     expect(afterProbe?.systemPrompt).not.toContain("One-shot tree probe:");
+    expect(afterProbe?.systemPrompt?.split("[IdeaSpaces Awareness]\n")[1]).toBe(injectedStable);
 
-    await call("is_mount", { path: sibling });
-    const mounted = await call("is_navigate", { root: "sibling", path: "." });
-    expect(text(mounted)).toContain("Mounted content (read-only)");
-    expect(text(mounted)).toContain("Now: Sibling awareness.");
+    const siblingFocus = await call("is_navigate", { path: "sibling" });
+    expect(text(siblingFocus)).toContain("Focus:");
+    expect(text(siblingFocus)).toContain("now — Sibling awareness.");
+    expect(text(siblingFocus)).not.toContain("Mounted content (read-only)");
+    expect(text(siblingFocus)).not.toContain("Now:");
 
     // The one permitted CLI call is the cached remote catalog fetch. Local
     // status/navigate/inspect reads would hit the fake CLI's exit-99 branch.
@@ -304,12 +308,14 @@ describe("Pi in-process local awareness", () => {
     // extension load, so the host owns the durable set and re-seeds each turn.
     const mounted = await call("is_navigate", { root: "seeded", path: "." });
     expect(text(mounted)).toContain("Mounted content (read-only)");
-    expect(text(mounted)).toContain("Now: Seeded awareness.");
+    expect(text(mounted)).toContain("Focus:");
+    expect(text(mounted)).toContain("now — Seeded awareness.");
+    expect(text(mounted)).not.toContain("Now:");
   });
 
-  it("pins the protocol version that supplies full-depth Content trees", () => {
+  it("pins the protocol version that supplies bounded reference focus", () => {
     expect(
       readFileSync(join(ROOT, "node_modules/@ideaspaces/protocol/VERSION"), "utf-8").trim(),
-    ).toBe("0.15.0");
+    ).toBe("0.17.0");
   });
 });

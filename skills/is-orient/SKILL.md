@@ -26,7 +26,7 @@ Stop as soon as the user's question is answered:
 
 ## Deepen only when needed
 
-1. Use `is_navigate` when the requested position is not the current focus or the map needs a bounded tree probe. Navigation changes awareness; it does not justify loading document bodies.
+1. Use `is_navigate` when another position needs bounded reference focus or the map needs a tree probe. Navigation appends history context without changing the session's authority head; it does not justify loading document bodies.
 2. Use `is_status` when capture or git state materially affects the answer.
 3. For change questions, inspect only the relevant `git status` or short recent history.
 4. Use `is_inspect` only when one document needs deeper attention: start with its summary when the map does not already represent it, then request an outline before one exact section. Do not cascade through links.
