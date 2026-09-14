@@ -6,7 +6,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const control = vi.hoisted(() => ({ failManifest: false, failCompose: false }));
+const control = vi.hoisted(() => ({
+  failManifest: false,
+  failCompose: false,
+  stripStatus: false,
+}));
 
 vi.mock("@ideaspaces/protocol", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@ideaspaces/protocol")>();
@@ -16,7 +20,12 @@ vi.mock("@ideaspaces/protocol", async (importOriginal) => {
       opts: Parameters<typeof actual.assembleContentAwareness>[0],
     ) {
       if (control.failManifest) throw new Error("fixture manifest failure");
-      return actual.assembleContentAwareness(opts);
+      const manifest = await actual.assembleContentAwareness(opts);
+      if (control.stripStatus && manifest) {
+        const { status: _status, ...legacy } = manifest;
+        return legacy as typeof manifest;
+      }
+      return manifest;
     },
     async composeContractAlongPath(
       position: Parameters<typeof actual.composeContractAlongPath>[0],
@@ -44,6 +53,7 @@ beforeEach(async () => {
 afterEach(async () => {
   control.failManifest = false;
   control.failCompose = false;
+  control.stripStatus = false;
   vi.restoreAllMocks();
   await rm(workspace, { recursive: true, force: true });
 });
@@ -70,6 +80,23 @@ describe("local awareness failure boundaries", () => {
     expect(warning).toHaveBeenCalledWith(
       "IdeaSpaces: Content awareness read failed: fixture manifest failure",
     );
+  });
+
+  it("names a stale protocol install instead of throwing the rendered block", async () => {
+    // Pi loads this extension from source, so node_modules can lag the pin.
+    // A pre-0.17 protocol returns a manifest with no `status`; the failure
+    // text must name the skew, not dump a healthy awareness block.
+    control.stripStatus = true;
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = await buildLocalAwareness({ position: workspace, workspace });
+
+    expect(result).toMatchObject({ root: null, stable: null });
+    expect(warning).toHaveBeenCalledTimes(1);
+    const message = warning.mock.calls[0][0] as string;
+    expect(message).toContain("IdeaSpaces: Content awareness read failed:");
+    expect(message).toContain("older than the pinned version");
+    expect(message).not.toContain("Position:");
   });
 
   it("degrades native skill discovery to an empty roster instead of throwing", async () => {

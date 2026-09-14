@@ -250,6 +250,15 @@ async function assemblePreferredContentAwareness(
       contractSource: "agreement",
     });
   }
+  if (manifest && manifest.status === undefined) {
+    // A manifest without `status` predates protocol 0.17 — the installed
+    // dependency is behind the pin. Say so instead of rendering a healthy
+    // block as the failure text.
+    throw new Error(
+      "@ideaspaces/protocol manifest has no status — installed dependency is " +
+        "older than the pinned version; run npm ci in the extension package",
+    );
+  }
   if (manifest && manifest.status !== "ok") {
     throw new Error(renderContentAwareness(manifest));
   }
