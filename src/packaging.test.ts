@@ -24,10 +24,10 @@ describe("packaging", () => {
   it("pins shared Map projection in the protocol and CLI", () => {
     expect(pkg.version).toBe("0.1.29");
     expect(pkg.dependencies?.["@ideaspaces/protocol"]).toBe(
-      "github:IdeaSpaces-xyz/ideaspace-protocol#d19f100fa652d3e51cc444b1c2e50621eb597aaa",
+      "github:IdeaSpaces-xyz/ideaspace-protocol#818cf888cf28b5f013f87956e688a8a19ff64f83",
     );
     expect(pkg.dependencies?.["@ideaspaces/cli"]).toBe(
-      "github:IdeaSpaces-xyz/cli#e120d4a2db7ee39191a73192e79db4fb87a62cfb",
+      "github:IdeaSpaces-xyz/cli#baf8751014cca13a38af213098156624ee346eb2",
     );
   });
 
