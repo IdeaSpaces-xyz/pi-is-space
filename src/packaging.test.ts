@@ -21,13 +21,13 @@ describe("packaging", () => {
     expect(devDeps).not.toContain("@ideaspaces/cli");
   });
 
-  it("pins bounded reference focus in the protocol and CLI", () => {
-    expect(pkg.version).toBe("0.1.28");
+  it("pins shared Map projection in the protocol and CLI", () => {
+    expect(pkg.version).toBe("0.1.29");
     expect(pkg.dependencies?.["@ideaspaces/protocol"]).toBe(
-      "github:IdeaSpaces-xyz/ideaspace-protocol#c8635e23b00189166439365b7e206ddfcf35d270",
+      "github:IdeaSpaces-xyz/ideaspace-protocol#818cf888cf28b5f013f87956e688a8a19ff64f83",
     );
     expect(pkg.dependencies?.["@ideaspaces/cli"]).toBe(
-      "github:IdeaSpaces-xyz/cli#290e44dfb4704caea208a2fa7d5cd5f86a357206",
+      "github:IdeaSpaces-xyz/cli#baf8751014cca13a38af213098156624ee346eb2",
     );
   });
 
