@@ -22,7 +22,7 @@ describe("packaging", () => {
   });
 
   it("pins bounded reference focus in the protocol and CLI", () => {
-    expect(pkg.version).toBe("0.1.27");
+    expect(pkg.version).toBe("0.1.28");
     expect(pkg.dependencies?.["@ideaspaces/protocol"]).toBe(
       "github:IdeaSpaces-xyz/ideaspace-protocol#c8635e23b00189166439365b7e206ddfcf35d270",
     );
