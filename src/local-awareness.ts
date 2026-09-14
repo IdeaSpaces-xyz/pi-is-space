@@ -6,14 +6,16 @@ import {
   composeContractAlongPath,
   discoverSkillEntries,
   gitState,
+  projectRootMapMembers,
   readRootHandle,
   readWorkspaceRepositories,
   renderContentAwareness,
   renderContentFocus,
+  renderRootMapMembers,
   resolveRepoRoot,
   stagedIdeaspacePaths,
   type GitState,
-  type RootHandle,
+  type RootMapMemberInput,
   type WorkspaceRepository,
 } from "@ideaspaces/protocol";
 
@@ -65,9 +67,10 @@ const STABLE_SECTIONS = [
 
 const DRIFT_SECTIONS = ["stale-docs", "direction-drift"] as const;
 
-const BARE_FOLDER_HINT =
+// Harness copy, not protocol shape: these name the CLI commands Pi exposes.
+const BARE_WORKSPACE_HINT =
   "You're at a workspace folder (no `_agent/` contract here). Navigate into a repo below (`ideaspaces navigate <repo>`), or pull one that's behind.";
-const EMPTY_FOLDER_HINT =
+const EMPTY_WORKSPACE_HINT =
   "You're at a workspace folder with no repos yet. Clone one to get started (`ideaspaces clone`).";
 
 function floorHint(
@@ -75,7 +78,7 @@ function floorHint(
   catalog: string | null,
 ): string | null {
   if (repoRoot || catalog?.startsWith("⚠")) return null;
-  return catalog ? BARE_FOLDER_HINT : EMPTY_FOLDER_HINT;
+  return catalog ? BARE_WORKSPACE_HINT : EMPTY_WORKSPACE_HINT;
 }
 
 export async function readCaptureStatus(cwd: string): Promise<CaptureStatus | null> {
@@ -296,31 +299,39 @@ function formatStateSection(status: CaptureStatus | null): string | null {
 async function formatWorkingSetSection(
   homeRoot: string,
   mounts: string[],
-): Promise<string> {
+): Promise<string | null> {
   const options = { excludeDirectories: LOCAL_WORKSPACE_EXCLUDES };
   const [home, ...mounted] = await Promise.all([
     readRootHandle(homeRoot, options),
     ...mounts.map((mount) => readRootHandle(mount, options)),
   ]);
-  const lines = [
-    "Working set:",
-    formatRootHandleLine("home", basename(homeRoot) || homeRoot, home),
+  const inputs: RootMapMemberInput[] = [
+    {
+      root: 0,
+      name: basename(homeRoot) || homeRoot,
+      summary: home.summary,
+      presentation: {
+        label: "home",
+        display: basename(homeRoot) || homeRoot,
+        details: home.directoryCount == null ? [] : [`${home.directoryCount} dirs`],
+      },
+    },
+    ...mounts.map((mount, index): RootMapMemberInput => ({
+      root: index + 1,
+      name: basename(mount) || mount,
+      summary: mounted[index]?.summary,
+      presentation: {
+        label: "mount",
+        display: mount,
+        details: mounted[index]?.directoryCount == null
+          ? []
+          : [`${mounted[index]?.directoryCount} dirs`],
+      },
+    })),
   ];
-  mounts.forEach((mount, index) => {
-    lines.push(formatRootHandleLine("mount", mount, mounted[index]));
+  return renderRootMapMembers(projectRootMapMembers(inputs), {
+    heading: "Working set:",
   });
-  return lines.join("\n");
-}
-
-function formatRootHandleLine(
-  label: string,
-  display: string,
-  handle: RootHandle,
-): string {
-  const parts = [`  ${label}: ${display}`];
-  if (handle.summary) parts.push(` — ${handle.summary}`);
-  if (handle.directoryCount != null) parts.push(` (${handle.directoryCount} dirs)`);
-  return parts.join("");
 }
 
 async function formatCatalogSection(
@@ -348,7 +359,7 @@ async function formatCatalogSection(
   const isPriority = (repository: WorkspaceRepository): boolean => {
     const root = resolve(repository.root);
     const identity = resolve(repository.git.repoRoot);
-    return identity === pov || mountSet.has(root) || mountSet.has(identity);
+    return root === pov || identity === pov || mountSet.has(root) || mountSet.has(identity);
   };
   const priority = repositories.filter(isPriority);
   const ordered = [
@@ -358,41 +369,45 @@ async function formatCatalogSection(
   const shown = ordered.slice(0, Math.max(MAX_CATALOG_REPOS, priority.length));
   const overflow = repositories.length - shown.length;
 
+  const localInputs = shown.map((repository, index): RootMapMemberInput => {
+    const root = resolve(repository.root);
+    const identity = resolve(repository.git.repoRoot);
+    const details = [formatRepoState(repository.git)];
+    if (pov && (root === pov || identity === pov)) details.push("POV");
+    if (mountSet.has(root) || mountSet.has(identity)) details.push("mounted");
+    return {
+      root: index,
+      name: basename(repository.root) || repository.root,
+      summary: repository.summary,
+      presentation: {
+        display: basename(repository.root) || repository.root,
+        details,
+      },
+    };
+  });
+
   const blocks: string[] = [];
-  if (shown.length) {
-    const lines = [
-      "Repos in scope (local):",
-      ...shown.map((repository) => formatRepositoryLine(repository, pov, mountSet)),
-    ];
-    if (overflow > 0) lines.push(`  …and ${overflow} more`);
-    blocks.push(lines.join("\n"));
-  }
-  if (pullable.length) {
+  const local = renderRootMapMembers(projectRootMapMembers(localInputs), {
+    heading: "Repos in scope (local):",
+    omittedMembers: overflow,
+  });
+  if (local) blocks.push(local);
+
+  const remote = renderRootMapMembers(
+    projectRootMapMembers(
+      pullable.map((entry): RootMapMemberInput => ({
+        name: entry.slug,
+        presentation: { details: [entry.namespace] },
+      })),
+    ),
+    { heading: "Pullable (remote — not yet local):" },
+  );
+  if (remote) {
     blocks.push(
-      [
-        "Pullable (remote — not yet local):",
-        ...pullable.map((entry) => `  ${entry.slug} (${entry.namespace})`),
-        "  → to work on one, clone it into this folder with `ideaspaces clone` (via bash).",
-      ].join("\n"),
+      `${remote}\n  → to work on one, clone it into this folder with \`ideaspaces clone\` (via bash).`,
     );
   }
   return blocks.length ? blocks.join("\n\n") : null;
-}
-
-function formatRepositoryLine(
-  repository: WorkspaceRepository,
-  pov: string | null,
-  mounts: ReadonlySet<string>,
-): string {
-  const root = resolve(repository.root);
-  const identity = resolve(repository.git.repoRoot);
-  const tags = [formatRepoState(repository.git)];
-  if (pov && identity === pov) tags.push("POV");
-  if (mounts.has(root) || mounts.has(identity)) tags.push("mounted");
-  const parts = [`  ${basename(repository.root)}`];
-  if (repository.summary) parts.push(` — ${repository.summary}`);
-  parts.push(` (${tags.join(" · ")})`);
-  return parts.join("");
 }
 
 function formatRepoState(state: GitState): string {
