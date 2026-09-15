@@ -80,6 +80,10 @@ Pi's native `read`, `edit`, `write`, and `bash` cover exact full-document eviden
 | `is_push` | Push primitive: send committed captures to the remote; refuses on uncommitted captures, and when behind — pull first. |
 | `is_auth` | Log in / out for optional remote sync. |
 
+`is_inspect` remains for this compatibility release because exact-heading section selection is not
+yet an `is_look` filter. Once that selector and its caller migration ship, the compatibility tool
+can leave the fixed roster instead of becoming a permanent second reader.
+
 ## Commands
 
 Human-facing IdeaSpaces actions are Pi-native commands:
