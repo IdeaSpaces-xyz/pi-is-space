@@ -6,6 +6,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  assembleContentAwareness,
+  CONTENT_AWARENESS_SECTIONS,
+  renderContentAwareness,
+} from "@ideaspaces/protocol";
+import {
   appendVolatileTail,
   buildLocalAwareness,
   discoverSpaceSkillPaths,
@@ -201,13 +206,24 @@ describe("local awareness", () => {
     expect(result.volatile).toContain("online (alice)");
     expect(result.volatile).not.toContain("Git:");
 
-    // Register-internal ordering: State leads the volatile register; the
-    // working set rides the stable register after orientation.
+    const manifest = await assembleContentAwareness({ position: home });
+    expect(manifest?.status).toBe("ok");
+    const protocolHead = renderContentAwareness(manifest!, { placement: "head" });
+    const protocolTail = renderContentAwareness(manifest!, {
+      placement: "tail",
+      sections: CONTENT_AWARENESS_SECTIONS.filter((section) => section !== "git"),
+    });
+    expect(result.stable!.startsWith(`${protocolHead}\n\nWorking set:`)).toBe(true);
+    expect(result.volatile!.endsWith(protocolTail)).toBe(true);
+
+    // Register-internal ordering: State leads, producer-ordered forest handles
+    // follow, and the protocol tail remains intact at the end. The working set
+    // rides the stable register after the protocol head.
     expect(result.volatile!.indexOf("State:")).toBeLessThan(
-      result.volatile!.indexOf("Since last session"),
-    );
-    expect(result.volatile!.indexOf("Since last session")).toBeLessThan(
       result.volatile!.indexOf("Repos in scope"),
+    );
+    expect(result.volatile!.indexOf("Repos in scope")).toBeLessThan(
+      result.volatile!.indexOf("Since last session"),
     );
     expect(result.stable!.indexOf("Position:")).toBeLessThan(
       result.stable!.indexOf("Working set:"),

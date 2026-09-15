@@ -12,6 +12,7 @@ import {
   renderContentAwareness,
   renderContentFocus,
   renderRootMapMembers,
+  CONTENT_AWARENESS_SECTIONS,
   resolveRepoRoot,
   stagedIdeaspacePaths,
   type GitState,
@@ -42,9 +43,9 @@ export interface LocalAwarenessResult {
    */
   stable: string | null;
   /**
-   * The volatile register: State (git), since-last-session activity, catalog
-   * (sync states + async pullable tier), and drift. Changes freely; must never
-   * enter the cached prefix — appended after the last cache breakpoint in
+   * The volatile register: local State, catalog/floor hint, then the intact
+   * protocol tail (activity and drift). Changes freely; must never enter the
+   * cached prefix — appended after the last cache breakpoint in
    * before_provider_request.
    */
   volatile: string | null;
@@ -53,19 +54,6 @@ export interface LocalAwarenessResult {
 export const LOCAL_WORKSPACE_EXCLUDES = ["backups", ".pi", ".claude"] as const;
 
 const MAX_CATALOG_REPOS = 20;
-// The cache-stable subset of the canonical sections: file-backed, changes only
-// when state genuinely changes (a capture, a navigate, a new file) — never
-// per-turn. `activity` is deliberately NOT here: since-last-session changes as
-// commits land mid-session, so it rides the volatile register.
-const STABLE_SECTIONS = [
-  "position",
-  "now",
-  "tree",
-  "contract",
-  "skills",
-] as const;
-
-const DRIFT_SECTIONS = ["stale-docs", "direction-drift"] as const;
 
 // Harness copy, not protocol shape: these name the CLI commands Pi exposes.
 const BARE_WORKSPACE_HINT =
@@ -134,19 +122,25 @@ export async function buildLocalAwareness(opts: {
     return { root: null, repoRoot: null, stable: null, volatile };
   }
 
-  const stableCore = renderContentAwareness(manifest, { sections: STABLE_SECTIONS });
-  const activity = renderContentAwareness(manifest, { sections: ["activity"] });
+  const stableCore = renderContentAwareness(manifest, { placement: "head" });
+  // Pi's richer State block replaces the protocol's compact Git line. This is
+  // one explicit omission, not a second local head/tail classification.
+  const protocolTail = renderContentAwareness(manifest, {
+    placement: "tail",
+    sections: CONTENT_AWARENESS_SECTIONS.filter((section) => section !== "git"),
+  });
   const isFloor = manifest.contractSource === null;
   const workingSet = isFloor
     ? null
     : await formatWorkingSetSection(manifest.spaceRoot, mounts);
-  const drift = renderContentAwareness(manifest, { sections: DRIFT_SECTIONS });
   const hint = isFloor ? floorHint(focusedRepoRoot, catalog) : null;
   return {
     root: manifest.spaceRoot,
     repoRoot: manifest.position.repoRoot,
     stable: joinSections([stableCore, workingSet]),
-    volatile: joinSections([state, activity, catalog, drift, hint]),
+    // Keep CLI parity around the cache boundary: local State leads, forest
+    // handles remain in producer order, and the protocol-owned tail is last.
+    volatile: joinSections([state, catalog, hint, protocolTail]),
   };
 }
 
