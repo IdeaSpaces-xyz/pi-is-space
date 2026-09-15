@@ -21,13 +21,13 @@ describe("packaging", () => {
     expect(devDeps).not.toContain("@ideaspaces/cli");
   });
 
-  it("pins shared Map projection in the protocol and CLI", () => {
-    expect(pkg.version).toBe("0.1.29");
+  it("pins placement rendering in the protocol and CLI", () => {
+    expect(pkg.version).toBe("0.1.30");
     expect(pkg.dependencies?.["@ideaspaces/protocol"]).toBe(
-      "github:IdeaSpaces-xyz/ideaspace-protocol#818cf888cf28b5f013f87956e688a8a19ff64f83",
+      "github:IdeaSpaces-xyz/ideaspace-protocol#a11a8e254a3f5e3f48bd500edf2d4f2ba4271fcd",
     );
     expect(pkg.dependencies?.["@ideaspaces/cli"]).toBe(
-      "github:IdeaSpaces-xyz/cli#baf8751014cca13a38af213098156624ee346eb2",
+      "github:IdeaSpaces-xyz/cli#c16e3229c756c5391327ee0021db36c7fbdb7bea",
     );
   });
 

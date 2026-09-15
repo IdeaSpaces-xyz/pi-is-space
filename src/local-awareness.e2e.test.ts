@@ -313,9 +313,9 @@ describe("Pi in-process local awareness", () => {
     expect(text(mounted)).not.toContain("Now:");
   });
 
-  it("pins the protocol version that supplies shared Map projection", () => {
+  it("pins the protocol version that supplies placement rendering", () => {
     expect(
       readFileSync(join(ROOT, "node_modules/@ideaspaces/protocol/VERSION"), "utf-8").trim(),
-    ).toBe("0.18.0");
+    ).toBe("0.19.0");
   });
 });
