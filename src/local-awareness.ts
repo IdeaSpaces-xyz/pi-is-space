@@ -43,9 +43,9 @@ export interface LocalAwarenessResult {
    */
   stable: string | null;
   /**
-   * The volatile register: State (git), since-last-session activity, catalog
-   * (sync states + async pullable tier), and drift. Changes freely; must never
-   * enter the cached prefix — appended after the last cache breakpoint in
+   * The volatile register: local State, catalog/floor hint, then the intact
+   * protocol tail (activity and drift). Changes freely; must never enter the
+   * cached prefix — appended after the last cache breakpoint in
    * before_provider_request.
    */
   volatile: string | null;
