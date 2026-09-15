@@ -21,13 +21,13 @@ describe("packaging", () => {
     expect(devDeps).not.toContain("@ideaspaces/cli");
   });
 
-  it("pins Content look in the protocol and CLI", () => {
-    expect(pkg.version).toBe("0.1.31");
+  it("pins the Content-tail composition in the protocol and CLI", () => {
+    expect(pkg.version).toBe("0.1.32");
     expect(pkg.dependencies?.["@ideaspaces/protocol"]).toBe(
-      "github:IdeaSpaces-xyz/ideaspace-protocol#8839de0c0e4ec0f4fd9fddda0a0e1992e1025f34",
+      "github:IdeaSpaces-xyz/ideaspace-protocol#8213e631ffdd84f035c4ce743c7aae137560195f",
     );
     expect(pkg.dependencies?.["@ideaspaces/cli"]).toBe(
-      "github:IdeaSpaces-xyz/cli#ea25480aec729cd5bef093408439ff13b0af9539",
+      "github:IdeaSpaces-xyz/cli#baa399853ebfbceddfefad86957f689857fc3797",
     );
   });
 

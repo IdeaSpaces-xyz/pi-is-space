@@ -33,6 +33,7 @@ import {
   readCaptureStatus,
   readFocusedAwareness,
   readLookAwareness,
+  withOpenChange,
   type CaptureStatus,
 } from "./local-awareness.js";
 import { SessionCaptureLedger } from "./capture-ledger.js";
@@ -1096,7 +1097,7 @@ export default function (pi: ExtensionAPI) {
   // message, and this block lands after it, outside every cached prefix.
   let warnedTailShape = false;
   pi.on("before_provider_request", async (event, ctx) => {
-    const tail = [cachedVolatile, openChangeLine(ctx)].filter(Boolean).join("\n\n");
+    const tail = withOpenChange(cachedVolatile, openChangeLine(ctx));
     if (!tail) return;
     const appended = appendVolatileTail(event.payload, `[IdeaSpaces State]\n${tail}`);
     if (!appended && !warnedTailShape) {
