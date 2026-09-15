@@ -18,6 +18,7 @@ import {
   discoverSpaceSkillPaths,
   probeTree,
   readCaptureStatus,
+  withOpenChange,
   readFocusedAwareness,
   readLookAwareness,
 } from "./local-awareness.js";
@@ -110,7 +111,7 @@ describe("local awareness", () => {
   });
 
 
-  it("matches the current CLI status + navigate awareness text", async () => {
+  it("renders the volatile register byte-identical to the CLI's status", async () => {
     const home = join(workspace, "home");
     const sibling = join(workspace, "sibling");
     const mount = join(workspace, "mount");
@@ -120,37 +121,28 @@ describe("local awareness", () => {
     await makeSpace(home, "Home focus.");
     await makeSpace(sibling, "Sibling handle.");
     await makeSpace(mount, "Mounted handle.");
+    // Something for the tail beyond State: a commit since the seen ref and a
+    // staged capture, so activity and the capture count both render.
+    git(home, ["update-ref", "refs/ideaspaces/seen", "HEAD"]);
+    await fs.writeFile(join(home, "seen.md"), "# Seen\n");
+    git(home, ["add", "seen.md"]);
+    git(home, ["commit", "-qm", "later"]);
+    await fs.writeFile(join(home, "pending.md"), "# Pending\n");
+    git(home, ["add", "pending.md"]);
 
-    const statusRun = spawnSync("node", [CLI, "--json", "status"], {
-      cwd: home,
-      encoding: "utf-8",
-    });
+    const statusRun = spawnSync(
+      "node",
+      [CLI, "--json", "status", "--workspace", workspace, "--mount", mount, "--pullable", "online:alice"],
+      { cwd: home, encoding: "utf-8" },
+    );
     expect(statusRun.status, statusRun.stderr).toBe(0);
-    const status = JSON.parse(statusRun.stdout);
-    const state = [
-      "State:",
-      `  branch: ${status.branch ?? "(detached)"}`,
-      status.ahead != null || status.behind != null
-        ? `  remote: ahead ${status.ahead ?? 0}, behind ${status.behind ?? 0}`
-        : "  remote: no upstream",
-      `  working tree: ${status.dirty ? "dirty" : "clean"}`,
-      `  captures awaiting commit: ${status.tracked_captures.length}`,
-    ].join("\n");
+    const status = JSON.parse(statusRun.stdout) as { text: string; tracked_captures: string[] };
+    expect(status.tracked_captures).toEqual(["pending.md"]);
+    expect(status.text).toContain("Since last session");
+
     const navRun = spawnSync(
       "node",
-      [
-        CLI,
-        "--json",
-        "navigate",
-        home,
-        "--workspace",
-        workspace,
-        "--no-git",
-        "--mount",
-        mount,
-        "--pullable",
-        "online:alice",
-      ],
+      [CLI, "--json", "navigate", home, "--workspace", workspace, "--no-git", "--mount", mount, "--pullable", "online:alice"],
       { cwd: home, encoding: "utf-8" },
     );
     expect(navRun.status, navRun.stderr).toBe(0);
@@ -162,15 +154,22 @@ describe("local awareness", () => {
       mounts: [mount],
       pullable: [{ slug: "online", namespace: "alice" }],
     });
-    // Split registers: the CLI's navigate text is stable sections + catalog;
-    // the catalog is volatile (async pullable, sync states), so parity holds
-    // piecewise around that boundary. State leads the volatile register.
+    // One composition on both sides: the CLI's status IS the volatile
+    // register, and the stable register is navigate's head + working set.
+    expect(local.volatile).toBe(status.text);
     const catalogIdx = nav.text.indexOf("Repos in scope (local):");
     expect(catalogIdx).toBeGreaterThan(0);
-    const navStable = nav.text.slice(0, catalogIdx).trimEnd();
-    const navCatalog = nav.text.slice(catalogIdx).trimEnd();
-    expect(local.stable).toBe(navStable);
-    expect(local.volatile).toBe(`${state}\n\n${navCatalog}`);
+    expect(local.stable).toBe(nav.text.slice(0, catalogIdx).trimEnd());
+    expect(local.volatile).not.toContain("Git: branch");
+  });
+
+  it("places the open Change line last, by the protocol's composition", () => {
+    const volatile = "State:\n  branch: main\n\nSince last session (1 changes):\n  A\tx.md";
+    const change = "Change open: chg_x (this session)";
+    expect(withOpenChange(volatile, change)).toBe(`${volatile}\n\n${change}`);
+    expect(withOpenChange(volatile, undefined)).toBe(volatile);
+    expect(withOpenChange(null, change)).toBe(change);
+    expect(withOpenChange(null, undefined)).toBe("");
   });
 
   it("keeps the stable register byte-identical across rebuilds with unchanged state", async () => {

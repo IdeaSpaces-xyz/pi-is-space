@@ -4,19 +4,19 @@ import {
   assembleContentAwareness,
   assembleContentFocus,
   assembleContentLook,
+  assembleContentState,
   composeContractAlongPath,
   discoverSkillEntries,
-  gitState,
   projectRootMapMembers,
   readRootHandle,
   readWorkspaceRepositories,
   renderContentAwareness,
   renderContentFocus,
   renderContentLook,
+  renderContentTail,
   renderRootMapMembers,
-  CONTENT_AWARENESS_SECTIONS,
   resolveRepoRoot,
-  stagedIdeaspacePaths,
+  type ContentState,
   type ContractSource,
   type GitState,
   type MapDepth,
@@ -47,10 +47,12 @@ export interface LocalAwarenessResult {
    */
   stable: string | null;
   /**
-   * The volatile register: local State, catalog/floor hint, then the intact
-   * protocol tail (activity and drift). Changes freely; must never enter the
-   * cached prefix — appended after the last cache breakpoint in
-   * before_provider_request.
+   * The volatile register: the protocol's one Content-tail composition —
+   * local State, catalog/floor hint, then the manifest tail (activity and
+   * drift). The open Change line joins it at request time, last. Changes
+   * freely; must never enter the cached prefix — appended after the last
+   * cache breakpoint in before_provider_request. Byte-identical to the CLI's
+   * `status` for the same inputs.
    */
   volatile: string | null;
 }
@@ -74,13 +76,13 @@ function floorHint(
 }
 
 export async function readCaptureStatus(cwd: string): Promise<CaptureStatus | null> {
+  const state = await readContentState(cwd);
+  return state ? captureStatus(state.git, state.captures) : null;
+}
+
+async function readContentState(cwd: string): Promise<ContentState | null> {
   const repoRoot = await resolveRepoRoot(resolve(cwd));
-  if (!repoRoot) return null;
-  const [state, captures] = await Promise.all([
-    gitState(repoRoot),
-    stagedIdeaspacePaths(repoRoot),
-  ]);
-  return captureStatus(state, captures);
+  return repoRoot ? assembleContentState(repoRoot) : null;
 }
 
 /** Compose Pi's combined awareness while keeping placement and workspace roles local. */
@@ -96,8 +98,8 @@ export async function buildLocalAwareness(opts: {
   const pullable = opts.pullable ?? [];
 
   const focusedRepoRootPromise = resolveRepoRoot(position).catch(() => null);
-  const [status, manifestRead, focusedRepoRoot, catalog] = await Promise.all([
-    readCaptureStatus(position).catch((error) => {
+  const [state, manifestRead, focusedRepoRoot, catalog] = await Promise.all([
+    readContentState(position).catch((error) => {
       console.warn(`IdeaSpaces: status read failed: ${errorMessage(error)}`);
       return null;
     }),
@@ -108,13 +110,12 @@ export async function buildLocalAwareness(opts: {
     ),
   ]);
 
-  const state = formatStateSection(status);
   if (!manifestRead.ok) {
     // Preserve the old failure boundary: if orientation itself unexpectedly
     // fails, keep any independently-read operating state instead of blanking
     // the whole awareness block. State is volatile; nothing stable resolves.
     console.warn(`IdeaSpaces: Content awareness read failed: ${errorMessage(manifestRead.error)}`);
-    return { root: null, repoRoot: null, stable: null, volatile: state };
+    return { root: null, repoRoot: null, stable: null, volatile: renderContentTail(null, { state }) || null };
   }
 
   const manifest = manifestRead.value;
@@ -122,17 +123,11 @@ export async function buildLocalAwareness(opts: {
     const hint = floorHint(focusedRepoRoot, catalog);
     // No contract resolves: everything is workspace/session state — volatile
     // by nature, and keeping the system prompt untouched is cache-optimal.
-    const volatile = joinSections([state, catalog, hint]);
+    const volatile = renderContentTail(null, { state, handles: [catalog, hint] }) || null;
     return { root: null, repoRoot: null, stable: null, volatile };
   }
 
   const stableCore = renderContentAwareness(manifest, { placement: "head" });
-  // Pi's richer State block replaces the protocol's compact Git line. This is
-  // one explicit omission, not a second local head/tail classification.
-  const protocolTail = renderContentAwareness(manifest, {
-    placement: "tail",
-    sections: CONTENT_AWARENESS_SECTIONS.filter((section) => section !== "git"),
-  });
   const isFloor = manifest.contractSource === null;
   const workingSet = isFloor
     ? null
@@ -142,10 +137,21 @@ export async function buildLocalAwareness(opts: {
     root: manifest.spaceRoot,
     repoRoot: manifest.position.repoRoot,
     stable: joinSections([stableCore, workingSet]),
-    // Keep CLI parity around the cache boundary: local State leads, forest
-    // handles remain in producer order, and the protocol-owned tail is last.
-    volatile: joinSections([state, catalog, hint, protocolTail]),
+    // The protocol owns the tail composition: State supersedes the compact Git
+    // line, forest handles keep producer order, the manifest tail is last. The
+    // same call renders the CLI's `status`, so the two cannot drift.
+    volatile: renderContentTail(manifest, { state, handles: [catalog, hint] }) || null,
   };
+}
+
+/**
+ * The per-request tail: the cached volatile register plus the open Change
+ * line, placed by the protocol's composition (Change last) rather than by a
+ * local join, so the request payload matches `renderContentTail` with the
+ * same Change input.
+ */
+export function withOpenChange(volatile: string | null, change: string | undefined): string {
+  return renderContentTail(null, { handles: [volatile], change });
 }
 
 /**
@@ -305,22 +311,6 @@ function captureStatus(state: GitState, captures: string[]): CaptureStatus {
     untracked_in_tracked_dirs: state.untrackedInTrackedDirs,
     tracked_captures: captures,
   };
-}
-
-function formatStateSection(status: CaptureStatus | null): string | null {
-  if (!status) return null;
-  const lines = ["State:", `  branch: ${status.branch ?? "(detached)"}`];
-  if (status.ahead != null || status.behind != null) {
-    lines.push(`  remote: ahead ${status.ahead ?? 0}, behind ${status.behind ?? 0}`);
-  } else {
-    lines.push("  remote: no upstream");
-  }
-  lines.push(`  working tree: ${status.dirty ? "dirty" : "clean"}`);
-  lines.push(`  captures awaiting commit: ${status.tracked_captures.length}`);
-  if (status.untracked_in_tracked_dirs.length) {
-    lines.push(`  untracked knowledge files: ${status.untracked_in_tracked_dirs.length}`);
-  }
-  return lines.join("\n");
 }
 
 async function formatWorkingSetSection(
