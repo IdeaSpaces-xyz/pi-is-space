@@ -81,8 +81,10 @@ Pi's native `read`, `edit`, `write`, and `bash` cover exact full-document eviden
 | `is_auth` | Log in / out for optional remote sync. |
 
 `is_inspect` remains for this compatibility release because exact-heading section selection is not
-yet an `is_look` filter. Once that selector and its caller migration ship, the compatibility tool
-can leave the fixed roster instead of becoming a permanent second reader.
+yet an `is_look` filter. `is_look` paths resolve from the selected home or mounted root;
+compatibility `is_inspect` paths still resolve from its explicit `cwd` or the session cwd. Once the
+selector and caller migration ship, the compatibility tool can leave the fixed roster instead of
+becoming a permanent second reader.
 
 ## Commands
 
