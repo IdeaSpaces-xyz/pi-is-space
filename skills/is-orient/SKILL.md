@@ -5,7 +5,7 @@ description: >
   when the user asks "where are we?", "what are we doing?", "what changed?",
   or when context feels unclear. Uses the injected awareness map as the first
   bounded overview; does not modify files.
-allowed-tools: "is_navigate is_inspect is_status read bash"
+allowed-tools: "is_navigate is_look is_inspect is_status read bash"
 ---
 
 # Orient
@@ -27,10 +27,11 @@ Stop as soon as the user's question is answered:
 ## Deepen only when needed
 
 1. Use `is_navigate` when another position needs bounded reference focus or the map needs a tree probe. Navigation appends history context without changing the session's authority head; it does not justify loading document bodies.
-2. Use `is_status` when capture or git state materially affects the answer.
-3. For change questions, inspect only the relevant `git status` or short recent history.
-4. Use `is_inspect` only when one document needs deeper attention: start with its summary when the map does not already represent it, then request an outline before one exact section. Do not cascade through links.
-5. Use native `read` only when exact full-document or implementation evidence is required, such as verifying whether documented work actually shipped.
+2. Use `is_look` to deepen one target already identified by awareness or navigation. Start at `summary` for meaning or `children` for Note headings/directory handles; request `surface` or `full` only when body evidence is needed.
+3. Use `is_status` when capture or git state materially affects the answer.
+4. For change questions, inspect only the relevant `git status` or short recent history.
+5. Keep `is_inspect` as the compatibility path for an exact named Markdown section while surfaces converge on `is_look`.
+6. Use native `read` only when exact full-document or implementation evidence exceeds the bounded tool result, such as verifying whether documented work actually shipped.
 
 Answer with the active purpose, current work, relevant pending changes, and drift signals needed to make the next action obvious. Keep orientation compact rather than turning it into an audit.
 

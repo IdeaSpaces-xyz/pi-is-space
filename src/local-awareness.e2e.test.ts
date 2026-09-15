@@ -270,6 +270,16 @@ describe("Pi in-process local awareness", () => {
     expect(focusedText).not.toContain("ACME_GUIDE_BODY_SENTINEL");
     expect(focusedText).not.toContain("ACME_SKILL_BODY_SENTINEL");
 
+    const looked = await call("is_look", {
+      path: "acme-space/README.md",
+      depth: "full",
+    });
+    expect(text(looked)).toContain("Look:\n  position: README.md");
+    expect(text(looked)).toContain("depth: full");
+    expect(text(looked)).toContain("ACME_README_BODY_SENTINEL");
+    expect(text(looked)).toContain("contract role: reference — read, never composed");
+    expect(looked.details?.contract).toBe("foundation");
+
     const probed = text(await call("is_navigate", { path: "acme-space", depth: 3 }));
     expect(probed).toContain("One-shot tree probe:");
     expect(probed).toContain("    archive/ (1)");
@@ -295,7 +305,7 @@ describe("Pi in-process local awareness", () => {
     expect(text(siblingFocus)).not.toContain("Now:");
 
     // The one permitted CLI call is the cached remote catalog fetch. Local
-    // status/navigate/inspect reads would hit the fake CLI's exit-99 branch.
+    // status/navigate/look/inspect reads would hit the fake CLI's exit-99 branch.
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(existsSync(cliLog)).toBe(true);
     const calls = readFileSync(cliLog, "utf-8").trim().split("\n").filter(Boolean);
@@ -303,7 +313,7 @@ describe("Pi in-process local awareness", () => {
     expect(calls.every((line) => line.split(/\s+/).includes("catalog"))).toBe(true);
   }, 10_000);
 
-  it("seeds mounts from IS_MOUNTS at load — navigable without is_mount", async () => {
+  it("seeds mounts from IS_MOUNTS at load — navigable and readable without is_mount", async () => {
     // No is_mount call here: `seeded` was mounted purely by the IS_MOUNTS env at
     // extension load, so the host owns the durable set and re-seeds each turn.
     const mounted = await call("is_navigate", { root: "seeded", path: "." });
@@ -311,11 +321,19 @@ describe("Pi in-process local awareness", () => {
     expect(text(mounted)).toContain("Focus:");
     expect(text(mounted)).toContain("now — Seeded awareness.");
     expect(text(mounted)).not.toContain("Now:");
+
+    const looked = await call("is_look", {
+      root: "seeded",
+      path: "README.md",
+      depth: "summary",
+    });
+    expect(text(looked)).toContain("Look:\n  position: README.md");
+    expect(text(looked)).toContain("contract role: reference — read, never composed");
   });
 
-  it("pins the protocol version that supplies placement rendering", () => {
+  it("pins the protocol version that supplies Content look", () => {
     expect(
       readFileSync(join(ROOT, "node_modules/@ideaspaces/protocol/VERSION"), "utf-8").trim(),
-    ).toBe("0.19.0");
+    ).toBe("0.20.0");
   });
 });

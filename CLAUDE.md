@@ -22,7 +22,8 @@ Agent (Pi) → pi-is-space → protocol (local reads + explicit local effects)
 IdeaSpaces-aware primitives:
 
 - `is_navigate` — read a home or mounted position as bounded history reference without changing authority
-- `is_inspect` — deepen into one local Markdown file by summary, outline, or exact section without a full-body default
+- `is_look` — deepen exactly one local Note or directory at a canonical Map rung beneath its reference-only frame
+- `is_inspect` — compatibility inspection of one Markdown file by summary, outline, or exact section
 - `is_mount` / `is_unmount` — manage the conversation's read-only working set without changing authority
 - `is_status` — inspect capture/git state and full file revision, with compatibility `sha` for safe updates
 - `is_write` — in-process capture primitive for frontmatter-aware Note writes; stages, session-tracks, and returns `sha`

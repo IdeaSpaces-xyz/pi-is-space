@@ -21,13 +21,13 @@ describe("packaging", () => {
     expect(devDeps).not.toContain("@ideaspaces/cli");
   });
 
-  it("pins placement rendering in the protocol and CLI", () => {
-    expect(pkg.version).toBe("0.1.30");
+  it("pins Content look in the protocol and CLI", () => {
+    expect(pkg.version).toBe("0.1.31");
     expect(pkg.dependencies?.["@ideaspaces/protocol"]).toBe(
-      "github:IdeaSpaces-xyz/ideaspace-protocol#a11a8e254a3f5e3f48bd500edf2d4f2ba4271fcd",
+      "github:IdeaSpaces-xyz/ideaspace-protocol#8839de0c0e4ec0f4fd9fddda0a0e1992e1025f34",
     );
     expect(pkg.dependencies?.["@ideaspaces/cli"]).toBe(
-      "github:IdeaSpaces-xyz/cli#c16e3229c756c5391327ee0021db36c7fbdb7bea",
+      "github:IdeaSpaces-xyz/cli#ea25480aec729cd5bef093408439ff13b0af9539",
     );
   });
 
@@ -55,8 +55,9 @@ describe("packaging", () => {
     expect(skill).toContain("Treat that map as the first disclosure rung, not as a list of files to reload.");
     expect(skill).toContain("Do not reread contract, current-state, or README files whose summaries are represented in awareness.");
     expect(skill).toContain("Do not follow links during basic orientation.");
-    expect(skill).toContain("then request an outline before one exact section");
-    expect(skill).toContain("Use native `read` only when exact full-document or implementation evidence is required");
+    expect(skill).toContain("Use `is_look` to deepen one target already identified by awareness or navigation");
+    expect(skill).toContain("Keep `is_inspect` as the compatibility path for an exact named Markdown section");
+    expect(skill).toContain("Use native `read` only when exact full-document or implementation evidence exceeds the bounded tool result");
     expect(skill).not.toContain("Read by position, not search");
   });
 });
