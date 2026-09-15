@@ -69,7 +69,8 @@ Pi's native `read`, `edit`, `write`, and `bash` cover exact full-document eviden
 | Tool | What |
 |---|---|
 | `is_navigate` | Read a home or mounted position as bounded history reference without changing authority. |
-| `is_inspect` | Inspect one local Markdown file by summary, ATX outline, or exact section; never defaults to the full body. |
+| `is_look` | Read one local Note or directory at `name`, `summary`, `surface`, `children`, or `full` beneath its reference-only frame. |
+| `is_inspect` | Compatibility inspection of one Markdown file by summary, ATX outline, or exact section. |
 | `is_mount` / `is_unmount` | Add or remove read-only repositories from the conversation's working set. |
 | `is_status` | Inspect git/capture state, or return a file's full revision and compatibility `sha` for safe Note updates. |
 | `is_write` | Capture primitive: create/update a markdown Note with Layer 1 frontmatter, stage it in git, record its session revision, and return a content `sha`. Normally reached through the `is-capture` skill. |
@@ -106,7 +107,7 @@ On session start, the extension builds local awareness in-process from `@ideaspa
 
 ## CLI
 
-The package still depends on `@ideaspaces/cli` for auth, sync, publish/setup, account-free local Fork and maintained source updates, recipient-shaped Share, direct Inbox messages, remote catalog discovery, and explicit full-depth local Map derivation. It resolves the CLI for those calls and exposes the path to skills as `$IS_CLI_PATH` when available. Fork/update, Share, Inbox, and derived Map enumeration remain CLI-backed flows rather than duplicate native tools. Local path status, Markdown write, exact-path commit, Change minting, bounded navigation, inspection, mounted orientation, and capture nudges execute in-process; remote-catalog refresh remains a best-effort platform call.
+The package still depends on `@ideaspaces/cli` for auth, sync, publish/setup, account-free local Fork and maintained source updates, recipient-shaped Share, direct Inbox messages, remote catalog discovery, and explicit full-depth local Map derivation. It resolves the CLI for those calls and exposes the path to skills as `$IS_CLI_PATH` when available. Fork/update, Share, Inbox, and derived Map enumeration remain CLI-backed flows rather than duplicate native tools. Local path status, Markdown write, exact-path commit, Change minting, bounded navigation, rung-selective look, compatibility inspection, mounted orientation, and capture nudges execute in-process; remote-catalog refresh remains a best-effort platform call.
 
 A host that drives pi one process per turn (e.g. the desktop) owns the conversation's durable working set and passes it as `$IS_MOUNTS` (comma-separated absolute paths) on the inherited env; at load the extension seeds its mounts from it, so a mount survives across turns without the agent re-running `is_mount`.
 

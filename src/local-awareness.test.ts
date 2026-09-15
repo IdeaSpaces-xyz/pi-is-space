@@ -7,8 +7,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   assembleContentAwareness,
+  assembleContentLook,
   CONTENT_AWARENESS_SECTIONS,
   renderContentAwareness,
+  renderContentLook,
 } from "@ideaspaces/protocol";
 import {
   appendVolatileTail,
@@ -17,6 +19,7 @@ import {
   probeTree,
   readCaptureStatus,
   readFocusedAwareness,
+  readLookAwareness,
 } from "./local-awareness.js";
 
 const CLI = join(process.cwd(), "node_modules/@ideaspaces/cli/bundle/ideaspaces.js");
@@ -61,6 +64,33 @@ async function makeSpace(root: string, summary: string): Promise<void> {
 }
 
 describe("local awareness", () => {
+  it("renders Content look byte-identically without changing ambient authority", async () => {
+    const home = join(workspace, "home");
+    await makeSpace(home, "look test");
+    await fs.mkdir(join(home, "notes"), { recursive: true });
+    const note = join(home, "notes", "one.md");
+    await fs.writeFile(
+      note,
+      "---\nname: One\nsummary: One summary.\n---\n# One\n\n## Evidence\n",
+    );
+
+    const ambient = await assembleContentAwareness({ position: home, lastSha: null });
+    const before = JSON.stringify(ambient);
+    const looked = await readLookAwareness(note, "children");
+    const protocol = await assembleContentLook({
+      position: note,
+      depth: "children",
+      contractSource: "foundation",
+    });
+
+    expect(protocol?.status).toBe("ok");
+    if (!protocol || protocol.status !== "ok") return;
+    expect(looked.text).toBe(renderContentLook(protocol));
+    expect(looked.text).toContain("contract role: reference — read, never composed");
+    expect(looked.text).toContain("## Evidence");
+    expect(JSON.stringify(ambient)).toBe(before);
+  });
+
   it("probeTree renders a one-shot outline: handles at level 1, names below", async () => {
     const home = join(workspace, "home");
     await makeSpace(home, "probe test");
