@@ -192,7 +192,11 @@ function formatMarkdownInspection(path: string, inspection: MarkdownInspection):
   return `Section heading not found: ${inspection.query.heading}.${matches}`;
 }
 
-function truncateInspection(text: string, path: string): { text: string; truncation: TruncationResult } {
+function truncateLocalRead(
+  text: string,
+  label: "Inspection" | "Look",
+  repair: string,
+): { text: string; truncation: TruncationResult } {
   const truncation = truncateHead(text, {
     maxLines: DEFAULT_MAX_LINES,
     maxBytes: DEFAULT_MAX_BYTES,
@@ -200,26 +204,27 @@ function truncateInspection(text: string, path: string): { text: string; truncat
   if (!truncation.truncated) return { text: truncation.content, truncation };
 
   const notice = [
-    `Inspection truncated: showing ${truncation.outputLines} of ${truncation.totalLines} lines`,
+    `${label} truncated: showing ${truncation.outputLines} of ${truncation.totalLines} lines`,
     `(${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}).`,
-    `Use native read with offsets on ${path} only when exact evidence requires deeper content.`,
+    repair,
   ].join(" ");
   return { text: `${truncation.content}\n\n[${notice}]`, truncation };
 }
 
-function truncateLook(text: string, path: string): { text: string; truncation: TruncationResult } {
-  const truncation = truncateHead(text, {
-    maxLines: DEFAULT_MAX_LINES,
-    maxBytes: DEFAULT_MAX_BYTES,
-  });
-  if (!truncation.truncated) return { text: truncation.content, truncation };
+function truncateInspection(text: string, path: string): { text: string; truncation: TruncationResult } {
+  return truncateLocalRead(
+    text,
+    "Inspection",
+    `Use native read with offsets on ${path} only when exact evidence requires deeper content.`,
+  );
+}
 
-  const notice = [
-    `Look truncated: showing ${truncation.outputLines} of ${truncation.totalLines} lines`,
-    `(${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}).`,
+function truncateLook(text: string, path: string): { text: string; truncation: TruncationResult } {
+  return truncateLocalRead(
+    text,
+    "Look",
     `Request a shallower depth or use native read with offsets on ${path} for exact evidence.`,
-  ].join(" ");
-  return { text: `${truncation.content}\n\n[${notice}]`, truncation };
+  );
 }
 
 function changeId(value: unknown, source: string): string {
@@ -1601,7 +1606,7 @@ export default function (pi: ExtensionAPI) {
         details: {
           path: target,
           depth: params.depth ?? "summary",
-          contract: params.contract ?? "preferred",
+          contract: looked.contractSource,
           root: looked.root,
           truncation,
         },

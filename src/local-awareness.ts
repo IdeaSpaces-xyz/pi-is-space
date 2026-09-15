@@ -175,7 +175,11 @@ export async function readLookAwareness(
   position: string,
   depth: MapDepth = "summary",
   contractSource?: ContractSource,
-): Promise<{ root: string | null; text: string | null }> {
+): Promise<{
+  root: string | null;
+  text: string | null;
+  contractSource: ContractSource | null;
+}> {
   const request = {
     position: resolve(position),
     depth,
@@ -185,10 +189,14 @@ export async function readLookAwareness(
   if (looked?.status === "contract_choice_required" && !contractSource) {
     looked = await assembleContentLook({ ...request, contractSource: "agreement" });
   }
-  if (!looked) return { root: null, text: null };
+  if (!looked) return { root: null, text: null, contractSource: null };
   const rendered = renderContentLook(looked);
   if (looked.status !== "ok") throw new Error(rendered);
-  return { root: looked.reference.spaceRoot, text: rendered };
+  return {
+    root: looked.reference.spaceRoot,
+    text: rendered,
+    contractSource: looked.reference.contractSource,
+  };
 }
 
 /** Render a Content position as history reference without importing its contract as authority. */

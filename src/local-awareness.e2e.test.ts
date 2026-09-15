@@ -278,6 +278,7 @@ describe("Pi in-process local awareness", () => {
     expect(text(looked)).toContain("depth: full");
     expect(text(looked)).toContain("ACME_README_BODY_SENTINEL");
     expect(text(looked)).toContain("contract role: reference — read, never composed");
+    expect(looked.details?.contract).toBe("foundation");
 
     const probed = text(await call("is_navigate", { path: "acme-space", depth: 3 }));
     expect(probed).toContain("One-shot tree probe:");
