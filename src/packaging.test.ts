@@ -27,7 +27,7 @@ describe("packaging", () => {
       "github:IdeaSpaces-xyz/ideaspace-protocol#8839de0c0e4ec0f4fd9fddda0a0e1992e1025f34",
     );
     expect(pkg.dependencies?.["@ideaspaces/cli"]).toBe(
-      "github:IdeaSpaces-xyz/cli#db3f9b470b796a871e965ac7992d41676999061a",
+      "github:IdeaSpaces-xyz/cli#ea25480aec729cd5bef093408439ff13b0af9539",
     );
   });
 
