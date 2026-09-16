@@ -23,6 +23,7 @@ const EXPECTED_PI_TOOL_NAMES = [
   "is_commit",
   "is_change_open",
   "is_change_close",
+  "is_release",
   "is_pull",
   "is_push",
 ] as const;

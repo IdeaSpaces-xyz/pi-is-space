@@ -22,7 +22,7 @@ describe("packaging", () => {
   });
 
   it("pins the Content-tail composition in the protocol and CLI", () => {
-    expect(pkg.version).toBe("0.1.32");
+    expect(pkg.version).toBe("0.1.33");
     expect(pkg.dependencies?.["@ideaspaces/protocol"]).toBe(
       "github:IdeaSpaces-xyz/ideaspace-protocol#8213e631ffdd84f035c4ce743c7aae137560195f",
     );
