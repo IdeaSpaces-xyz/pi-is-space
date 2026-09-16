@@ -81,6 +81,11 @@ export async function prepareRelease(input: {
   const position = await toPortableRepoPath(input.path, repoRoot, input.cwd).catch(() => null);
   if (!position) return { ok: false, text: `Release refused: ${input.path} is outside the repository root.` };
 
+  // One Note per release: a Note has a blob sha the Map can name; a directory
+  // would need a tree comparison this check does not make.
+  if (!position.endsWith(".md")) {
+    return { ok: false, text: `Release refused: ${position} is not a Markdown Note. Release a directory's Notes one at a time.` };
+  }
   const revision = await pathRevision(
     repoRoot,
     position,
@@ -113,34 +118,38 @@ export async function prepareRelease(input: {
   };
 }
 
-/** True for a compaction entry that carried a release record — the boundary that consumed the list. */
-function recordedReleases(entry: BranchEntry): boolean {
+const keyOf = (item: Pick<ReleaseItem, "repoRoot" | "position">) => `${item.repoRoot}\0${item.position}`;
+
+/** The items a compaction entry recorded as released, if it carried a record. */
+function recordedReleases(entry: BranchEntry): ReleaseItem[] {
   const details = entry.details;
-  return entry.type === "compaction" && !!details && typeof details === "object" && RELEASE_ENTRY in details;
+  if (entry.type !== "compaction" || !details || typeof details !== "object") return [];
+  const recorded = (details as Record<string, unknown>)[RELEASE_ENTRY];
+  return Array.isArray(recorded) ? (recorded as ReleaseItem[]) : [];
 }
 
 /**
- * The closure list: `is_release` entries on the branch since the last
- * compaction that recorded releases, latest per position, in first-release
- * order. A compaction that carried no record — Pi's default, or a boundary
- * where the record could not be joined — consumes nothing: the list waits.
+ * The closure list: `is_release` entries on the branch, latest per position,
+ * in first-release order, minus every item a later compaction recorded as
+ * released. Consumption is by item, not by boundary: a compaction that
+ * carried no record (Pi's default, or a boundary where the record could not
+ * be joined) consumes nothing, and an item a record withheld as dirty stays
+ * pending for the next boundary.
  */
 export function collectReleases(entries: readonly BranchEntry[]): ReleaseItem[] {
-  let start = 0;
-  entries.forEach((entry, index) => {
-    if (recordedReleases(entry)) start = index + 1;
-  });
-  const byPosition = new Map<string, ReleaseItem>();
-  for (const entry of entries.slice(start)) {
+  const pending = new Map<string, ReleaseItem>();
+  for (const entry of entries) {
+    for (const recorded of recordedReleases(entry)) {
+      if (recorded?.position && recorded.repoRoot) pending.delete(keyOf(recorded));
+    }
     if (entry.type !== "custom" || entry.customType !== RELEASE_ENTRY) continue;
     const item = entry.data as ReleaseItem | undefined;
     if (!item?.position || !item.repoRoot) continue;
-    const key = `${item.repoRoot}\0${item.position}`;
     // Latest wins but keeps the first release's place in the order.
-    const previous = byPosition.get(key);
-    byPosition.set(key, previous ? { ...item, released_at: previous.released_at } : item);
+    const previous = pending.get(keyOf(item));
+    pending.set(keyOf(item), previous ? { ...item, released_at: previous.released_at } : item);
   }
-  return [...byPosition.values()].sort((a, b) => a.released_at - b.released_at);
+  return [...pending.values()].sort((a, b) => a.released_at - b.released_at);
 }
 
 export interface VerifiedReleases {

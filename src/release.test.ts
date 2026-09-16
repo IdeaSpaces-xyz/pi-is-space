@@ -86,10 +86,11 @@ describe("collectReleases", () => {
     disclosure: { name: "A" }, revision: "1", commit: "c", released_at: 1,
   };
 
-  it("takes entries since the last compaction, latest per position, in first-release order", () => {
+  it("drops recorded items, keeps the latest per position, in first-release order", () => {
+    const old = { ...base, position: "old.md", released_at: 0 };
     const entries: BranchEntry[] = [
-      entry({ ...base, position: "old.md", released_at: 0 }),
-      { type: "compaction", details: { [RELEASE_ENTRY]: [] } },
+      entry(old),
+      { type: "compaction", details: { [RELEASE_ENTRY]: [old] } },
       entry(base),
       entry({ ...base, position: "b.md", released_at: 2 }),
       { type: "message" },
@@ -102,14 +103,20 @@ describe("collectReleases", () => {
     expect(collectReleases([{ type: "message" }])).toEqual([]);
   });
 
-  it("is consumed only by a compaction that carried the record", () => {
+  it("is consumed item by item, only by a compaction that recorded the item", () => {
+    const b = { ...base, position: "b.md", released_at: 2 };
     const entries: BranchEntry[] = [
       entry(base),
+      entry(b),
       { type: "compaction" }, // Pi's default, or a boundary with no model: no record
       { type: "compaction", details: { other: true } },
     ];
-    expect(collectReleases(entries).map((i) => i.position)).toEqual(["a.md"]);
-    expect(collectReleases([...entries, { type: "compaction", details: { [RELEASE_ENTRY]: [base] } }])).toEqual([]);
+    expect(collectReleases(entries).map((i) => i.position)).toEqual(["a.md", "b.md"]);
+    // A record that released a.md but withheld b.md as dirty leaves b.md pending.
+    const recorded = [...entries, { type: "compaction", details: { [RELEASE_ENTRY]: [base] } }];
+    expect(collectReleases(recorded).map((i) => i.position)).toEqual(["b.md"]);
+    // Released again after the record: pending again.
+    expect(collectReleases([...recorded, { type: "compaction", details: { [RELEASE_ENTRY]: [b] } }, entry(base)]).map((i) => i.position)).toEqual(["a.md"]);
   });
 });
 
@@ -146,6 +153,24 @@ describe("planCompaction", () => {
     expect(threshold.ready).toEqual([]);
     expect(threshold.dirty.map((d) => d.position)).toEqual(["notes/decision.md"]);
     expect(threshold.record).toContain("Not released — content differs from HEAD, capture it first:");
+  });
+
+  it("keeps a dirty item pending across an unattended boundary", async () => {
+    await fs.writeFile(join(root, "notes", "decision.md"), "# Decision\n\nEdited after release.\n");
+    const entries: BranchEntry[] = [entry({ ...item, repoRoot: root })];
+    const first = await planCompaction("threshold", entries);
+    if (first.kind !== "record") throw new Error("expected a record");
+    // The boundary happened: the record carried only what was ready.
+    const afterBoundary = [...entries, { type: "compaction", details: { [RELEASE_ENTRY]: first.ready } }];
+    expect(collectReleases(afterBoundary).map((i) => i.position)).toEqual(["notes/decision.md"]);
+    // Captured since: the next boundary releases it.
+    git(["commit", "-qam", "capture the edit"]);
+    const second = await planCompaction("threshold", afterBoundary);
+    expect(second.kind === "record" && second.ready.map((i) => i.position)).toEqual(["notes/decision.md"]);
+  });
+
+  it("releases Notes only", async () => {
+    expect(await prepareRelease({ path: "notes", cwd: root })).toMatchObject({ ok: false, text: expect.stringContaining("Release a directory's Notes one at a time") });
   });
 
   it("verifies through an injected revision reader", async () => {

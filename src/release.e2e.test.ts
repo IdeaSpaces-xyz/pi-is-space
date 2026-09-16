@@ -21,7 +21,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { RELEASE_ENTRY, type ReleaseItem } from "./release.js";
+import { collectReleases, RELEASE_ENTRY, type ReleaseItem } from "./release.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const T = 30_000;
@@ -181,11 +181,24 @@ describe("release through the real runtime", () => {
     expect(manual).toEqual({ cancel: true });
     expect(releases()).toHaveLength(1);
 
-    // Clean again: without a model in this context the hook cannot join Pi's
-    // summary, so it leaves compaction to Pi rather than record half a thing.
+    // An unattended boundary while it is still dirty never stops; without a
+    // model in this context the hook cannot join Pi's summary either way, so
+    // it leaves compaction to Pi. Either way the entry is untouched.
+    const dirtyThreshold = await runner.emit(compactEvent("threshold"));
+    expect(dirtyThreshold).toBeUndefined();
+    expect(releases()).toHaveLength(1);
+
     git(["checkout", "--", "notes/decision.md"]);
     const threshold = await runner.emit(compactEvent("threshold"));
     expect(threshold).toBeUndefined();
     expect(releases()).toHaveLength(1);
+  }, T);
+
+  test("a compaction that recorded the item consumes it; one that withheld it does not", async () => {
+    const [item] = releases();
+    const recorded = { type: "compaction", details: { [RELEASE_ENTRY]: [item] } };
+    const withheld = { type: "compaction", details: { [RELEASE_ENTRY]: [] } };
+    expect(collectReleases([...sessionManager.getBranch(), withheld]).map((i) => i.position)).toEqual(["notes/decision.md"]);
+    expect(collectReleases([...sessionManager.getBranch(), recorded])).toEqual([]);
   }, T);
 });

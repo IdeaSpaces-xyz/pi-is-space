@@ -2060,14 +2060,14 @@ export default function (pi: ExtensionAPI) {
     name: "is_release",
     label: "IS Release",
     description:
-      "Release one captured item from the active window: it closes down the Map ladder to name or summary at the next compaction, its raw turns stay in the session log, and is_look re-reads it in full at any time. Refuses an item whose content differs from HEAD — capture it first (is_write, is_commit). Releasing is an agreement with the person: propose, then release.",
+      "Release one captured Note from the active window: it closes down the Map ladder to name or summary at the next compaction, its raw turns stay in the session log, and is_look re-reads it in full at any time. Refuses a Note whose content differs from HEAD — capture it first (is_write, is_commit). One Note per call; releasing is an agreement with the person: propose, then release.",
     promptSnippet: "Release a captured item from the active window at the next compaction",
     promptGuidelines: [
       "Propose releases at capture seams — after is_commit lands the understanding a raw turn or file was holding — and release only what the person agrees to.",
       "A release is window management, never file removal: nothing leaves git, and is_look brings any released item back.",
     ],
     parameters: Type.Object({
-      path: Type.String({ description: "Repository path of the Note or directory to release" }),
+      path: Type.String({ description: "Repository path of the Markdown Note to release" }),
       to: Type.Optional(
         StringEnum(["name", "summary"] as const, {
           description: "The rung the item closes to at compaction (default summary)",
