@@ -159,6 +159,25 @@ function compactEvent(reason: "manual" | "threshold") {
   } as unknown as Parameters<ExtensionRunner["emit"]>[0];
 }
 
+/** The provider-facing roster: names and serialized schemas, in registration order. */
+function rosterBytes(): string {
+  return JSON.stringify([...tools.entries()].map(([name, t]) => [name, (t.definition as unknown as { parameters: unknown }).parameters]));
+}
+
+describe("the roster is fixed at session start", () => {
+  test("rare verbs leave the roster byte-identical", async () => {
+    const before = rosterBytes();
+    expect(tools.size).toBe(14);
+    // Rare verbs: a Change opened and closed, a status read, a release refused.
+    expect((await call("is_change_open", { handle: "roster canary" })).error).toBeUndefined();
+    expect((await call("is_status", {})).error).toBeUndefined();
+    expect((await call("is_release", { path: "notes/none.md" })).error).toContain("does not exist");
+    expect((await call("is_change_close", {})).error).toBeUndefined();
+    expect(rosterBytes()).toBe(before);
+    expect(tools.size).toBe(14);
+  }, T);
+});
+
 describe("release through the real runtime", () => {
   test("is_release records a committed item with its sha and refuses a modified one", async () => {
     const blob = git(["rev-parse", "HEAD:notes/decision.md"]);

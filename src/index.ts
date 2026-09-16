@@ -39,6 +39,7 @@ import {
 } from "./local-awareness.js";
 import { SessionCaptureLedger } from "./capture-ledger.js";
 import { planCompaction, prepareRelease, RELEASE_ENTRY } from "./release.js";
+import { frozenRoster } from "./tool-roster.js";
 import { localEffectCapabilities } from "./local-effects-adapter.js";
 import {
   runLocalCommit,
@@ -661,6 +662,9 @@ async function shouldNudgeKnowledgeWrite(
 }
 
 export default function (pi: ExtensionAPI) {
+  // Every tool joins here, at load, with a sorted schema; the roster is sealed
+  // at the end of registration and nothing joins or leaves afterwards.
+  const roster = frozenRoster(pi);
   let cachedStable: string | null = null;
   let cachedVolatile: string | null = null;
   let cachedRoot: string | null = null;
@@ -1579,7 +1583,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  roster.register({
     name: "is_look",
     label: "IS Look",
     description:
@@ -1664,7 +1668,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  roster.register({
     name: "is_navigate",
     label: "IS Navigate",
     description:
@@ -1725,7 +1729,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  roster.register({
     name: "is_inspect",
     label: "IS Inspect",
     description:
@@ -1808,7 +1812,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  roster.register({
     name: "is_mount",
     label: "IS Mount",
     description:
@@ -1851,7 +1855,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  roster.register({
     name: "is_unmount",
     label: "IS Unmount",
     description:
@@ -1877,7 +1881,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  roster.register({
     name: "is_auth",
     label: "IS Auth",
     description:
@@ -1912,7 +1916,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  roster.register({
     name: "is_write",
     label: "IS Write",
     description:
@@ -1965,7 +1969,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  roster.register({
     name: "is_status",
     label: "IS Status",
     description:
@@ -2017,7 +2021,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  roster.register({
     name: "is_commit",
     label: "IS Commit",
     description:
@@ -2056,7 +2060,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  roster.register({
     name: "is_release",
     label: "IS Release",
     description:
@@ -2101,7 +2105,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  roster.register({
     name: "is_change_open",
     label: "IS Change Open",
     description:
@@ -2137,7 +2141,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  roster.register({
     name: "is_change_close",
     label: "IS Change Close",
     description:
@@ -2172,7 +2176,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  roster.register({
     name: "is_pull",
     label: "IS Pull",
     description:
@@ -2201,7 +2205,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  roster.register({
     name: "is_push",
     label: "IS Push",
     description:
@@ -2227,4 +2231,6 @@ export default function (pi: ExtensionAPI) {
       return result;
     },
   });
+
+  roster.seal();
 }
