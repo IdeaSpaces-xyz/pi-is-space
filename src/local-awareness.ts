@@ -176,6 +176,23 @@ export function appendVolatileTail(payload: unknown, text: string): boolean {
   return false;
 }
 
+/**
+ * Pi's one frame policy for a Content look: the protocol stays neutral when
+ * both entrypoints resolve; this habitat prefers Agreement unless told otherwise.
+ */
+export async function lookPreferringAgreement(
+  position: string,
+  depth: MapDepth,
+  contractSource?: ContractSource,
+): Promise<Awaited<ReturnType<typeof assembleContentLook>>> {
+  const request = { position, depth, ...(contractSource ? { contractSource } : {}) };
+  const looked = await assembleContentLook(request);
+  if (looked?.status === "contract_choice_required" && !contractSource) {
+    return assembleContentLook({ ...request, contractSource: "agreement" });
+  }
+  return looked;
+}
+
 /** Render one Content target at a canonical rung without importing its contract as authority. */
 export async function readLookAwareness(
   position: string,
@@ -186,15 +203,7 @@ export async function readLookAwareness(
   text: string | null;
   contractSource: ContractSource | null;
 }> {
-  const request = {
-    position: resolve(position),
-    depth,
-    ...(contractSource ? { contractSource } : {}),
-  };
-  let looked = await assembleContentLook(request);
-  if (looked?.status === "contract_choice_required" && !contractSource) {
-    looked = await assembleContentLook({ ...request, contractSource: "agreement" });
-  }
+  const looked = await lookPreferringAgreement(resolve(position), depth, contractSource);
   if (!looked) return { root: null, text: null, contractSource: null };
   const rendered = renderContentLook(looked);
   if (looked.status !== "ok") throw new Error(rendered);

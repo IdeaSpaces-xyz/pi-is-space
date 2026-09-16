@@ -1129,30 +1129,35 @@ export default function (pi: ExtensionAPI) {
     // Without a model the record cannot be joined to Pi's summary. Leave the
     // compaction to Pi: a compaction that carries no release record consumes
     // nothing, so the list waits intact for the next boundary.
-    const model = ctx.model;
-    const auth = model ? await ctx.modelRegistry.getApiKeyAndHeaders(model) : { ok: false as const, error: "no model selected" };
-    if (!model || !auth.ok) {
-      ctx.ui.notify(
-        `IdeaSpaces: released items stay pending — ${auth.ok ? "no model selected" : auth.error}`,
-        "warning",
-      );
+    // Any failure to join the record leaves the compaction to Pi with the
+    // list intact; a threshold or overflow compaction is never stopped here.
+    const pending = (why: string) => {
+      ctx.ui.notify(`IdeaSpaces: released items stay pending — ${why}`, "warning");
       return undefined;
-    }
-    const base = await compact(
-      event.preparation,
-      model,
-      auth.apiKey,
-      auth.headers,
-      event.customInstructions,
-      event.signal,
-    );
-    return {
-      compaction: {
-        ...base,
-        summary: `${base.summary}\n\n${plan.record}`,
-        details: { ...(base.details && typeof base.details === "object" ? base.details : {}), [RELEASE_ENTRY]: plan.ready },
-      },
     };
+    const model = ctx.model;
+    if (!model) return pending("no model selected");
+    try {
+      const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+      if (!auth.ok) return pending(auth.error);
+      const base = await compact(
+        event.preparation,
+        model,
+        auth.apiKey,
+        auth.headers,
+        event.customInstructions,
+        event.signal,
+      );
+      return {
+        compaction: {
+          ...base,
+          summary: `${base.summary}\n\n${plan.record}`,
+          details: { ...(base.details && typeof base.details === "object" ? base.details : {}), [RELEASE_ENTRY]: plan.ready },
+        },
+      };
+    } catch (error) {
+      return pending(error instanceof Error ? error.message : String(error));
+    }
   });
 
   pi.on("tool_result", async (event, ctx) => {

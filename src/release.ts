@@ -16,12 +16,12 @@
 
 import { join } from "node:path";
 import {
-  assembleContentLook,
   gitState,
   pathRevision,
   type ContractSource,
   type MapDisclosure,
 } from "@ideaspaces/protocol";
+import { lookPreferringAgreement } from "./local-awareness.js";
 import {
   canonicalRepoRoot,
   localEffectCapabilities,
@@ -92,11 +92,7 @@ export async function prepareRelease(input: {
   if (worktree === null) return { ok: false, text: `Release refused: ${position} does not exist.` };
   if (head === null || worktree !== head) return { ok: false, text: CAPTURE_PROPOSAL };
 
-  const request = { position: join(repoRoot, position), depth, ...(input.contract ? { contractSource: input.contract } : {}) };
-  let looked = await assembleContentLook(request);
-  if (looked?.status === "contract_choice_required" && !input.contract) {
-    looked = await assembleContentLook({ ...request, contractSource: "agreement" });
-  }
+  const looked = await lookPreferringAgreement(join(repoRoot, position), depth, input.contract);
   if (!looked) return { ok: false, text: `Release refused: ${position} is not a Content position.` };
   if (looked.status !== "ok") return { ok: false, text: `Release refused: ${looked.status}.` };
 
