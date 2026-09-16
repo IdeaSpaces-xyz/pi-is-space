@@ -29,6 +29,7 @@ IdeaSpaces-aware primitives:
 - `is_write` — in-process capture primitive for frontmatter-aware Note writes; stages, session-tracks, and returns `sha`
 - `is_commit` — in-process capture primitive; commits only explicit paths or this session's captured paths
 - `is_change_open` / `is_change_close` — carry one decision's `Change-Id` across commits and repos
+- `is_release` — release one captured item from the active window; it closes to `summary` or `name` at the next compaction, refuses content that differs from HEAD
 - `is_pull` — pull primitive; integrates remote changes into the local space (never pushes)
 - `is_push` — push primitive; sends committed captures to the remote (refuses when behind — pull first)
 - `is_auth` — login/logout for optional sync
