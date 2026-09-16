@@ -161,7 +161,7 @@ function compactEvent(reason: "manual" | "threshold") {
 
 /** The provider-facing roster: names and serialized schemas, in registration order. */
 function rosterBytes(): string {
-  return JSON.stringify([...tools.entries()].map(([name, t]) => [name, (t.definition as { parameters: unknown }).parameters]));
+  return JSON.stringify([...tools.entries()].map(([name, t]) => [name, (t.definition as unknown as { parameters: unknown }).parameters]));
 }
 
 describe("the roster is fixed at session start", () => {
