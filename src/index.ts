@@ -1,4 +1,5 @@
 import {
+  compact,
   DEFAULT_MAX_BYTES,
   DEFAULT_MAX_LINES,
   formatSize,
@@ -37,6 +38,7 @@ import {
   type CaptureStatus,
 } from "./local-awareness.js";
 import { SessionCaptureLedger } from "./capture-ledger.js";
+import { planCompaction, prepareRelease, RELEASE_ENTRY } from "./release.js";
 import { localEffectCapabilities } from "./local-effects-adapter.js";
 import {
   runLocalCommit,
@@ -1111,6 +1113,53 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
+  // The closure list executes here, and only here: history is append-only and
+  // cached, so a release edits nothing when called. At the boundary the
+  // record is Pi's own summary of the discarded turns plus the map-note of
+  // every released member at its rung and sha — one record, not two. Manual
+  // compaction stops on a dirty item (the agreement gate); threshold and
+  // overflow compactions never stop, the item simply stays un-released.
+  pi.on("session_before_compact", async (event, ctx) => {
+    const plan = await planCompaction(event.reason, event.branchEntries);
+    if (plan.kind === "default") return undefined;
+    if (plan.kind === "cancel") {
+      ctx.ui.notify(plan.message, "warning");
+      return { cancel: true };
+    }
+    // Without a model the record cannot be joined to Pi's summary. Leave the
+    // compaction to Pi: a compaction that carries no release record consumes
+    // nothing, so the list waits intact for the next boundary.
+    // Any failure to join the record leaves the compaction to Pi with the
+    // list intact; a threshold or overflow compaction is never stopped here.
+    const pending = (why: string) => {
+      ctx.ui.notify(`IdeaSpaces: released items stay pending — ${why}`, "warning");
+      return undefined;
+    };
+    const model = ctx.model;
+    if (!model) return pending("no model selected");
+    try {
+      const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+      if (!auth.ok) return pending(auth.error);
+      const base = await compact(
+        event.preparation,
+        model,
+        auth.apiKey,
+        auth.headers,
+        event.customInstructions,
+        event.signal,
+      );
+      return {
+        compaction: {
+          ...base,
+          summary: `${base.summary}\n\n${plan.record}`,
+          details: { ...(base.details && typeof base.details === "object" ? base.details : {}), [RELEASE_ENTRY]: plan.ready },
+        },
+      };
+    } catch (error) {
+      return pending(error instanceof Error ? error.message : String(error));
+    }
+  });
+
   pi.on("tool_result", async (event, ctx) => {
     if (event.isError) return undefined;
     if (event.toolName !== "write" && event.toolName !== "edit") return undefined;
@@ -2004,6 +2053,51 @@ export default function (pi: ExtensionAPI) {
       await refreshAwareness(cwd);
       await refreshSpaceUi(ctx, cwd);
       return localToolResult(result);
+    },
+  });
+
+  pi.registerTool({
+    name: "is_release",
+    label: "IS Release",
+    description:
+      "Release one captured Note from the active window: it closes down the Map ladder to name or summary at the next compaction, its raw turns stay in the session log, and is_look re-reads it in full at any time. Refuses a Note whose content differs from HEAD — capture it first (is_write, is_commit). One Note per call; releasing is an agreement with the person: propose, then release.",
+    promptSnippet: "Release a captured item from the active window at the next compaction",
+    promptGuidelines: [
+      "Propose releases at capture seams — after is_commit lands the understanding a raw turn or file was holding — and release only what the person agrees to.",
+      "A release is window management, never file removal: nothing leaves git, and is_look brings any released item back.",
+    ],
+    parameters: Type.Object({
+      path: Type.String({ description: "Repository path of the Markdown Note to release" }),
+      to: Type.Optional(
+        StringEnum(["name", "summary"] as const, {
+          description: "The rung the item closes to at compaction (default summary)",
+        }),
+      ),
+      contract: Type.Optional(
+        StringEnum(["foundation", "agreement"] as const, {
+          description: "Reference frame when both resolve at the address",
+        }),
+      ),
+      cwd: Type.Optional(
+        Type.String({
+          description:
+            "Absolute working directory for path resolution. Pass this if the intended cwd differs from the session start directory.",
+        }),
+      ),
+    }),
+    async execute(_id, params, _signal, _onUpdate, ctx) {
+      const outcome = await prepareRelease({
+        path: params.path,
+        ...(params.to ? { to: params.to } : {}),
+        ...(params.contract ? { contract: params.contract } : {}),
+        cwd: params.cwd || ctx.cwd,
+      });
+      if (!outcome.ok) throw new Error(outcome.text);
+      pi.appendEntry(RELEASE_ENTRY, outcome.item);
+      const { position, depth, revision } = outcome.item;
+      return ok(
+        `Released ${position} to ${depth} (blob ${revision.slice(0, 12)}). It leaves the active window at the next compaction; raw turns stay in the session log, and is_look re-reads it in full.`,
+      );
     },
   });
 

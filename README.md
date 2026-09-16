@@ -76,6 +76,7 @@ Pi's native `read`, `edit`, `write`, and `bash` cover exact full-document eviden
 | `is_write` | Capture primitive: create/update a markdown Note with Layer 1 frontmatter, stage it in git, record its session revision, and return a content `sha`. Normally reached through the `is-capture` skill. |
 | `is_commit` | Capture primitive: commit only explicit reviewed paths or this Pi session's captured paths after confirmation; never adopt unknown staged work. |
 | `is_change_open` / `is_change_close` | Carry one decision's `Change-Id` across commits and repositories. |
+| `is_release` | Release one captured item from the active window: it closes to `summary` or `name` at the next compaction, its raw turns stay in the session log, and `is_look` re-reads it in full. Refuses content that differs from HEAD. |
 | `is_pull` | Pull primitive: integrate remote changes into the local space; never pushes; refuses to integrate on staged/dirty tree. |
 | `is_push` | Push primitive: send committed captures to the remote; refuses on uncommitted captures, and when behind — pull first. |
 | `is_auth` | Log in / out for optional remote sync. |
@@ -110,6 +111,8 @@ Before switching or forking sessions, Pi checks for staged captures awaiting com
 ## Awareness
 
 On session start, the extension builds local awareness in-process from `@ideaspaces/protocol`: the structured Content manifest and placement renderer supply the stable `head` and volatile `tail`; protocol git/path reads supply capture state; neutral workspace/root handles project through Map members and the shared renderer while Pi supplies only local working-set/catalog roles and state. Pi puts the protocol head plus working set in the stable register, which enters the system prompt with deterministic bytes, so an unchanged session keeps its prompt-cache prefix. The volatile register is the protocol's one Content-tail composition (`renderContentTail`): local State, then Pi's catalog and floor hint, then the protocol tail, with the open-Change line last — appended per LLM call strictly after the last cache breakpoint, outside every cached prefix. It is byte-identical to `ideaspaces status --workspace … --mount …` for the same inputs; State supersedes the compact protocol Git line, and activity remains in tail. Missing `_agent/purpose.md` or `_agent/now.md` remain drift signals.
+
+Releases execute at the compaction boundary and nowhere else: history is append-only and cached, so `is_release` only appends an `is_release` entry to the session. On `session_before_compact` the extension joins Pi's own summary of the discarded turns with a record of every released member at its rung and blob sha — one record, not two. A manual `/compact` stops on a released item whose content now differs from HEAD (the agreement gate, with the person present); threshold and overflow compactions never stop, and such an item simply stays un-released and is named in the record. Consumption is by item: a release is consumed only by a compaction whose record lists it, so Pi's default compaction, a boundary where no model was available to join the record, and an item withheld as dirty all leave the release pending for the next boundary.
 
 ## CLI
 

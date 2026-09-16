@@ -7,7 +7,7 @@ description: >
   notes, or add this to the knowledge base; or when a decision has just been made
   that would be expensive to relitigate. Not for saving an ordinary source or
   config file — that is a plain file write.
-allowed-tools: "is_write is_status is_commit is_push context_cleanup read edit write bash"
+allowed-tools: "is_write is_status is_commit is_release is_push context_cleanup read edit write bash"
 ---
 
 # Capture
@@ -96,6 +96,10 @@ Either way, the mechanics:
 ## Commit message
 
 Use the space's commit convention when present (for example `_agent/skills/commit.md`) — it defines the message shape and the provenance trailers. Don't restate the trailer format here.
+
+## After the capture lands: propose a release
+
+Once `is_commit` has landed the understanding a raw turn or a read file was holding, that material has done its job. Propose releasing it from the active window — `is_release({ path })` closes the item to its summary (or `to: "name"`) at the next compaction; raw turns stay in the session log and `is_look` re-reads it in full at any time. Releasing is an agreement: name what you would release and why, release only what the person agrees to, and never release something you have not captured — the tool refuses content that differs from HEAD with a capture proposal.
 
 ## Rhythm
 
