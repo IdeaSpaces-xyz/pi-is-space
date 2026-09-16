@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import registerIdeaSpaces from "./index.js";
+import { frozenParameters, frozenRoster } from "./tool-roster.js";
 
 type RegisteredTool = {
   name: string;
+  parameters: { properties?: Record<string, unknown>; required?: string[] };
   promptGuidelines?: string[];
   execute: (...args: any[]) => Promise<unknown> | unknown;
 };
@@ -44,6 +47,41 @@ function registeredTools(): Map<string, RegisteredTool> {
 describe("Pi tool registration contract", () => {
   it("keeps the harness-owned roster exact", () => {
     expect([...registeredTools().keys()].sort()).toEqual([...EXPECTED_PI_TOOL_NAMES].sort());
+  });
+
+  it("serializes every tool schema in sorted key order", () => {
+    for (const [name, tool] of registeredTools()) {
+      const keys = Object.keys(tool.parameters.properties ?? {});
+      expect(keys, name).toEqual([...keys].sort());
+      const required = tool.parameters.required ?? [];
+      expect(required, name).toEqual([...required].sort());
+    }
+  });
+
+  it("fixes the roster at session start: nothing joins after the seal", () => {
+    const registered: string[] = [];
+    const roster = frozenRoster({ registerTool: (tool: { name: string }) => registered.push(tool.name) } as never);
+    roster.register({ name: "a", label: "A", description: "", parameters: Type.Object({}), execute: async () => ({ content: [] }) } as never);
+    roster.seal();
+    expect(() =>
+      roster.register({ name: "late", label: "L", description: "", parameters: Type.Object({}), execute: async () => ({ content: [] }) } as never),
+    ).toThrow("The tool roster is fixed at session start; late cannot be added later.");
+    expect(roster.names()).toEqual(["a"]);
+    expect(registered).toEqual(["a"]);
+  });
+
+  it("freezes a schema by sorting keys without touching values", () => {
+    const schema = Type.Object({
+      zeta: Type.Optional(Type.String({ description: "z" })),
+      alpha: Type.Object({ two: Type.Number(), one: Type.String() }),
+      mid: Type.Array(Type.String()),
+    });
+    const frozen = frozenParameters(schema);
+    expect(Object.keys(frozen.properties)).toEqual(["alpha", "mid", "zeta"]);
+    expect(frozen.required).toEqual(["alpha", "mid"]);
+    expect(Object.keys((frozen.properties.alpha as { properties: object }).properties)).toEqual(["one", "two"]);
+    expect((frozen.properties.zeta as unknown as { description: string }).description).toBe("z");
+    expect(frozenParameters(frozen)).toEqual(frozen);
   });
 
   it("keeps navigation awareness-first outside the explicit orient skill", () => {
