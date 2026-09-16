@@ -99,7 +99,7 @@ Use the space's commit convention when present (for example `_agent/skills/commi
 
 ## After the capture lands: propose a release
 
-Once `is_commit` has landed the understanding a raw turn or a read file was holding, that material has done its job. Propose releasing it from the active window — `is_release({ address })` closes the item to its summary (or `to: "name"`) at the next compaction; raw turns stay in the session log and `is_look` re-reads it in full at any time. Releasing is an agreement: name what you would release and why, release only what the person agrees to, and never release something you have not captured — the tool refuses content that differs from HEAD with a capture proposal.
+Once `is_commit` has landed the understanding a raw turn or a read file was holding, that material has done its job. Propose releasing it from the active window — `is_release({ path })` closes the item to its summary (or `to: "name"`) at the next compaction; raw turns stay in the session log and `is_look` re-reads it in full at any time. Releasing is an agreement: name what you would release and why, release only what the person agrees to, and never release something you have not captured — the tool refuses content that differs from HEAD with a capture proposal.
 
 ## Rhythm
 

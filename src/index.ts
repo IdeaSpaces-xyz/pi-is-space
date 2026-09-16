@@ -1126,11 +1126,14 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.notify(plan.message, "warning");
       return { cancel: true };
     }
+    // Without a model the record cannot be joined to Pi's summary. Leave the
+    // compaction to Pi: a compaction that carries no release record consumes
+    // nothing, so the list waits intact for the next boundary.
     const model = ctx.model;
     const auth = model ? await ctx.modelRegistry.getApiKeyAndHeaders(model) : { ok: false as const, error: "no model selected" };
     if (!model || !auth.ok) {
       ctx.ui.notify(
-        `IdeaSpaces: released items could not be recorded — ${auth.ok ? "no model selected" : auth.error}`,
+        `IdeaSpaces: released items stay pending — ${auth.ok ? "no model selected" : auth.error}`,
         "warning",
       );
       return undefined;
@@ -2059,7 +2062,7 @@ export default function (pi: ExtensionAPI) {
       "A release is window management, never file removal: nothing leaves git, and is_look brings any released item back.",
     ],
     parameters: Type.Object({
-      address: Type.String({ description: "Repository path of the Note or directory to release" }),
+      path: Type.String({ description: "Repository path of the Note or directory to release" }),
       to: Type.Optional(
         StringEnum(["name", "summary"] as const, {
           description: "The rung the item closes to at compaction (default summary)",
@@ -2079,7 +2082,7 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const outcome = await prepareRelease({
-        address: params.address,
+        path: params.path,
         ...(params.to ? { to: params.to } : {}),
         ...(params.contract ? { contract: params.contract } : {}),
         cwd: params.cwd || ctx.cwd,

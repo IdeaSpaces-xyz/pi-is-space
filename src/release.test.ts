@@ -49,11 +49,11 @@ function entry(item: ReleaseItem): BranchEntry {
 
 describe("prepareRelease", () => {
   it("reads a committed item at the target rung with the sha the Map names", async () => {
-    const outcome = await prepareRelease({ address: "notes/decision.md", cwd: root });
+    const outcome = await prepareRelease({ path: "notes/decision.md", cwd: root });
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
     expect(outcome.item).toMatchObject({
-      address: "notes/decision.md",
+      path: "notes/decision.md",
       repoRoot: root,
       position: "notes/decision.md",
       depth: "summary",
@@ -61,35 +61,35 @@ describe("prepareRelease", () => {
       revision: git(["rev-parse", "HEAD:notes/decision.md"]),
       commit: git(["rev-parse", "HEAD"]),
     });
-    const named = await prepareRelease({ address: join(root, "notes/decision.md"), to: "name", cwd: root });
+    const named = await prepareRelease({ path: join(root, "notes/decision.md"), to: "name", cwd: root });
     expect(named.ok && named.item.depth).toBe("name");
   });
 
   it("refuses a modified item with a capture proposal", async () => {
     await fs.writeFile(join(root, "notes", "decision.md"), "# Decision\n\nEdited.\n");
-    const outcome = await prepareRelease({ address: "notes/decision.md", cwd: root });
+    const outcome = await prepareRelease({ path: "notes/decision.md", cwd: root });
     expect(outcome).toMatchObject({ ok: false });
     expect(!outcome.ok && outcome.text).toContain("Capture it first — is_write, then is_commit");
   });
 
   it("refuses an untracked, missing, or escaping item", async () => {
     await fs.writeFile(join(root, "notes", "new.md"), "# New\n");
-    expect((await prepareRelease({ address: "notes/new.md", cwd: root })).ok).toBe(false);
-    expect(await prepareRelease({ address: "notes/none.md", cwd: root })).toMatchObject({ ok: false, text: expect.stringContaining("does not exist") });
-    expect(await prepareRelease({ address: "../elsewhere.md", cwd: root })).toMatchObject({ ok: false, text: expect.stringContaining("outside the repository root") });
+    expect((await prepareRelease({ path: "notes/new.md", cwd: root })).ok).toBe(false);
+    expect(await prepareRelease({ path: "notes/none.md", cwd: root })).toMatchObject({ ok: false, text: expect.stringContaining("does not exist") });
+    expect(await prepareRelease({ path: "../elsewhere.md", cwd: root })).toMatchObject({ ok: false, text: expect.stringContaining("outside the repository root") });
   });
 });
 
 describe("collectReleases", () => {
   const base: ReleaseItem = {
-    address: "a.md", repoRoot: "/r", position: "a.md", depth: "summary",
+    path: "a.md", repoRoot: "/r", position: "a.md", depth: "summary",
     disclosure: { name: "A" }, revision: "1", commit: "c", released_at: 1,
   };
 
   it("takes entries since the last compaction, latest per position, in first-release order", () => {
     const entries: BranchEntry[] = [
       entry({ ...base, position: "old.md", released_at: 0 }),
-      { type: "compaction" },
+      { type: "compaction", details: { [RELEASE_ENTRY]: [] } },
       entry(base),
       entry({ ...base, position: "b.md", released_at: 2 }),
       { type: "message" },
@@ -101,11 +101,21 @@ describe("collectReleases", () => {
     ]);
     expect(collectReleases([{ type: "message" }])).toEqual([]);
   });
+
+  it("is consumed only by a compaction that carried the record", () => {
+    const entries: BranchEntry[] = [
+      entry(base),
+      { type: "compaction" }, // Pi's default, or a boundary with no model: no record
+      { type: "compaction", details: { other: true } },
+    ];
+    expect(collectReleases(entries).map((i) => i.position)).toEqual(["a.md"]);
+    expect(collectReleases([...entries, { type: "compaction", details: { [RELEASE_ENTRY]: [base] } }])).toEqual([]);
+  });
 });
 
 describe("planCompaction", () => {
   const item: ReleaseItem = {
-    address: "notes/decision.md", repoRoot: "", position: "notes/decision.md", depth: "summary",
+    path: "notes/decision.md", repoRoot: "", position: "notes/decision.md", depth: "summary",
     disclosure: { name: "Decision", summary: "The selected boundary." }, revision: "0", commit: "c", released_at: 1,
   };
 

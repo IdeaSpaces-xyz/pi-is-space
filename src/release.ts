@@ -32,8 +32,8 @@ export const RELEASE_ENTRY = "is_release";
 export type ReleaseRung = "name" | "summary";
 
 export interface ReleaseItem {
-  /** The address as the caller gave it. */
-  address: string;
+  /** The path as the caller gave it. */
+  path: string;
   repoRoot: string;
   /** Portable repository-relative position. */
   position: string;
@@ -55,17 +55,18 @@ export interface BranchEntry {
   type: string;
   customType?: string;
   data?: unknown;
+  details?: unknown;
 }
 
 const CAPTURE_PROPOSAL =
   "Release refused: the content differs from HEAD, so no sha can name it. Capture it first — is_write, then is_commit — and release again.";
 
 /**
- * Verify one address and read it at the target rung. Refuses an untracked or
+ * Verify one path and read it at the target rung. Refuses an untracked or
  * modified item; nothing is written.
  */
 export async function prepareRelease(input: {
-  address: string;
+  path: string;
   to?: ReleaseRung;
   cwd: string;
   contract?: ContractSource;
@@ -77,8 +78,8 @@ export async function prepareRelease(input: {
   } catch (error) {
     return { ok: false, text: `Release needs a Git worktree: ${error instanceof Error ? error.message : String(error)}` };
   }
-  const position = await toPortableRepoPath(input.address, repoRoot, input.cwd).catch(() => null);
-  if (!position) return { ok: false, text: `Release refused: ${input.address} is outside the repository root.` };
+  const position = await toPortableRepoPath(input.path, repoRoot, input.cwd).catch(() => null);
+  if (!position) return { ok: false, text: `Release refused: ${input.path} is outside the repository root.` };
 
   const revision = await pathRevision(
     repoRoot,
@@ -104,7 +105,7 @@ export async function prepareRelease(input: {
   return {
     ok: true,
     item: {
-      address: input.address,
+      path: input.path,
       repoRoot,
       position,
       depth,
@@ -116,15 +117,22 @@ export async function prepareRelease(input: {
   };
 }
 
+/** True for a compaction entry that carried a release record — the boundary that consumed the list. */
+function recordedReleases(entry: BranchEntry): boolean {
+  const details = entry.details;
+  return entry.type === "compaction" && !!details && typeof details === "object" && RELEASE_ENTRY in details;
+}
+
 /**
  * The closure list: `is_release` entries on the branch since the last
- * compaction, latest per position, in first-release order. Entries before a
- * compaction already executed in that compaction's record.
+ * compaction that recorded releases, latest per position, in first-release
+ * order. A compaction that carried no record — Pi's default, or a boundary
+ * where the record could not be joined — consumes nothing: the list waits.
  */
 export function collectReleases(entries: readonly BranchEntry[]): ReleaseItem[] {
   let start = 0;
   entries.forEach((entry, index) => {
-    if (entry.type === "compaction") start = index + 1;
+    if (recordedReleases(entry)) start = index + 1;
   });
   const byPosition = new Map<string, ReleaseItem>();
   for (const entry of entries.slice(start)) {

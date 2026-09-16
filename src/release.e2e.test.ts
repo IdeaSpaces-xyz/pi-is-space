@@ -162,7 +162,7 @@ function compactEvent(reason: "manual" | "threshold") {
 describe("release through the real runtime", () => {
   test("is_release records a committed item with its sha and refuses a modified one", async () => {
     const blob = git(["rev-parse", "HEAD:notes/decision.md"]);
-    const released = await call("is_release", { address: "notes/decision.md", to: "summary" });
+    const released = await call("is_release", { path: "notes/decision.md", to: "summary" });
     expect(released.error).toBeUndefined();
     expect(released.text).toContain(`Released notes/decision.md to summary (blob ${blob.slice(0, 12)})`);
     expect(releases()).toMatchObject([
@@ -170,7 +170,7 @@ describe("release through the real runtime", () => {
     ]);
 
     writeFileSync(join(space, "notes", "decision.md"), "# Decision\n\nEdited.\n");
-    const refused = await call("is_release", { address: "notes/decision.md" });
+    const refused = await call("is_release", { path: "notes/decision.md" });
     expect(refused.error).toContain("Capture it first");
     expect(releases()).toHaveLength(1);
   }, T);
