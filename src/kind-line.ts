@@ -20,17 +20,11 @@ const RECOGNISED: Record<string, "agent" | "knowledge"> = {
 /** The sentence `ideaspaces create` leaves in an Agreement whose sections are still prompts. */
 const PROMPTS_MARKER = "Every section below is a prompt";
 
-/** The Agreement entry's own name, minus the conventional "Agreement — " prefix. */
-function agreementName(manifest: ContentAwarenessManifest): string | null {
-  const entry = manifest.contract.find((e) => e.name === "agreement" && e.content);
-  const name = entry?.content ? parseFrontmatter(entry.content)?.name : undefined;
+/** The Agreement's own name, minus the conventional "Agreement — " prefix. */
+function agreementName(content: string | undefined): string | null {
+  const name = content ? parseFrontmatter(content)?.name : undefined;
   if (typeof name !== "string" || !name.trim()) return null;
   return name.replace(/^Agreement\s+[—–-]\s+/u, "").trim() || null;
-}
-
-function agreementStillPrompts(manifest: ContentAwarenessManifest): boolean {
-  const entry = manifest.contract.find((e) => e.name === "agreement" && e.content);
-  return Boolean(entry?.content?.includes(PROMPTS_MARKER));
 }
 
 /**
@@ -42,11 +36,12 @@ export function renderKindLine(manifest: ContentAwarenessManifest): string | nul
   const reference = manifest.agreementReference?.trim();
   if (!reference) return null;
   const kind = RECOGNISED[reference];
-  const prompts = agreementStillPrompts(manifest)
+  const content = manifest.contract.find((e) => e.name === "agreement" && e.content)?.content;
+  const prompts = content?.includes(PROMPTS_MARKER)
     ? " Its sections are still prompts — the first conversation draws them out and replaces them."
     : "";
   if (kind === "agent") {
-    const name = agreementName(manifest);
+    const name = agreementName(content);
     const who = name ? `being ${name}` : "being this agent";
     return `Kind: agent (${reference}) — launching here means ${who}, not studying it; the Agreement above is who you are for the session.${prompts}`;
   }
