@@ -7,11 +7,11 @@ description: >
   the team's KPIs, notes on a topic, a small CRM — or a helper they want to
   work with: an assistant, a sales agent, a critique partner. Also on the
   direct asks: "set up a space", "add ideaspaces here", "create an agent",
-  "make me an agent", or questions about the contract. Inspects what's here,
-  confirms, then runs `ideaspaces create` via the resolved CLI (`--agent` for
-  an agent with its own character and point of view, drawn out in
-  conversation). Not for building software —
-  someone coding an app wants code, not a space.
+  "make me an agent", or questions about the contract. Talks first — what this
+  place is, how work goes, what the agent does alone — then runs
+  `ideaspaces create` via the resolved CLI (`--agent` for an agent) and writes
+  what was agreed into the Agreement. Not for building software — someone
+  coding an app wants code, not a space.
 allowed-tools: "is_write is_commit is_auth edit read write bash"
 ---
 
@@ -19,9 +19,11 @@ allowed-tools: "is_write is_commit is_auth edit read write bash"
 
 Canonical protocols: read [purpose elicitation](../../reference/purpose-elicitation.md) and [repo context](../../reference/repo-context.md) when eliciting direction or judging how an existing repo should be scaffolded.
 
-**Goal:** detect → confirm → run `ideaspaces create` → capture purpose / now / next in conversation when content emerges.
+**Goal:** look → talk → reflect back → `ideaspaces create` → write what was agreed into `_agent/agreement.md` → commit → offer publish.
 
-**Pi command available:** for human-triggered setup, prefer `/is-setup`. It runs the same CLI dry-run/apply flow with Pi-native preview and confirmation. Use this skill when the agent needs the protocol, when `/is-setup` is unavailable, or when purpose/now/next elicitation continues after the scaffold.
+A space is one folder with one contract file, `_agent/agreement.md`, that says what the place is and how work goes here. The conversation is the work; the CLI is the scaffold writer. It lands the Agreement with every section as a **prompt**, and this skill's job is that no prompt is left standing.
+
+**Pi command available:** `/is-setup` runs the CLI's dry-run/apply with Pi-native preview and confirmation — the scaffold step only. The conversation before it and the writing after it are this skill.
 
 This skill is the **conversational layer** around the IdeaSpaces CLI. The conversation lives here; the file writes live in the CLI. That keeps one source of truth — change the CLI's templates, the skill's behavior updates automatically.
 
@@ -40,111 +42,73 @@ is_cli() {
 }
 ```
 
-Don't offer unprompted. Wait for a signal — "set up a space", "add ideaspaces here", "create an agent", or detection of a directory the user wants structured.
+Don't offer unprompted. Wait for a signal — "set up a space", "I want somewhere for my X", "make me an assistant" — or a directory the user wants structured.
 
-## Create an agent
+## Two arrivals, one skill
 
-An agent is a space shaped as a **point of view**: the five-file `_agent/` contract *is* the character (see [form-primitive](../../reference/form-primitive.md), Creating Agents). The space is not knowledge *about* the agent — it is the position the agent looks from, and the tree becomes its memory.
+Read the signal before proceeding:
 
-1. **Name it.** Ask what the agent should be called (letters, digits, spaces, `. _ -`; the CLI refuses names that would not survive frontmatter). The agent gets its own folder.
-2. **Scaffold.** Dry-run, confirm, apply:
+- **Create a space** — a place for knowledge: notes, decisions, research, a project's memory. Signals: "set up a space", "add ideaspaces here", "I want somewhere that keeps growing", a folder the user wants structured. → Follow [`create-a-space.md`](create-a-space.md).
+- **Create an agent** — a folder that *is* someone: "create an agent", "make me a research assistant", "something that does X for me". → Follow [`create-an-agent.md`](create-an-agent.md).
+
+Someone who says "assistant", "persona", or "personality" wants an agent; take the word they used, don't correct it.
+
+## What both create paths share
+
+Both procedures run the same shape. The details — what to listen for, the questions, the reflect-back — are in the two files above; this is the skeleton.
+
+1. **Look before speaking.** Read the folder with `bash` (`find`, `test`, `rg`) and `read`; `git rev-parse --is-inside-work-tree` for the repo. Say what you found in a line. Change nothing.
+
+   | Found | It means |
+   |---|---|
+   | `_agent/agreement.md` | Already an ideaspace. The CLI refuses; offer to edit the Agreement instead. |
+   | `_agent/foundation.md` | The older shape. It still loads; offer [migrate-to-agreement](../../reference/migrate-to-agreement.md) rather than scaffolding beside it. |
+   | `_agent/always.md` / `rules.md` / `soul.md` | Legacy. The CLI errors; the content moves into an Agreement by hand. |
+   | Markdown files, no `_agent/` | Content already here. Read a few before asking — the story is partly in them. |
+   | `.github/`, `package.json`, `Cargo.toml`, … | A code repo. A space can sit beside code; the CLI keeps `_agent/` private (gitignored) unless `--shared`. An agent's folder is not a code repo — propose a sibling folder. |
+   | `CLAUDE.md`, `.gitignore` | The CLI won't overwrite either; it appends `.gitignore` defaults under a header. |
+
+2. **Draw out.** Open with a story or a task, not a form. Listen for what the Agreement needs; ask only for what is missing *and* needed before the first move. Cases, in their words.
+
+3. **Reflect back** in the shape the file will take. Revise until they recognise it.
+
+4. **Scaffold.** Dry-run, show the plan, then apply on a yes:
 
    ```bash
-   is_cli create <name> --agent
-   is_cli create <name> --agent --yes
+   is_cli create [<name>] [--agent] [--shared]
+   is_cli create [<name>] [--agent] [--shared] --yes
    ```
 
-   The foundation lands with **placeholder prompts** in Character, Boundaries, and What-this-agent-is-not — meant to be replaced in conversation, never left standing.
-3. **Elicit the character — the heart of the flow.** Draw it out from real examples, not adjectives: *"Walk me through a task you'd hand this agent. What did a good result look like? Where would you not trust it?"* Three to five traits grounded in practice; boundaries as things it refuses or never claims without checking; one neighboring role it should not be confused with.
-4. **Replace the prompts.** Use native `edit` on `_agent/foundation.md` (contract files carry the character, not Note frontmatter), show the result, and on confirmation commit with `is_commit` using explicit paths.
-5. **Offer skills.** If a repeatable procedure surfaced, capture it into `_agent/skills/` (is-shape). A Pi session launched in the agent's folder acquires its root skills natively at session start.
-6. **Purpose / now stay emergent** — elicit when there is real signal, or let the drift rule surface them next session.
+   The CLI writes `_agent/agreement.md` — referencing the knowledge kind, or the agent kind with `--agent` — plus a short `CLAUDE.md` (or `CLAUDE.local.md` in a private code repo), `.gitattributes`, and `.gitignore` defaults, then `git init -b main` and an exact-path initial commit as a **best-effort finalize**. If Git is unavailable the space still exists, unversioned, and the CLI prints the recovery commands. **Relay the CLI's own stdout; don't assume a commit happened.**
 
-The agent is used by launching Pi in its folder: the session reads who the agent is and inhabits it. Publishing works like any space.
+5. **Replace the prompts.** Use native `edit` on `_agent/agreement.md` — section by section, with what was agreed. Keep the frontmatter the CLI wrote; change only `name` and `summary` (two dense sentences). Show the file once more.
 
-## 1. Inspect (read-only)
+6. **Check it loads.** `is_cli navigate --json` — `manifest.contractSource` must be `agreement`; if `contract_invalid` appears, a frontmatter line is wrong.
 
-Read the cwd before acting. Surface what was found in plain language. No side effects until the user confirms.
+7. **Commit** on a yes, by explicit path, with `is_commit` — only `_agent/agreement.md` (and `CLAUDE.md` if you touched it). Never a bare git commit in a folder someone else may have staged work in.
 
-| Signal | What it tells us |
-|---|---|
-| Markdown files | Content already here. Could be notes, docs, or both. |
-| `.git/` | Already a git repo. The CLI won't re-init. |
-| `_agent/foundation.md` present | Already a complete ideaspace. The CLI will refuse; tell the user to edit `_agent/` directly. |
-| `_agent/always.md` / `rules.md` / `soul.md` | Old shape. The CLI errors today; tell the user this is unimplemented. |
-| `CLAUDE.md` | Agent orientation already configured. CLI won't overwrite. |
-| `.github/`, `package.json`, `Cargo.toml`, etc. | Code-repo signal. CLI defaults to private `_agent/` + `CLAUDE.local.md`. |
+8. **Offer what comes next — don't do it.** Publish (`/is-publish`), the first Note if the story contained one, a skill (**is-shape**) if a repeatable procedure surfaced, `purpose.md` when they can say in a paragraph why the place exists and it is not the same paragraph as "what this place is".
 
-Use `bash` (`find`, `test`, `rg`) and `read` for inspection. Use `bash` for `git rev-parse --is-inside-work-tree`.
-
-## 2. Reflect
-
-Surface the findings and propose what'll happen:
-
-> "I see 12 markdown files and a git repo here, no `_agent/` yet. I'll add the ideaspace seed (foundation + guide files in `_agent/`, a CLAUDE.md, and a `.gitignore` block). Your existing markdowns won't be touched. OK?"
-
-Confirm intent. The skill doesn't auto-decide.
-
-## 3. Dry-run, then apply
-
-The CLI has a built-in `--yes`-gated dry-run. Use it as a preview before applying:
-
-```bash
-is_cli create
-```
-
-Without `--yes`, this prints the plan and exits 0 without writing. Show the plan to the user, get a final confirmation, then apply:
-
-```bash
-is_cli create --yes
-```
-
-For a code repo where the user wants shared (committed) `_agent/`, add `--shared`:
-
-```bash
-is_cli create --yes --shared
-```
-
-The CLI writes `_agent/foundation.md`, `_agent/guide.md`, `CLAUDE.md` (or `CLAUDE.local.md`), `.gitattributes`, and `.gitignore` defaults first. A shared scaffold mints portable `root_node_id` into the foundation before login; a code repo's private gitignored `_agent/` remains unstamped. Git init + the exact-path initial commit are a best-effort finalize. If Git is unavailable, the Space still exists with local identity but no version history, and the CLI prints the recovery commands.
-
-**Why seed-only:** the scaffolded foundation explains its own shape — the seed names the emergent files, and the drift rule fires from the files themselves. Nothing to restate here.
-
-## 4. Capture purpose / now / next in conversation
-
-For each of these, draw the content out and write the file when there's real content. **Skip the file if the user has nothing to say** — missing files are honest "not captured yet" signals; the next session's agent will surface them again.
-
-1. **Purpose** — *"Why does this space exist? What's it for?"* Two-sentence answer becomes `_agent/purpose.md`. If a `README.md` is already present, propose a draft from it.
-2. **Now** — *"What are you working on right now?"* Single paragraph becomes `_agent/now.md`.
-3. **Next** — *"What's queued after now?"* Optional. Vague is OK.
-
-Use `is_write` for these (Layer 1 frontmatter — `name`, `summary`). Don't write Purpose *for* the user — elicit and reflect back; the space's own capture rule governs the boundary. After each capture, commit it as its own capture commit with `is_commit` (explicit `paths` or session-owned `all=true`), not a broad git sweep.
-
-## 5. Offer publish
-
-After scaffold (and capture, if any), suggest the natural next step:
-
-> "Want to host this remotely so you can access it from other devices and agent sessions? I can walk you through publishing — try `/is-publish`, or just say the word."
-
-Don't run publish without explicit confirmation — it's a structural change and triggers OAuth login if not already done.
+Do **not** write `purpose.md`, `now.md`, or an empty `skills/`. They come when there is something real to put in them.
 
 ## Don'ts
 
+- **Don't scaffold before the conversation.** A folder full of prompts nobody replaced is worse than no folder. The plan-then-apply split is the CLI's contract; the talk-then-write order is this skill's.
+- **Don't write character the person did not give.** Thin is honest; invented is not. A short section that says it will fill in from real sessions is right.
 - **Don't reimplement** what the CLI does. Run the bundle. The CLI is the source of truth for scaffold logic; this skill is the conversation around it.
-- **Never overwrite existing `CLAUDE.md`.** The CLI doesn't; if the user has one, the bundle skips writing it. Append an `## Ideaspace` section manually if they want orientation pointers.
-- **Never delete or modify existing markdowns.** They're the user's data. The CLI doesn't touch them either — verify if you ever bypass the CLI.
-- **Don't `git init` outside the CLI.** The CLI handles it. If you `git init` first the CLI sees an existing repo and adapts.
-- **Never overwrite an existing `.gitignore`.** The CLI appends under a `# ideaspace defaults` header.
-- **Never push automatically.** Local-first by default. Use `/is-publish` (or the underlying `ideaspaces publish`) only when the user explicitly says so.
+- **Never overwrite existing `CLAUDE.md`.** The CLI doesn't; if the user has one, append a short pointer to `_agent/agreement.md` only if they want it.
+- **Never delete or modify existing markdowns.** They're the user's data.
+- **Don't `git init` outside the CLI.** If you `git init` first the CLI sees an existing repo and adapts.
+- **Never push automatically.** Local-first by default. `/is-publish` only when the user explicitly says so.
 
 ## Confirm
 
 Summarize what landed:
 
-- `_agent/foundation.md` + `_agent/guide.md` scaffolded (the seed)
-- `_agent/purpose.md` / `now.md` / `next.md` if captured in conversation; missing if skipped
-- `CLAUDE.md` (or `CLAUDE.local.md`) added
+- `_agent/agreement.md` — written from the conversation, no prompts left standing
+- `CLAUDE.md` (or `CLAUDE.local.md`) pointing at it
 - `.gitattributes` + `.gitignore` defaults
-- Initial commit + any capture commits
+- Version history: an initial commit **only if git ran** — the CLI's stdout says whether the space is versioned. If it reported "Working locally — no version history yet," relay that (and the `git init …` follow-up) instead of claiming a commit.
 
 > "You're set. Next session will start oriented to your space. Run `/is-publish` when you're ready to host this remotely."
 
@@ -161,5 +125,5 @@ Summarize what landed:
 If anything goes sideways during scaffold:
 
 - The CLI's plan is dry-run by default — re-run without `--yes` to preview again
-- Partial scaffolds can be cleaned up with `git status` + `git restore` (or `git clean -n` to preview untracked files)
+- In a **versioned** space, partial changes can be cleaned up with `git status` + `git restore` (or `git clean -n` to preview untracked files). If the space is **unversioned** (no git), there's no git recovery surface — edit or remove the scaffolded files directly
 - The CLI is idempotent on existing files (won't overwrite `CLAUDE.md`, won't double-append `.gitignore` block) — re-running with `--yes` is safe

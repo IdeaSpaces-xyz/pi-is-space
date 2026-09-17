@@ -42,13 +42,13 @@ Native `read`, `edit`, `write`, and `bash` remain the default for navigation, se
 
 **Returning?** The SessionStart hook surfaces what's present inline along with each file's summary and any operating skills. If you need to refresh it, use the **is-orient** skill.
 
-Read `_agent/foundation.md` and `_agent/guide.md` first when acting beyond the injected awareness — they always exist on a scaffolded space. Then `_agent/purpose.md`, `now.md`, `next.md` when present; a named-but-absent file is a drift signal — surface it and propose capturing before other work.
+Read `_agent/agreement.md` first when acting beyond the injected awareness — it is the contract a scaffolded space carries, and it loads in full. A space on the older shape has `_agent/foundation.md` and `_agent/guide.md` instead; read those. Then `_agent/purpose.md`, `now.md`, `next.md` when present; on the older shape a named-but-absent file is a drift signal — surface it and propose capturing before other work.
 
 ## The `_agent/` contract
 
-The contract's shape is deliberately not restated here. Every scaffolded space carries it in its own `_agent/foundation.md` — the five files, seed vs emergent, the skills/perspectives dimensions, the `.gitignore` boundary — and the shared operating standard lives in [guide](../../reference/guide.md). Read the space's foundation; restating shape in entrypoints is how drift happens. Not in a space yet? `/is-setup` scaffolds the seed. Pi injects an awareness block from `_agent/` each turn.
+The contract's shape is deliberately not restated here. An Agreement says what the place is, how work goes, what the agent does alone and brings back, the local words, what is open, and when to revisit; its frontmatter may reference the kind of place it is (`agreement: agent:repo:…` or `knowledge:repo:…`), and the awareness block names the kind Pi recognises. The shared operating standard lives in [guide](../../reference/guide.md). Read the space's own Agreement; restating shape in entrypoints is how drift happens. Not in a space yet? is-setup forms one in conversation. Still on `foundation.md`? [migrate-to-agreement](../../reference/migrate-to-agreement.md). Pi injects an awareness block from `_agent/` each turn.
 
-Branches (deeper directories) refine via their own `_agent/` without re-declaring foundation; most branches need only a `README.md`. Operating skills in `_agent/skills/` are listed in the awareness block by name + summary — read a skill's body at the moment of use, don't preload.
+Branches (deeper directories) refine via their own `_agent/` without re-declaring the root contract; most branches need only a `README.md`. Operating skills in `_agent/skills/` are listed in the awareness block by name + summary — read a skill's body at the moment of use, don't preload.
 
 ## Two Roles at every position
 

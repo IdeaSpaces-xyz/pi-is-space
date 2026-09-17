@@ -96,6 +96,9 @@ type CreatePlan = {
   target: string;
   shape: "greenfield" | "content-existing" | "code-repo" | "old-shape" | "complete";
   privateAgent: boolean;
+  /** Since CLI 0.1.41: the contract shape and the kind reference it declares. */
+  contract?: "agreement" | "foundation";
+  agreement_reference?: string | null;
   plan: CreatePlanStep[];
 };
 
@@ -103,6 +106,8 @@ type CreateResult = {
   target: string;
   shape: string;
   privateAgent: boolean;
+  contract?: "agreement" | "foundation";
+  agreement_reference?: string | null;
   scaffolded: true;
   root_node_id: string | null;
   identity_state: "local_only" | "unstamped_private";
@@ -562,9 +567,12 @@ function formatCreatePlan(plan: CreatePlan): string {
   const lines = [
     `target:  ${plan.target}`,
     `shape:   ${plan.shape}${plan.privateAgent ? " (private _agent/)" : ""}`,
-    "",
-    "plan:",
   ];
+  if (plan.contract) {
+    const kind = plan.agreement_reference ? ` (${plan.agreement_reference})` : "";
+    lines.push(`writes:  _agent/${plan.contract}.md${kind}`);
+  }
+  lines.push("", "plan:");
 
   for (const step of plan.plan) {
     const op = step.op.toUpperCase().padEnd(9);
@@ -1276,9 +1284,13 @@ export default function (pi: ExtensionAPI) {
         await refreshSpaceUi(ctx);
       }
 
+      const prompts =
+        result.data.contract === "agreement"
+          ? " Its Agreement's sections are prompts — draw them out in conversation and replace them."
+          : "";
       const next = targetName
-        ? `Open ${result.data.target} in Pi to continue. Run /is-publish there when ready to host it remotely.`
-        : "Next session will start oriented to this space. Run /is-publish when ready to host it remotely.";
+        ? `Open ${result.data.target} in Pi to continue.${prompts} Run /is-publish there when ready to host it remotely.`
+        : `Next session will start oriented to this space.${prompts} Run /is-publish when ready to host it remotely.`;
       ctx.ui.notify(`Scaffolded ideaspace at ${result.data.target}.\n${next}`, "info");
     },
   });
@@ -1325,7 +1337,7 @@ export default function (pi: ExtensionAPI) {
       ) {
         ctx.ui.notify(
           `Publish refused: root identity is ${rootIdentity.declaration.dirty ? "dirty" : rootIdentity.state}. ` +
-            "Commit or restore _agent/foundation.md and repair any origin/registry conflict before retrying.",
+            "Commit or restore the root contract (_agent/agreement.md, or _agent/foundation.md on the older shape) and repair any origin/registry conflict before retrying.",
           "error",
         );
         return;
