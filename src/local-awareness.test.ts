@@ -259,6 +259,69 @@ describe("local awareness", () => {
     );
   });
 
+  it("names the kind an Agreement declares between the head and the working set", async () => {
+    const write = async (dir: string, frontmatter: string, body: string) => {
+      await fs.mkdir(join(dir, "_agent"), { recursive: true });
+      await fs.writeFile(
+        join(dir, "_agent", "agreement.md"),
+        `---\n${frontmatter}\n---\n# Agreement\n\n${body}\n`,
+      );
+    };
+
+    // An agent fresh from `ideaspaces create --agent`: prompts still standing.
+    const agent = join(workspace, "scribe");
+    await write(
+      agent,
+      "name: Agreement — scribe\nsummary: Fixture.\nagreement: agent:repo:n_0935a5df1f883eeb60bcdfbb",
+      "> Every section below is a prompt, not content.",
+    );
+    const agentResult = await buildLocalAwareness({ position: agent, workspace });
+    expect(agentResult.stable).toContain(
+      "Kind: agent (agent:repo:n_0935a5df1f883eeb60bcdfbb) — launching here means being scribe, not studying it;",
+    );
+    expect(agentResult.stable).toContain("Its sections are still prompts");
+    expect(agentResult.stable!.indexOf("Kind: agent")).toBeGreaterThan(
+      agentResult.stable!.indexOf("agreement [full]:"),
+    );
+    expect(agentResult.stable!.indexOf("Kind: agent")).toBeLessThan(
+      agentResult.stable!.indexOf("Working set:"),
+    );
+
+    // A knowledge space, written.
+    const knowledge = join(workspace, "decisions");
+    await write(
+      knowledge,
+      "name: Agreement — Decisions\nsummary: Fixture.\nagreement: knowledge:repo:n_f1511280efecd7fcff155152",
+      "One file per decision.",
+    );
+    const knowledgeResult = await buildLocalAwareness({ position: knowledge, workspace });
+    expect(knowledgeResult.stable).toContain(
+      "Kind: knowledge space (knowledge:repo:n_f1511280efecd7fcff155152) — orient in the Agreement above;",
+    );
+    expect(knowledgeResult.stable).not.toContain("still prompts");
+
+    // A reference Pi does not recognise: shown as written, and the Space
+    // orients normally.
+    const other = join(workspace, "loop");
+    await write(
+      other,
+      "name: Agreement — Loop\nsummary: Fixture.\nagreement: program:repo:n_0123456789abcdef01234567",
+      "A program branch.",
+    );
+    const otherResult = await buildLocalAwareness({ position: other, workspace });
+    expect(otherResult.root).toBe(other);
+    expect(otherResult.stable).toContain("agreement [full]:");
+    expect(otherResult.stable).toContain(
+      "Kind: program:repo:n_0123456789abcdef01234567 — declared by the Agreement; not a kind Pi recognises",
+    );
+
+    // No reference: no line.
+    const plain = join(workspace, "plain");
+    await write(plain, "name: Agreement\nsummary: Fixture.", "Body.");
+    const plainResult = await buildLocalAwareness({ position: plain, workspace });
+    expect(plainResult.stable).not.toContain("Kind:");
+  });
+
   it("orients a bare workspace through its local catalog", async () => {
     const child = join(workspace, "child");
     await fs.mkdir(child);

@@ -38,10 +38,10 @@ No separate install required.
 
 ## 1. Pre-flight checks
 
-**Inside an ideaspace?** This dir should be a git repo with `_agent/foundation.md` already scaffolded. If not, suggest `/is-setup` first.
+**Inside an ideaspace?** This dir should be a git repo with a root contract — `_agent/agreement.md`, or `_agent/foundation.md` on the older shape; the CLI publishes either. If neither, suggest `/is-setup` first.
 
 ```bash
-test -f _agent/foundation.md && test -d .git && echo "ok" || echo "missing"
+{ test -f _agent/agreement.md || test -f _agent/foundation.md; } && test -d .git && echo "ok" || echo "missing"
 ```
 
 **Portable identity agrees?** Current shared scaffolds declare `root_node_id`; legacy Spaces may validly omit it. Never mint, edit, stage, or commit identity during publish. Run `is_cli status --json` and inspect `root_identity`: stop on `invalid`, `drift`, `ambiguous`, or `declaration.dirty`. The CLI repeats this preflight against HEAD, index, worktree, canonical origin, and local registry before login or remote mutation.
@@ -125,7 +125,7 @@ is_cli publish --yes [same flags as the plan]
 
 The CLI:
 
-1. Evaluates the committed foundation against index/worktree, canonical origin, and local registry evidence.
+1. Evaluates the committed root contract (Agreement, or Foundation on the older shape) against index/worktree, canonical origin, and local registry evidence.
 2. Preflights tracked Markdown syntax and size before network work.
 3. Confirms login and asks Keeper to adopt the exact committed `root_node_id` on first publish.
 4. Creates or reuses the one matching hosted Space; `--force` cannot fork or rekey it.

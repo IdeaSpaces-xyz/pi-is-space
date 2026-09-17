@@ -38,7 +38,7 @@ Keep agent-facing language intent-first: orient, capture, push, pull, reflect. D
 
 Pi-native commands for human-facing flow:
 
-- `/is-setup` — preview and scaffold the `_agent/` seed contract with confirmation
+- `/is-setup` — preview and scaffold `_agent/agreement.md` with confirmation
 - `/is-status` — show capture/sync state and refresh UI
 - `/is-commit` — review staged knowledge, collect a message, confirm, commit that exact path list
 - `/is-pull` — dry-run, confirm, integrate remote changes into the local space

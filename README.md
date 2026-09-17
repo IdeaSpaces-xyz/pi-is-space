@@ -93,7 +93,7 @@ Human-facing IdeaSpaces actions are Pi-native commands:
 
 | Command | What |
 |---|---|
-| `/is-setup` | Preview and scaffold the `_agent/` seed contract with Pi UI confirmation. |
+| `/is-setup` | Preview and scaffold `_agent/agreement.md` with Pi UI confirmation — the scaffold step; the `is-setup` skill carries the conversation around it. |
 | `/is-status` | Show git/capture state and refresh the footer/widget. |
 | `/is-commit` | Review staged captures, enter a commit message, confirm, then commit them. |
 | `/is-pull` | Run `pull --dry-run`, confirm the plan, then integrate remote changes. |
@@ -150,7 +150,7 @@ Pi ships surface-specific entrypoint skills:
 - `is-inbox` — ask, read, and reply through person-accountable Inbox messages about shared Content.
 
 **Space lifecycle**
-- `is-setup` — create the seed `_agent/` contract.
+- `is-setup` — form a space or an agent in conversation, written as `_agent/agreement.md`.
 - `is-fork` — bring a copy-enabled Space home and safely preview/apply maintained source updates.
 - `is-publish` — host a local space remotely for the first time.
 - `is-shape` — evolve the `_agent/` agreement or reusable agent behavior.

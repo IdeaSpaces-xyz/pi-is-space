@@ -23,6 +23,7 @@ import {
   type RootMapMemberInput,
   type WorkspaceRepository,
 } from "@ideaspaces/protocol";
+import { renderKindLine } from "./kind-line.js";
 
 export type CaptureStatus = {
   repoRoot: string;
@@ -128,6 +129,8 @@ export async function buildLocalAwareness(opts: {
   }
 
   const stableCore = renderContentAwareness(manifest, { placement: "head" });
+  // Pi's one line as a listener: the convention the Agreement declares.
+  const kindLine = renderKindLine(manifest);
   const isFloor = manifest.contractSource === null;
   const workingSet = isFloor
     ? null
@@ -136,7 +139,7 @@ export async function buildLocalAwareness(opts: {
   return {
     root: manifest.spaceRoot,
     repoRoot: manifest.position.repoRoot,
-    stable: joinSections([stableCore, workingSet]),
+    stable: joinSections([stableCore, kindLine, workingSet]),
     // The protocol owns the tail composition: State supersedes the compact Git
     // line, forest handles keep producer order, the manifest tail is last. The
     // same call renders the CLI's `status`, so the two cannot drift.
