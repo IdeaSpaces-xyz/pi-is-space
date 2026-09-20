@@ -14,7 +14,7 @@ The agent chooses intent; the extension/skills choose mechanism. Keep the wrappe
 
 ```txt
 Agent (Pi) → pi-is-space → protocol (local reads + explicit local effects)
-                         → CLI (auth/sync/publish/fork/update/share/inbox/setup + remote catalog)
+                         → CLI (auth/sync/publish/fork/update/share/inbox/follow/setup + remote catalog)
 ```
 
 ## Tool Surface
@@ -33,6 +33,7 @@ IdeaSpaces-aware primitives:
 - `is_pull` — pull primitive; integrates remote changes into the local space (never pushes)
 - `is_push` — push primitive; sends committed captures to the remote (refuses when behind — pull first)
 - `is_auth` — login/logout for optional sync
+- `is_follow` — follow, unfollow, or explicitly acknowledge a Thread, Node, or repository cursor
 
 Keep agent-facing language intent-first: orient, capture, push, pull, reflect. Do not make agents choose between equivalent backends at the top level.
 

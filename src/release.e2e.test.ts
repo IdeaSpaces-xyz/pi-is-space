@@ -167,14 +167,14 @@ function rosterBytes(): string {
 describe("the roster is fixed at session start", () => {
   test("rare verbs leave the roster byte-identical", async () => {
     const before = rosterBytes();
-    expect(tools.size).toBe(14);
+    expect(tools.size).toBe(15);
     // Rare verbs: a Change opened and closed, a status read, a release refused.
     expect((await call("is_change_open", { handle: "roster canary" })).error).toBeUndefined();
     expect((await call("is_status", {})).error).toBeUndefined();
     expect((await call("is_release", { path: "notes/none.md" })).error).toContain("does not exist");
     expect((await call("is_change_close", {})).error).toBeUndefined();
     expect(rosterBytes()).toBe(before);
-    expect(tools.size).toBe(14);
+    expect(tools.size).toBe(15);
   }, T);
 });
 
