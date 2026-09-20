@@ -35,6 +35,11 @@ describe("direct Inbox distribution", () => {
     const followHelp = `${follow.stdout}${follow.stderr}`;
     expect(follow.status).toBe(0);
     expect(followHelp).toContain("follow <thread|node|repo> <id> [--ack <position>]");
+
+    const unfollow = spawnSync(process.execPath, [CLI, "unfollow", "--help"], { encoding: "utf-8" });
+    const unfollowHelp = `${unfollow.stdout}${unfollow.stderr}`;
+    expect(unfollow.status).toBe(0);
+    expect(unfollowHelp).toContain("unfollow <thread|node|repo> <id>");
   });
 
   it("teaches the person-accountable CLI boundary to local agents", () => {
