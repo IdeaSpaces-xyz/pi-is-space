@@ -448,13 +448,14 @@ export function followCliArgs(
   id: string,
   position?: number,
 ): string[] {
-  if (!id.trim()) throw new Error("Provide the exact Thread, Node, or repository id.");
+  const normalizedId = id.trim();
+  if (!normalizedId) throw new Error("Provide the exact Thread, Node, or repository id.");
   if (action === "ack") {
     if (position === undefined) throw new Error("action=ack requires `position`.");
-    return ["follow", source, id, "--ack", String(position)];
+    return ["follow", source, normalizedId, "--ack", String(position)];
   }
   if (position !== undefined) throw new Error("`position` is valid only with action=ack.");
-  return [action === "unfollow" ? "unfollow" : "follow", source, id];
+  return [action === "unfollow" ? "unfollow" : "follow", source, normalizedId];
 }
 
 // The "last seen" marker — HEAD at the end of the previous session — lives in a

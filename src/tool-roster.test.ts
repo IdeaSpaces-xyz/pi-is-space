@@ -120,7 +120,7 @@ describe("Pi tool registration contract", () => {
   });
 
   it("maps follow actions onto the person-authenticated CLI without implicit acknowledgement", () => {
-    expect(followCliArgs("follow", "thread", "x_example")).toEqual([
+    expect(followCliArgs("follow", "thread", "  x_example  ")).toEqual([
       "follow", "thread", "x_example",
     ]);
     expect(followCliArgs("unfollow", "repo", "n_0123456789abcdef01234567")).toEqual([
