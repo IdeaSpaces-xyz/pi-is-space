@@ -48,7 +48,7 @@ describe("direct Inbox distribution", () => {
     expect(skill).toContain("$IS_CLI_PATH");
     expect(skill).toContain("is_cli inbox list --new --depth name");
     expect(skill).toContain("Use `is_follow`");
-    expect(skill).toContain("Only acknowledgement advances");
+    expect(skill).toContain("Only explicit acknowledgement advances");
     expect(skill).toContain("is_cli inbox send");
     expect(skill).toContain("is_cli inbox reply");
     expect(skill).toContain("acts as the logged-in person");
