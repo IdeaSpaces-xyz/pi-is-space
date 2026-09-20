@@ -49,7 +49,7 @@ The agent chooses the intent; the package chooses the mechanism. Architecture st
 
 ```txt
 Agent (Pi) → pi-is-space → @ideaspaces/protocol (local reads + explicit local effects)
-                         → IdeaSpaces CLI (auth/sync/publish/fork/share/inbox/setup + remote catalog)
+                         → IdeaSpaces CLI (auth/sync/publish/fork/share/inbox/follow/setup + remote catalog)
 ```
 
 The wrapper keeps harness placement and session behavior local while reusing the protocol's shape and the CLI's platform capabilities.
@@ -62,7 +62,7 @@ The package has three surfaces:
 - **Tools** — low-level primitives the skills call (`is_write`, `is_commit`).
 - **Commands** — human-triggered Pi UI flows (`/is-push`, `/is-pull`, `/is-commit`).
 
-Local conversation/session hygiene lives in `pi-local-context` (`context_conversation`, `context_recall`, `context_cleanup`). This package stays focused on Space state: awareness, capture, commit, push, pull, auth, setup, publish, Share access, and person-accountable Inbox messages.
+Local conversation/session hygiene lives in `pi-local-context` (`context_conversation`, `context_recall`, `context_cleanup`). This package stays focused on Space state: awareness, capture, commit, push, pull, auth, setup, publish, Share access, person-accountable Inbox messages, and explicit follow cursors.
 
 Pi's native `read`, `edit`, `write`, and `bash` cover exact full-document evidence and ordinary edits. `pi-is-space` adds IdeaSpaces-aware primitives used by the skills and commands:
 
@@ -80,6 +80,7 @@ Pi's native `read`, `edit`, `write`, and `bash` cover exact full-document eviden
 | `is_pull` | Pull primitive: integrate remote changes into the local space; never pushes; refuses to integrate on staged/dirty tree. |
 | `is_push` | Push primitive: send committed captures to the remote; refuses on uncommitted captures, and when behind — pull first. |
 | `is_auth` | Log in / out for optional remote sync. |
+| `is_follow` | Follow or unfollow a Thread, Node, or repository, or explicitly acknowledge its event cursor. Reads never acknowledge. |
 
 `is_inspect` remains for this compatibility release because exact-heading section selection is not
 yet an `is_look` filter. `is_look` paths resolve from the selected home or mounted root;
@@ -118,7 +119,7 @@ Releases execute at the compaction boundary and nowhere else: history is append-
 
 ## CLI
 
-The package still depends on `@ideaspaces/cli` for auth, sync, publish/setup, account-free local Fork and maintained source updates, recipient-shaped Share, direct Inbox messages, remote catalog discovery, and explicit full-depth local Map derivation. It resolves the CLI for those calls and exposes the path to skills as `$IS_CLI_PATH` when available. Fork/update, Share, Inbox, and derived Map enumeration remain CLI-backed flows rather than duplicate native tools. Local path status, Markdown write, exact-path commit, Change minting, bounded navigation, rung-selective look, compatibility inspection, mounted orientation, and capture nudges execute in-process; remote-catalog refresh remains a best-effort platform call.
+The package still depends on `@ideaspaces/cli` for auth, sync, publish/setup, account-free local Fork and maintained source updates, recipient-shaped Share, direct Inbox messages, follow/cursor writes, remote catalog discovery, and explicit full-depth local Map derivation. It resolves the CLI for those calls and exposes the path to skills as `$IS_CLI_PATH` when available. Fork/update, Share, Inbox reads/sends, and derived Map enumeration remain CLI-backed skill flows; the native `is_follow` tool enforces explicit subscription writes while delegating them to that same CLI. Local path status, Markdown write, exact-path commit, Change minting, bounded navigation, rung-selective look, compatibility inspection, mounted orientation, and capture nudges execute in-process; remote-catalog refresh remains a best-effort platform call.
 
 A host that drives pi one process per turn (e.g. the desktop) owns the conversation's durable working set and passes it as `$IS_MOUNTS` (comma-separated absolute paths) on the inherited env; at load the extension seeds its mounts from it, so a mount survives across turns without the agent re-running `is_mount`.
 
@@ -147,7 +148,7 @@ Pi ships surface-specific entrypoint skills:
 
 **Access and Inbox**
 - `is-share` — manage people, teams, and public/private visibility through recipient-shaped choices.
-- `is-inbox` — ask, read, and reply through person-accountable Inbox messages about shared Content.
+- `is-inbox` — ask, read, reply, and follow updates through person-accountable Inbox Threads about shared Content.
 
 **Space lifecycle**
 - `is-setup` — form a space or an agent in conversation, written as `_agent/agreement.md`.
