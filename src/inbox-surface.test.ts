@@ -51,6 +51,11 @@ describe("direct Inbox distribution", () => {
     expect(skill).toContain("Only explicit acknowledgement advances");
     expect(skill).toContain("is_cli inbox send");
     expect(skill).toContain("is_cli inbox reply");
+    expect(skill).toContain("A Map is optional");
+    expect(skill).toContain("**No Map**");
+    expect(skill).toContain("**Inherit**");
+    expect(skill).toContain("Feature-check `inbox reply --help`");
+    expect(skill).toContain("do not reproduce the operation with raw API");
     expect(skill).toContain("acts as the logged-in person");
     expect(skill).toContain("Never substitute a bare Agent");
     expect(skill).toContain("reuse that exact id only when retrying");
