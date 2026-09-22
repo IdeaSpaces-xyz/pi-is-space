@@ -2,10 +2,11 @@
 name: is-inbox
 description: >
   Read and reply to direct Inbox messages, ask a person a question about shared
-  Content, or follow a Thread, Node, or repository for updates. Use when the user
-  says check my Inbox, read this message, follow this, show what is new, ask the
-  owner/person about this, send an inquiry, or reply. Not for giving someone
-  access to a Space; that is is-share.
+  Content, optionally attach an explorable Map, or follow a Thread, Node, or
+  repository for updates. Use when the user says check my Inbox, read this
+  message, follow this, show what is new, ask the owner/person about this, send
+  an inquiry, or reply. Not for giving someone access to a Space; that is
+  is-share.
 allowed-tools: "is_auth is_follow read bash"
 ---
 
@@ -65,6 +66,41 @@ Only explicit acknowledgement advances the stored cursor. Plain listing and read
 the person asks to read and catch up to the latest position in one step, `is_cli inbox read
 "<thread-id>" --new --ack` deliberately combines the read with acknowledgement; use `is_follow`
 with `action: "ack"` when the exact position is already known.
+
+## Decide whether the Note needs a Map
+
+The Note is the contribution itself: the ask, problem, finding, decision, or context the recipient
+should understand directly. A Map is optional. It answers **what broader material are we talking
+about?** by giving the recipient ordered pointers they can explore progressively.
+
+Before sending, choose deliberately:
+
+- **No Map** — the Note and Thread history are sufficient.
+- **Inherit** — the current Agreement or subject Map still frames this reply; do not repeat it.
+- **Attach a Map** — the Note introduces material the recipient may need to explore.
+- **Attach and reframe** — the new material changes what the Thread is currently about.
+
+Ask: *Can the recipient understand and act on this Note from the current Thread frame?* If yes, a
+Mapless message is complete. Never attach a Map as ceremony, and never copy broader material into the
+message merely because the Map path is unavailable.
+
+When a new Map is warranted:
+
+1. Put the primary Note first, usually at `surface`; add only the few supporting members needed, often
+   at `name` or `summary`.
+2. Preview the exact member order, annotations, and disclosure ceilings before sending.
+3. Ensure positioned Notes are committed, pushed, indexed, and bound to their hosted Space. A local
+   path is not shared context.
+4. Send only through a CLI surface that accepts the reviewed selection. `inbox send --map` is the
+   current opening path. Feature-check `inbox reply --help` before promising a reply Map; if the
+   installed CLI lacks `--map`, state that limitation and do not reproduce the operation with raw API
+   calls.
+5. Read the sent message back at `--depth full` and expand one member before claiming the Map or Note
+   was shared.
+
+`ideaspaces map select` currently builds a bounded reviewed selection profile. If it cannot express
+an intended multi-Note Map, surface that honestly rather than hand-authoring an unreviewed transport
+envelope.
 
 ## Choose the send coordinate
 
