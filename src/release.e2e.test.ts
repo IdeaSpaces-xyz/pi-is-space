@@ -218,6 +218,36 @@ describe("local Threads through the real Pi runtime and installed CLI", () => {
   }, T);
 });
 
+describe("pinned Thread reads in a mounted reference Space", () => {
+  test("runs CLI in the mount's root, not the caller's home", async () => {
+    const mount = mkdtempSync(join(tmpdir(), "is-pi-threads-mount-"));
+    const command = (program: string, args: string[]) => {
+      const result = spawnSync(program, args, { cwd: mount, encoding: "utf8", env: { ...process.env, HOME: home } });
+      if (result.status !== 0) throw new Error(result.stderr);
+      return result.stdout.trim();
+    };
+    try {
+      command("git", ["init", "-q"]);
+      command("git", ["config", "user.name", "Mount Agent"]);
+      command("git", ["config", "user.email", "mount@example.org"]);
+      mkdirSync(join(mount, "_agent"));
+      writeFileSync(join(mount, "_agent/agreement.md"), "---\nname: Agreement — Mount\nagreement: agent:repo:n_0935a5df1f883eeb60bcdfbb\n---\n# Mount\n");
+      const cli = process.env.IS_CLI_PATH!;
+      command("node", [cli, "--json", "threads", "new", "decision", "--about", "Mounted thread"]);
+      const post = JSON.parse(command("node", [cli, "--json", "threads", "post", "decision", "--message", "Mounted truth", "--author", "Mount Agent"])) as { path: string };
+      command("git", ["add", "_agent", "_threads"]);
+      command("git", ["commit", "-qm", "pin mount"]);
+      const pin = command("git", ["rev-parse", "HEAD"]);
+      const position = `_threads/decision/${post.path.split("/").at(-1)}`;
+      expect((await call("is_mount", { path: mount })).error).toBeUndefined();
+      const looked = await call("is_look", { root: mount, path: position, depth: "full", pin, position });
+      expect(looked.error).toBeUndefined();
+      expect(looked.text).toContain("Mounted truth");
+      expect((await call("is_unmount", { path: mount })).error).toBeUndefined();
+    } finally { rmSync(mount, { recursive: true, force: true }); }
+  }, T);
+});
+
 describe("release through the real runtime", () => {
   test("is_release records a committed item with its sha and refuses a modified one", async () => {
     const blob = git(["rev-parse", "HEAD:notes/decision.md"]);
