@@ -34,6 +34,7 @@ IdeaSpaces-aware primitives:
 - `is_push` — push primitive; sends committed captures to the remote (refuses when behind — pull first)
 - `is_auth` — login/logout for optional sync
 - `is_follow` — follow, unfollow, or explicitly acknowledge a Thread, Node, or repository cursor
+- `is_threads` — explicitly list, open, post to, or close local Threads through the installed CLI; no ambient loading or hosted x_ operations
 
 Keep agent-facing language intent-first: orient, capture, push, pull, reflect. Do not make agents choose between equivalent backends at the top level.
 

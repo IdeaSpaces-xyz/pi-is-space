@@ -84,6 +84,8 @@ beforeAll(async () => {
   git(["add", "."]);
   git(["commit", "-q", "-m", "seed"]);
 
+  savedEnv.IS_CLI_PATH = process.env.IS_CLI_PATH;
+  process.env.IS_CLI_PATH = join(ROOT, "node_modules", "@ideaspaces", "cli", "bundle", "ideaspaces.js");
   const agentDir = join(home, "pi-agent");
   mkdirSync(agentDir, { recursive: true });
   const result = await discoverAndLoadExtensions([join(ROOT, "src/index.ts")], space, agentDir);
@@ -167,14 +169,48 @@ function rosterBytes(): string {
 describe("the roster is fixed at session start", () => {
   test("rare verbs leave the roster byte-identical", async () => {
     const before = rosterBytes();
-    expect(tools.size).toBe(15);
+    expect(tools.size).toBe(16);
     // Rare verbs: a Change opened and closed, a status read, a release refused.
     expect((await call("is_change_open", { handle: "roster canary" })).error).toBeUndefined();
     expect((await call("is_status", {})).error).toBeUndefined();
     expect((await call("is_release", { path: "notes/none.md" })).error).toContain("does not exist");
     expect((await call("is_change_close", {})).error).toBeUndefined();
     expect(rosterBytes()).toBe(before);
-    expect(tools.size).toBe(15);
+    expect(tools.size).toBe(16);
+  }, T);
+});
+
+describe("local Threads through the real Pi runtime and installed CLI", () => {
+  test("opens each rung, writes distinct authors and closes; pinned post stays at its authored commit", async () => {
+    const cli = process.env.IS_CLI_PATH!;
+    const fresh = spawnSync("node", [cli, "--json", "threads", "new", "trial", "--about", "Agreement trial"], { cwd: space, encoding: "utf8", env: process.env });
+    expect(fresh.status, fresh.stderr).toBe(0);
+    const listing = await call("is_threads", { action: "list" });
+    expect(JSON.parse(listing.text).threads[0].name).toBe("Agreement trial");
+    for (const depth of ["name", "summary", "full"]) {
+      const opened = await call("is_threads", { action: "open", path: "trial", depth });
+      expect(opened.error).toBeUndefined();
+      expect(JSON.parse(opened.text).thread.name).toBe("Agreement trial");
+    }
+    const posted = await call("is_threads", { action: "post", path: "trial", message: "Authored truth", name: "First", summary: "Decision one", author: "Pi Agent" });
+    expect(posted.error).toBeUndefined();
+    const first = JSON.parse(posted.text) as { path: string; id: string };
+    expect((await call("is_look", { path: first.path, depth: "full" })).error).toBeUndefined();
+    expect((await call("is_look", { path: first.path, depth: "full" })).text).toContain("author: Pi Agent");
+    git(["add", "_threads/trial"]);
+    git(["commit", "-q", "-m", "pin first post"]);
+    const pin = git(["rev-parse", "HEAD"]);
+    const position = `_threads/trial/${first.path.split("/").at(-1)}`;
+    const second = await call("is_threads", { action: "post", path: "trial", message: "A later decision", author: "Claude Agent", reply_to: [first.id] });
+    expect(second.error).toBeUndefined();
+    const old = await call("is_threads", { action: "open", path: "trial", depth: "summary", pin, position });
+    expect(old.text).toContain("Decision one");
+    expect(old.text).not.toContain("A later decision");
+    const looked = await call("is_look", { path: first.path, depth: "full", pin, position });
+    expect(looked.text).toContain("Authored truth");
+    const closed = await call("is_threads", { action: "close", path: "trial", message: "Done", author: "Claude Agent" });
+    expect(closed.error).toBeUndefined();
+    expect(JSON.parse((await call("is_threads", { action: "open", path: "trial", depth: "full" })).text).thread.closed).toBe(true);
   }, T);
 });
 

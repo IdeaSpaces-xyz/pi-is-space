@@ -22,6 +22,7 @@ const EXPECTED_PI_TOOL_NAMES = [
   "is_unmount",
   "is_auth",
   "is_follow",
+  "is_threads",
   "is_write",
   "is_status",
   "is_commit",
