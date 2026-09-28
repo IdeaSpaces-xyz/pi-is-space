@@ -58,18 +58,18 @@ The wrapper keeps harness placement and session behavior local while reusing the
 
 The package has three surfaces:
 
-- **Skills** — agent procedures for user intent (`is-capture`, `is-share`, `is-inbox`, `is-push`, `is-pull`).
+- **Skills** — agent procedures for user intent (`is-capture`, `is-share`, `is-inbox`, `is-threads`, `is-push`, `is-pull`).
 - **Tools** — low-level primitives the skills call (`is_write`, `is_commit`).
 - **Commands** — human-triggered Pi UI flows (`/is-push`, `/is-pull`, `/is-commit`).
 
-Local conversation/session hygiene lives in `pi-local-context` (`context_conversation`, `context_recall`, `context_cleanup`). This package stays focused on Space state: awareness, capture, commit, push, pull, auth, setup, publish, Share access, person-accountable Inbox messages, and explicit follow cursors.
+Local conversation/session hygiene lives in `pi-local-context` (`context_conversation`, `context_recall`, `context_cleanup`). This package stays focused on Space state: awareness, capture, commit, push, pull, auth, setup, publish, Share access, person-accountable Inbox messages, explicit follow cursors, and local Threads.
 
 Pi's native `read`, `edit`, `write`, and `bash` cover exact full-document evidence and ordinary edits. `pi-is-space` adds IdeaSpaces-aware primitives used by the skills and commands:
 
 | Tool | What |
 |---|---|
 | `is_navigate` | Read a home or mounted position as bounded history reference without changing authority. |
-| `is_look` | Read one local Note or directory at `name`, `summary`, `surface`, `children`, or `full` beneath its reference-only frame. |
+| `is_look` | Read one local Note or directory at `name`, `summary`, `surface`, `children`, or `full` beneath its reference-only frame; for a `_threads/` post, accept an authored pin and position without substituting HEAD. |
 | `is_inspect` | Compatibility inspection of one Markdown file by summary, ATX outline, or exact section. |
 | `is_mount` / `is_unmount` | Add or remove read-only repositories from the conversation's working set. |
 | `is_status` | Inspect git/capture state, or return a file's full revision and compatibility `sha` for safe Note updates. |
@@ -81,6 +81,7 @@ Pi's native `read`, `edit`, `write`, and `bash` cover exact full-document eviden
 | `is_push` | Push primitive: send committed captures to the remote; refuses on uncommitted captures, and when behind — pull first. |
 | `is_auth` | Log in / out for optional remote sync. |
 | `is_follow` | Follow or unfollow a Thread, Node, or repository, or explicitly acknowledge its event cursor. Reads never acknowledge. |
+| `is_threads` | Explicitly list, open at `name`/`summary`/`full`, post to, or close a local Thread through the installed CLI; no ambient load or hosted `x_` id. |
 
 `is_inspect` remains for this compatibility release because exact-heading section selection is not
 yet an `is_look` filter. `is_look` paths resolve from the selected home or mounted root;
@@ -119,7 +120,7 @@ Releases execute at the compaction boundary and nowhere else: history is append-
 
 ## CLI
 
-The package still depends on `@ideaspaces/cli` for auth, sync, publish/setup, account-free local Fork and maintained source updates, recipient-shaped Share, direct Inbox messages, follow/cursor writes, remote catalog discovery, and explicit full-depth local Map derivation. It resolves the CLI for those calls and exposes the path to skills as `$IS_CLI_PATH` when available. Fork/update, Share, Inbox reads/sends, and derived Map enumeration remain CLI-backed skill flows; the native `is_follow` tool enforces explicit subscription writes while delegating them to that same CLI. Local path status, Markdown write, exact-path commit, Change minting, bounded navigation, rung-selective look, compatibility inspection, mounted orientation, and capture nudges execute in-process; remote-catalog refresh remains a best-effort platform call.
+The package still depends on `@ideaspaces/cli` for auth, sync, publish/setup, account-free local Fork and maintained source updates, recipient-shaped Share, direct Inbox messages, follow/cursor writes, remote catalog discovery, explicit full-depth local Map derivation, and local Thread operations. It resolves the CLI for those calls and exposes the path to skills as `$IS_CLI_PATH` when available. Fork/update, Share, Inbox reads/sends, and derived Map enumeration remain CLI-backed skill flows; the native `is_follow` tool enforces explicit subscription writes while delegating them to that same CLI. Local path status, Markdown write, exact-path commit, Change minting, bounded navigation, ordinary rung-selective look, compatibility inspection, mounted orientation, and capture nudges execute in-process; pinned Thread-post looks delegate the authored Git-tree lookup to the CLI. Remote-catalog refresh remains a best-effort platform call.
 
 A host that drives pi one process per turn (e.g. the desktop) owns the conversation's durable working set and passes it as `$IS_MOUNTS` (comma-separated absolute paths) on the inherited env; at load the extension seeds its mounts from it, so a mount survives across turns without the agent re-running `is_mount`.
 
@@ -146,9 +147,10 @@ Pi ships surface-specific entrypoint skills:
 - `is-pull` — integrate remote changes into the local space.
 - `is-reflect` — check whether declared direction still matches reality.
 
-**Access and Inbox**
+**Access and coordination**
 - `is-share` — manage people, teams, and public/private visibility through recipient-shaped choices.
-- `is-inbox` — ask, read, reply, and follow updates through person-accountable Inbox Threads about shared Content.
+- `is-inbox` — ask, read, reply, and follow updates through person-accountable hosted Threads about shared Content.
+- `is-threads` — explicitly read and append to local Threads when another vantage or later session should resume the work.
 
 **Space lifecycle**
 - `is-setup` — form a space or an agent in conversation, written as `_agent/agreement.md`.
