@@ -24,9 +24,11 @@ describe("local Thread CLI adapter", () => {
     expect(threadArgs({ action: "open", path: "trial", depth: "summary", pin, position }))
       .toEqual(["threads", "open", "trial", "--depth", "full", "--pin", pin, "--position", position]);
     const body = "---\nname: Authored\nsummary: Pinned summary\n---\n\nOld body\n";
-    expect(pinnedView({ pinned: body, pin, position }, "summary")).toContain("Pinned summary");
-    expect(pinnedView({ pinned: body, pin, position }, "full")).toBe(body);
-    expect(() => pinnedView({ pin, position }, "full")).toThrow(/fallback/);
+    expect(pinnedView({ pinned: body, pin, position }, "summary", { pin, position })).toContain("Pinned summary");
+    expect(pinnedView({ pinned: body, pin, position }, "full", { pin, position })).toBe(body);
+    expect(() => pinnedView({ pin, position }, "full", { pin, position })).toThrow(/fallback/);
+    expect(() => pinnedView({ pinned: body, pin: "b".repeat(40), position }, "full", { pin, position })).toThrow(/requested authored/);
+    expect(() => threadArgs({ action: "close", path: "trial", message: "Done", map: "map.yaml" })).toThrow(/only accepts/);
     const root = mkdtempSync(join(tmpdir(), "is-thread-path-"));
     try {
       mkdirSync(join(root, "_threads/trial"), { recursive: true });

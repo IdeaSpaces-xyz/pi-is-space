@@ -21,9 +21,6 @@ import {
   inspectMarkdownFile,
   isIdeaspacePath,
   mintChangeId,
-  parseFrontmatter,
-  stripFrontmatter,
-  summarizeMarkdown,
   type MarkdownHeading,
   type MarkdownInspection,
   type MarkdownInspectionMode,
@@ -52,7 +49,7 @@ import {
   type LocalToolResult,
 } from "./local-tools.js";
 import { parseMountEnv } from "./mounts.js";
-import { pinnedView, threadArgs, threadPost } from "./threads.js";
+import { pinnedView, postView, threadArgs, threadPost } from "./threads.js";
 import {
   CHANGE_ID_SHAPE,
   armingDecision,
@@ -1619,7 +1616,7 @@ export default function (pi: ExtensionAPI) {
     name: "is_look",
     label: "IS Look",
     description:
-      `Read one local Markdown Note or Content directory at name, summary, surface, children, or full depth beneath its applicable reference-only Agreement/Foundation frame. Use full for reference-framed body evidence; is_status returns revisions, not content, while native read remains the exact-file fallback beyond this tool's bound. Read-only: never changes caller authority or working directory. Output is capped at ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}.`,
+      `Read one local Markdown Note or Content directory at a canonical rung; _threads/ posts accept an authored pin and position, resolved via CLI without substituting HEAD. Use full for body evidence; is_status returns revisions, not content, while native read remains the exact-file fallback beyond this tool's bound. Read-only: never changes caller authority or working directory. Output is capped at ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}.`,
     promptSnippet: "Read one local Content target at a canonical rung as reference context",
     promptGuidelines: [
       "Use is_look to deepen one target already identified by awareness, navigation, a Map, or search. Start at summary or children; request surface/full only when the task needs body evidence.",
@@ -1687,15 +1684,12 @@ export default function (pi: ExtensionAPI) {
         const depth = params.depth ?? "summary";
         if (depth === "children") throw new Error("Thread posts support name, summary, surface and full rungs; not children.");
         const source = params.pin
-          ? (await runJson<{ pinned?: string }>(threadArgs({ action: "open", path: post.thread, depth: "full", pin: params.pin, position: post.position }), ctx.cwd))
+          ? (await runJson<{ pinned?: string; pin?: string; position?: string }>(threadArgs({ action: "open", path: post.thread, depth: "full", pin: params.pin, position: post.position }), readRoot))
           : null;
         if (source && !source.ok) throw new Error(source.error);
-        const text = source ? source.data.pinned : readFileSync(target, "utf8");
-        if (!text) throw new Error("Pinned post was not returned by the CLI; refusing working-tree fallback.");
-        const fm = parseFrontmatter(text);
-        const name = typeof fm?.name === "string" ? fm.name : basename(target, ".md");
-        const summary = summarizeMarkdown(text);
-        const body = depth === "name" ? name : depth === "summary" ? `${name}\n${summary ?? ""}` : depth === "surface" ? stripFrontmatter(text) : text;
+        const body = source
+          ? pinnedView(source.data, depth, { pin: params.pin!, position: post.position })
+          : postView(readFileSync(target, "utf8"), post.position, depth);
         return { content: [{ type: "text", text: body }], details: { path: target, depth, pin: params.pin ?? null, position: post.position } };
       }
       if (params.pin || params.position) throw new Error("Pin and position are for _threads/ posts only.");
@@ -1993,7 +1987,7 @@ export default function (pi: ExtensionAPI) {
       if (params.action === "open" && params.pin) {
         const result = await runJson<{ pinned?: string; pin?: string; position?: string }>(args, params.cwd || ctx.cwd);
         if (!result.ok) throw new Error(result.error);
-        return ok(pinnedView(result.data, params.depth ?? "summary"));
+        return ok(pinnedView(result.data, params.depth ?? "summary", { pin: params.pin, position: params.position! }));
       }
       return runTool(args, undefined, params.cwd || ctx.cwd);
     },

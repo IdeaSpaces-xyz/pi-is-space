@@ -1,6 +1,6 @@
 import { relative, resolve, sep } from "node:path";
 import { realpathSync } from "node:fs";
-import { parseFrontmatter, summarizeMarkdown } from "@ideaspaces/protocol";
+import { parseFrontmatter, stripFrontmatter, summarizeMarkdown } from "@ideaspaces/protocol";
 
 export type ThreadRequest = {
   action: "list" | "open" | "post" | "close";
@@ -23,7 +23,7 @@ export function threadArgs(input: ThreadRequest): string[] {
     if (path?.startsWith("x_")) throw new Error("is_threads is local-only; use a directory, not a hosted x_ id.");
     return ["threads", "list", path || ".", "--depth", input.depth ?? "summary"];
   }
-  if (!path?.trim() || /^x_[0-9a-f]+$/.test(path.trim())) {
+  if (!path?.trim() || path.trim().startsWith("x_")) {
     throw new Error("Provide a local Thread path, not a hosted x_ id.");
   }
   if (action === "open") {
@@ -34,7 +34,7 @@ export function threadArgs(input: ThreadRequest): string[] {
   }
   if (input.pin || input.position || input.depth) throw new Error("Pin, position and depth apply to opening, not writing.");
   if (!input.message?.trim()) throw new Error("A post or closure needs a nonempty message.");
-  if (action === "close" && input.reply_to?.length) throw new Error("Closure parent is chosen by the CLI; omit reply_to.");
+  if (action === "close" && (input.reply_to?.length || input.name || input.summary || input.map)) throw new Error("Closure only accepts message and author; omit reply_to, name, summary and map.");
   return ["threads", action, path, "--message", input.message,
     ...(input.author ? ["--author", input.author] : []),
     ...(action === "post" ? [
@@ -46,11 +46,18 @@ export function threadArgs(input: ThreadRequest): string[] {
 }
 
 /** A post lives under the named extension, never under ordinary Content. */
-export function pinnedView(data: { pinned?: string; pin?: string; position?: string }, depth: "name" | "summary" | "full"): string {
-  if (!data.pinned || !data.pin || !data.position) throw new Error("CLI did not return the authored pinned member; refusing working-tree fallback.");
-  const text = data.pinned;
-  const name = typeof parseFrontmatter(text)?.name === "string" ? parseFrontmatter(text)!.name as string : data.position.split("/").at(-1)!.replace(/\.md$/, "");
-  return depth === "name" ? name : depth === "summary" ? `${name}\n${summarizeMarkdown(text) ?? ""}` : text;
+export function postView(text: string, position: string, depth: "name" | "summary" | "surface" | "full"): string {
+  const fm = parseFrontmatter(text);
+  const name = typeof fm?.name === "string" ? fm.name : position.split("/").at(-1)!.replace(/\.md$/, "");
+  return depth === "name" ? name : depth === "summary" ? `${name}\n${summarizeMarkdown(text) ?? ""}`
+    : depth === "surface" ? stripFrontmatter(text) : text;
+}
+
+export function pinnedView(data: { pinned?: string; pin?: string; position?: string }, depth: "name" | "summary" | "surface" | "full", expected: { pin: string; position: string }): string {
+  if (!data.pinned || data.pin !== expected.pin || data.position !== expected.position) {
+    throw new Error("CLI did not return the requested authored pin and position; refusing working-tree fallback.");
+  }
+  return postView(data.pinned, expected.position, depth);
 }
 
 export function threadPost(path: string, root: string): { thread: string; position: string } | null {
