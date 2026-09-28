@@ -11,7 +11,7 @@ import {
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve as resolvePath, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -49,6 +49,7 @@ import {
   type LocalToolResult,
 } from "./local-tools.js";
 import { parseMountEnv } from "./mounts.js";
+import { pinnedView, postView, threadArgs, threadPost } from "./threads.js";
 import {
   CHANGE_ID_SHAPE,
   armingDecision,
@@ -1615,7 +1616,7 @@ export default function (pi: ExtensionAPI) {
     name: "is_look",
     label: "IS Look",
     description:
-      `Read one local Markdown Note or Content directory at name, summary, surface, children, or full depth beneath its applicable reference-only Agreement/Foundation frame. Use full for reference-framed body evidence; is_status returns revisions, not content, while native read remains the exact-file fallback beyond this tool's bound. Read-only: never changes caller authority or working directory. Output is capped at ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}.`,
+      `Read one local Markdown Note or Content directory at a canonical rung; _threads/ posts accept an authored pin and position, resolved via CLI without substituting HEAD. Use full for body evidence; is_status returns revisions, not content, while native read remains the exact-file fallback beyond this tool's bound. Read-only: never changes caller authority or working directory. Output is capped at ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}.`,
     promptSnippet: "Read one local Content target at a canonical rung as reference context",
     promptGuidelines: [
       "Use is_look to deepen one target already identified by awareness, navigation, a Map, or search. Start at summary or children; request surface/full only when the task needs body evidence.",
@@ -1644,6 +1645,8 @@ export default function (pi: ExtensionAPI) {
             "Omit or use home for the authority root. Pass a mounted root (absolute path or basename) to read inside that mount; it remains reference-only.",
         }),
       ),
+      pin: Type.Optional(Type.String({ description: "Authored commit pin for a _threads/ post; never inferred from HEAD" })),
+      position: Type.Optional(Type.String({ description: "Authored _threads/ post position paired with pin" })),
     }),
     async execute(_id, params, signal, _onUpdate, ctx) {
       signal?.throwIfAborted();
@@ -1674,6 +1677,25 @@ export default function (pi: ExtensionAPI) {
         throw new Error(`Not a Markdown file or Content directory: ${target}`);
       }
 
+      const post = threadPost(target, readRoot);
+      if (post) {
+        if (params.contract) throw new Error("Thread posts are extension payload, not Content under a contract frame; omit contract.");
+        if (params.pin && !params.position || params.position && !params.pin) throw new Error("Pinned post look requires both authored pin and position.");
+        if (params.position && params.position !== post.position) throw new Error("Authored position does not match the requested post.");
+        const depth = params.depth ?? "summary";
+        if (depth === "children") throw new Error("Thread posts support name, summary, surface and full rungs; not children.");
+        const source = params.pin
+          ? (await runJson<{ pinned?: string; pin?: string; position?: string }>(threadArgs({ action: "open", path: post.thread, depth: "full", pin: params.pin, position: post.position }), readRoot))
+          : null;
+        if (source && !source.ok) throw new Error(source.error);
+        const body = source
+          ? pinnedView(source.data, depth, { pin: params.pin!, position: post.position })
+          : postView(readFileSync(target, "utf8"), post.position, depth);
+        const rendered = truncateLook(body, target);
+        const { content: _boundedContent, ...truncation } = rendered.truncation;
+        return { content: [{ type: "text", text: rendered.text }], details: { path: target, depth, pin: params.pin ?? null, position: post.position, truncation } };
+      }
+      if (params.pin || params.position) throw new Error("Pin and position are for _threads/ posts only.");
       const looked = await readLookAwareness(
         target,
         params.depth ?? "summary",
@@ -1941,6 +1963,36 @@ export default function (pi: ExtensionAPI) {
           return result;
         }
       }
+    },
+  });
+
+  roster.register({
+    name: "is_threads",
+    label: "IS Threads",
+    description: "List, open at name/summary/full, post to, or close a local Thread. Nothing loads ambiently; posts are immutable files. Reading does not advance the cursor. Hosted x_ Threads are not supported here.",
+    promptSnippet: "Work with a local Thread through the installed CLI",
+    parameters: Type.Object({
+      action: StringEnum(["list", "open", "post", "close"] as const),
+      path: Type.Optional(Type.String({ description: "Local Thread path; omit for list in cwd" })),
+      depth: Type.Optional(StringEnum(["name", "summary", "full"] as const)),
+      message: Type.Optional(Type.String({ description: "Body of an immutable post or closure" })),
+      reply_to: Type.Optional(Type.Array(Type.String({ description: "Parent post id" }))),
+      author: Type.Optional(Type.String({ description: "Agent Agreement name if running outside its folder" })),
+      name: Type.Optional(Type.String()),
+      summary: Type.Optional(Type.String()),
+      map: Type.Optional(Type.String({ description: "Authored Map selection for a citing post; CLI validates pins" })),
+      pin: Type.Optional(Type.String({ description: "Authored commit pin for open; pair with position" })),
+      position: Type.Optional(Type.String({ description: "Authored _threads/ post position; pair with pin" })),
+      cwd: Type.Optional(Type.String({ description: "Working directory when different from session cwd" })),
+    }),
+    async execute(_id, params, _signal, _onUpdate, ctx) {
+      const args = threadArgs(params);
+      if (params.action === "open" && params.pin) {
+        const result = await runJson<{ pinned?: string; pin?: string; position?: string }>(args, params.cwd || ctx.cwd);
+        if (!result.ok) throw new Error(result.error);
+        return ok(pinnedView(result.data, params.depth ?? "summary", { pin: params.pin, position: params.position! }));
+      }
+      return runTool(args, undefined, params.cwd || ctx.cwd);
     },
   });
 

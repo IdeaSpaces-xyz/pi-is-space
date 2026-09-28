@@ -84,6 +84,8 @@ beforeAll(async () => {
   git(["add", "."]);
   git(["commit", "-q", "-m", "seed"]);
 
+  savedEnv.IS_CLI_PATH = process.env.IS_CLI_PATH;
+  process.env.IS_CLI_PATH = join(ROOT, "node_modules", "@ideaspaces", "cli", "bundle", "ideaspaces.js");
   const agentDir = join(home, "pi-agent");
   mkdirSync(agentDir, { recursive: true });
   const result = await discoverAndLoadExtensions([join(ROOT, "src/index.ts")], space, agentDir);
@@ -167,14 +169,89 @@ function rosterBytes(): string {
 describe("the roster is fixed at session start", () => {
   test("rare verbs leave the roster byte-identical", async () => {
     const before = rosterBytes();
-    expect(tools.size).toBe(15);
+    expect(tools.size).toBe(16);
     // Rare verbs: a Change opened and closed, a status read, a release refused.
     expect((await call("is_change_open", { handle: "roster canary" })).error).toBeUndefined();
     expect((await call("is_status", {})).error).toBeUndefined();
     expect((await call("is_release", { path: "notes/none.md" })).error).toContain("does not exist");
     expect((await call("is_change_close", {})).error).toBeUndefined();
     expect(rosterBytes()).toBe(before);
-    expect(tools.size).toBe(15);
+    expect(tools.size).toBe(16);
+  }, T);
+});
+
+describe("local Threads through the real Pi runtime and installed CLI", () => {
+  test("opens each rung, writes distinct authors and closes; pinned post stays at its authored commit", async () => {
+    const cli = process.env.IS_CLI_PATH!;
+    const fresh = spawnSync("node", [cli, "--json", "threads", "new", "trial", "--about", "Agreement trial"], { cwd: space, encoding: "utf8", env: process.env });
+    expect(fresh.status, fresh.stderr).toBe(0);
+    const listing = await call("is_threads", { action: "list" });
+    expect(JSON.parse(listing.text).threads[0].name).toBe("Agreement trial");
+    for (const depth of ["name", "summary", "full"]) {
+      const opened = await call("is_threads", { action: "open", path: "trial", depth });
+      expect(opened.error).toBeUndefined();
+      expect(JSON.parse(opened.text).thread.name).toBe("Agreement trial");
+    }
+    const posted = await call("is_threads", { action: "post", path: "trial", message: "Authored truth", name: "First", summary: "Decision one", author: "Pi Agent" });
+    expect(posted.error).toBeUndefined();
+    const first = JSON.parse(posted.text) as { path: string; id: string };
+    expect((await call("is_look", { path: first.path, depth: "full" })).error).toBeUndefined();
+    expect((await call("is_look", { path: first.path, depth: "full" })).text).toContain("author: Pi Agent");
+    git(["add", "_threads/trial"]);
+    git(["commit", "-q", "-m", "pin first post"]);
+    const pin = git(["rev-parse", "HEAD"]);
+    const position = `_threads/trial/${first.path.split("/").at(-1)}`;
+    const second = await call("is_threads", { action: "post", path: "trial", message: "A later decision", author: "Claude Agent", reply_to: [first.id] });
+    expect(second.error).toBeUndefined();
+    const old = await call("is_threads", { action: "open", path: "trial", depth: "summary", pin, position });
+    expect(old.text).toContain("Decision one");
+    expect(old.text).not.toContain("A later decision");
+    const looked = await call("is_look", { path: first.path, depth: "full", pin, position });
+    expect(looked.text).toContain("Authored truth");
+    expect((await call("is_look", { path: first.path, pin })).error).toMatch(/both authored/);
+    expect((await call("is_look", { path: first.path, pin, position: "_threads/other/post.md" })).error).toMatch(/does not match/);
+    expect((await call("is_look", { path: first.path, depth: "children" })).error).toMatch(/not children/);
+    expect((await call("is_look", { path: first.path, contract: "agreement" })).error).toMatch(/omit contract/);
+    expect((await call("is_look", { path: first.path, depth: "summary", pin, position })).text).toContain("Decision one");
+    const closed = await call("is_threads", { action: "close", path: "trial", message: "Done", author: "Claude Agent" });
+    expect(closed.error).toBeUndefined();
+    expect(JSON.parse((await call("is_threads", { action: "open", path: "trial", depth: "full" })).text).thread.closed).toBe(true);
+    const oversized = join(space, "_threads/trial/oversized.md");
+    writeFileSync(oversized, "---\nname: Large post\nsummary: Bounded read\n---\n" + "line\n".repeat(2500));
+    const bounded = await call("is_look", { path: "_threads/trial/oversized.md", depth: "full" });
+    expect(bounded.error).toBeUndefined();
+    expect(bounded.text).toContain("Look truncated:");
+    expect(bounded.text).not.toContain("line\n".repeat(2500));
+  }, T);
+});
+
+describe("pinned Thread reads in a mounted reference Space", () => {
+  test("runs CLI in the mount's root, not the caller's home", async () => {
+    const mount = mkdtempSync(join(tmpdir(), "is-pi-threads-mount-"));
+    const command = (program: string, args: string[]) => {
+      const result = spawnSync(program, args, { cwd: mount, encoding: "utf8", env: { ...process.env, HOME: home } });
+      if (result.status !== 0) throw new Error(result.stderr);
+      return result.stdout.trim();
+    };
+    try {
+      command("git", ["init", "-q"]);
+      command("git", ["config", "user.name", "Mount Agent"]);
+      command("git", ["config", "user.email", "mount@example.org"]);
+      mkdirSync(join(mount, "_agent"));
+      writeFileSync(join(mount, "_agent/agreement.md"), "---\nname: Agreement — Mount\nagreement: agent:repo:n_0935a5df1f883eeb60bcdfbb\n---\n# Mount\n");
+      const cli = process.env.IS_CLI_PATH!;
+      command("node", [cli, "--json", "threads", "new", "decision", "--about", "Mounted thread"]);
+      const post = JSON.parse(command("node", [cli, "--json", "threads", "post", "decision", "--message", "Mounted truth", "--author", "Mount Agent"])) as { path: string };
+      command("git", ["add", "_agent", "_threads"]);
+      command("git", ["commit", "-qm", "pin mount"]);
+      const pin = command("git", ["rev-parse", "HEAD"]);
+      const position = `_threads/decision/${post.path.split("/").at(-1)}`;
+      expect((await call("is_mount", { path: mount })).error).toBeUndefined();
+      const looked = await call("is_look", { root: mount, path: position, depth: "full", pin, position });
+      expect(looked.error).toBeUndefined();
+      expect(looked.text).toContain("Mounted truth");
+      expect((await call("is_unmount", { path: mount })).error).toBeUndefined();
+    } finally { rmSync(mount, { recursive: true, force: true }); }
   }, T);
 });
 

@@ -5,8 +5,8 @@ description: >
   Two Roles convention, and Pi tool surface. Use when the agent needs the
   contract or tool-surface details mid-work. For explaining IdeaSpaces to a
   person, prefer is-guide; for active intents, prefer is-orient, is-capture,
-  is-share, is-push, is-pull, is-reflect, and is-shape.
-allowed-tools: "is_write is_status is_commit is_push is_pull is_auth read edit write bash"
+  is-share, is-threads, is-push, is-pull, is-reflect, and is-shape.
+allowed-tools: "is_threads is_look is_write is_status is_commit is_push is_pull is_auth read edit write bash"
 ---
 
 # Working in an Ideaspace
@@ -22,7 +22,7 @@ arrive → orient → inspect → act → capture → push/pull → reflect
 Pi handles **arrive** automatically with session-start awareness. For active work, pick the intent skill by tier:
 
 **Daily loop** — `is-orient`, `is-capture`, `is-push` / `is-pull`, `is-reflect`.
-**Access** — `is-share` for people, teams, and public/private visibility.
+**Access and coordination** — `is-share` for visibility; `is-threads` for explicit local Thread reading and posting.
 **Space lifecycle** — `is-setup`, `is-publish`, `is-shape`.
 **Reference** — `is-space`, `is-writing`.
 
@@ -31,7 +31,7 @@ Local conversation hygiene (`context-conversation`, `context-cleanup`, `context-
 You have three surfaces:
 
 - **Skills** — agent procedures for user intent. Use these first.
-- **Tools** — low-level primitives (`is_status`, `is_write`, `is_commit`, `is_push`, `is_pull`, `is_auth`). Skills choose these mechanisms; don't make backend choice the user's problem.
+- **Tools** — low-level primitives (`is_threads`, `is_look`, `is_status`, `is_write`, `is_commit`, `is_push`, `is_pull`, `is_auth`). Skills choose these mechanisms; don't make backend choice the user's problem.
 - **Commands** — human-triggered Pi UI flows (`/is-setup`, `/is-push`, `/is-pull`, `/is-commit`, `/is-publish`). If the user invokes one, treat it as the confirmation path.
 
 Native `read`, `edit`, `write`, and `bash` remain the default for navigation, search, source-code work, and ordinary doc edits.
