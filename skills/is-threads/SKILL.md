@@ -2,6 +2,7 @@
 name: is-threads
 description: >
   Use when another vantage needs to respond in a local Thread or the work should resume in a later session. List, open, post, or close it explicitly; not for a private conversation, hosted exchange, or ordinary Note capture.
+allowed-tools: "is_threads is_look is_status is_commit read bash"
 ---
 
 # Local Threads
