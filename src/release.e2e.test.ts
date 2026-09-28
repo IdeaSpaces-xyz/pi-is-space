@@ -211,6 +211,7 @@ describe("local Threads through the real Pi runtime and installed CLI", () => {
     expect((await call("is_look", { path: first.path, pin })).error).toMatch(/both authored/);
     expect((await call("is_look", { path: first.path, pin, position: "_threads/other/post.md" })).error).toMatch(/does not match/);
     expect((await call("is_look", { path: first.path, depth: "children" })).error).toMatch(/not children/);
+    expect((await call("is_look", { path: first.path, contract: "agreement" })).error).toMatch(/omit contract/);
     expect((await call("is_look", { path: first.path, depth: "summary", pin, position })).text).toContain("Decision one");
     const closed = await call("is_threads", { action: "close", path: "trial", message: "Done", author: "Claude Agent" });
     expect(closed.error).toBeUndefined();

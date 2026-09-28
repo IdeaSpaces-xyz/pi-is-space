@@ -1679,6 +1679,7 @@ export default function (pi: ExtensionAPI) {
 
       const post = threadPost(target, readRoot);
       if (post) {
+        if (params.contract) throw new Error("Thread posts are extension payload, not Content under a contract frame; omit contract.");
         if (params.pin && !params.position || params.position && !params.pin) throw new Error("Pinned post look requires both authored pin and position.");
         if (params.position && params.position !== post.position) throw new Error("Authored position does not match the requested post.");
         const depth = params.depth ?? "summary";
