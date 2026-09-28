@@ -72,5 +72,8 @@ export function threadPost(path: string, root: string): { thread: string; positi
   const rel = relative(realRoot, realTarget).split(sep).join("/");
   const match = /^_threads\/([^/]+)\/([^/]+\.md)$/.exec(rel);
   if (!match || match[2] === "README.md") return null;
+  // CLI open accepts an absolute Thread directory and verifies it belongs to
+  // this Space's _threads/. Use it for mounted roots; a slug would resolve
+  // against the caller's home instead of the target Space.
   return { thread: resolve(realRoot, "_threads", match[1]), position: rel };
 }

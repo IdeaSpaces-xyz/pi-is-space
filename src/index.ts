@@ -1691,7 +1691,9 @@ export default function (pi: ExtensionAPI) {
         const body = source
           ? pinnedView(source.data, depth, { pin: params.pin!, position: post.position })
           : postView(readFileSync(target, "utf8"), post.position, depth);
-        return { content: [{ type: "text", text: body }], details: { path: target, depth, pin: params.pin ?? null, position: post.position } };
+        const rendered = truncateLook(body, target);
+        const { content: _boundedContent, ...truncation } = rendered.truncation;
+        return { content: [{ type: "text", text: rendered.text }], details: { path: target, depth, pin: params.pin ?? null, position: post.position, truncation } };
       }
       if (params.pin || params.position) throw new Error("Pin and position are for _threads/ posts only.");
       const looked = await readLookAwareness(

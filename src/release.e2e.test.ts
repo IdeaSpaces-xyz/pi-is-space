@@ -216,6 +216,12 @@ describe("local Threads through the real Pi runtime and installed CLI", () => {
     const closed = await call("is_threads", { action: "close", path: "trial", message: "Done", author: "Claude Agent" });
     expect(closed.error).toBeUndefined();
     expect(JSON.parse((await call("is_threads", { action: "open", path: "trial", depth: "full" })).text).thread.closed).toBe(true);
+    const oversized = join(space, "_threads/trial/oversized.md");
+    writeFileSync(oversized, "---\nname: Large post\nsummary: Bounded read\n---\n" + "line\n".repeat(2500));
+    const bounded = await call("is_look", { path: "_threads/trial/oversized.md", depth: "full" });
+    expect(bounded.error).toBeUndefined();
+    expect(bounded.text).toContain("Look truncated:");
+    expect(bounded.text).not.toContain("line\n".repeat(2500));
   }, T);
 });
 
