@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { pinnedView, threadArgs, threadPost } from "./threads.js";
 
 const pin = "a".repeat(40);
@@ -24,7 +27,13 @@ describe("local Thread CLI adapter", () => {
     expect(pinnedView({ pinned: body, pin, position }, "summary")).toContain("Pinned summary");
     expect(pinnedView({ pinned: body, pin, position }, "full")).toBe(body);
     expect(() => pinnedView({ pin, position }, "full")).toThrow(/fallback/);
-    expect(threadPost("/home/_threads/trial/post.md", "/home")?.position).toBe(position);
-    expect(threadPost("/home/_threads/trial/README.md", "/home")).toBeNull();
+    const root = mkdtempSync(join(tmpdir(), "is-thread-path-"));
+    try {
+      mkdirSync(join(root, "_threads/trial"), { recursive: true });
+      writeFileSync(join(root, position), body);
+      writeFileSync(join(root, "_threads/trial/README.md"), "# Trial");
+      expect(threadPost(join(root, position), root)?.position).toBe(position);
+      expect(threadPost(join(root, "_threads/trial/README.md"), root)).toBeNull();
+    } finally { rmSync(root, { recursive: true, force: true }); }
   });
 });

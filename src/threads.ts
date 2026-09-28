@@ -1,4 +1,5 @@
 import { relative, resolve, sep } from "node:path";
+import { realpathSync } from "node:fs";
 import { parseFrontmatter, summarizeMarkdown } from "@ideaspaces/protocol";
 
 export type ThreadRequest = {
@@ -53,8 +54,16 @@ export function pinnedView(data: { pinned?: string; pin?: string; position?: str
 }
 
 export function threadPost(path: string, root: string): { thread: string; position: string } | null {
-  const rel = relative(root, resolve(root, path)).split(sep).join("/");
+  let realRoot: string;
+  let realTarget: string;
+  try {
+    realRoot = realpathSync(root);
+    realTarget = realpathSync(resolve(root, path));
+  } catch {
+    return null; // Let the ordinary look report the missing path.
+  }
+  const rel = relative(realRoot, realTarget).split(sep).join("/");
   const match = /^_threads\/([^/]+)\/([^/]+\.md)$/.exec(rel);
   if (!match || match[2] === "README.md") return null;
-  return { thread: resolve(root, "_threads", match[1]), position: rel };
+  return { thread: resolve(realRoot, "_threads", match[1]), position: rel };
 }
