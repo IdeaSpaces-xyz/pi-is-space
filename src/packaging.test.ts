@@ -16,18 +16,19 @@ describe("packaging", () => {
     const deps = Object.keys(pkg.dependencies ?? {});
     expect(deps).toContain("@ideaspaces/protocol");
     expect(deps).toContain("@ideaspaces/cli");
+    expect(deps).toContain("yaml");
     const devDeps = Object.keys(pkg.devDependencies ?? {});
     expect(devDeps).not.toContain("@ideaspaces/protocol");
     expect(devDeps).not.toContain("@ideaspaces/cli");
   });
 
   it("pins the Content-tail composition in the protocol and CLI", () => {
-    expect(pkg.version).toBe("0.1.37");
+    expect(pkg.version).toBe("0.1.38");
     expect(pkg.dependencies?.["@ideaspaces/protocol"]).toBe(
       "github:IdeaSpaces-xyz/ideaspace-protocol#3e0364ce174b154befe389f50afff6c1c4b980be",
     );
     expect(pkg.dependencies?.["@ideaspaces/cli"]).toBe(
-      "github:IdeaSpaces-xyz/cli#bdbd0dc42a724373e32dd1a8bb7ce2d1dc66f89d",
+      "github:IdeaSpaces-xyz/cli#cd5da0e2ca24aa52f3b3df75e3f1f6bbe605d041",
     );
   });
 

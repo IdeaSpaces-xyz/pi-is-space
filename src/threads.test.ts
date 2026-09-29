@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pinnedView, threadArgs, threadPost } from "./threads.js";
+import { authoredMember, pinnedView, threadArgs, threadPost } from "./threads.js";
 
 const pin = "a".repeat(40);
 const position = "_threads/trial/post.md";
@@ -17,6 +17,24 @@ describe("local Thread CLI adapter", () => {
       .toEqual(["threads", "post", "trial", "--message", "Decision", "--author", "Pi", "--reply-to", "msg_1", "--map", "selection.yaml"]);
     expect(threadArgs({ action: "close", path: "trial", message: "Done", author: "Claude" }))
       .toEqual(["threads", "close", "trial", "--message", "Done", "--author", "Claude"]);
+  });
+  it("forwards only complete selected coordinates and retains the caller's author boundary", () => {
+    const selected = { map: "selection.yaml", member: 0, checkout: "/trusted/home" };
+    expect(threadArgs({ action: "open", path: "trial", depth: "summary", ...selected }))
+      .toEqual(["threads", "open", "trial", "--depth", "full", "--map", "selection.yaml", "--member", "0", "--checkout", "/trusted/home"]);
+    expect(threadArgs({ action: "post", path: "trial", message: "Reply", reply_to: ["msg_seed"], ...selected }))
+      .toEqual(["threads", "post", "trial", "--message", "Reply", "--reply-to", "msg_seed", "--map", "selection.yaml", "--member", "0", "--checkout", "/trusted/home"]);
+    for (const incomplete of [{ map: "selection.yaml" }, { member: 0 }, { checkout: "/trusted/home" }]) {
+      expect(() => threadArgs({ action: "open", path: "trial", ...incomplete })).toThrow();
+    }
+    expect(() => threadArgs({ action: "open", path: "trial", pin, position, ...selected })).toThrow(/either/);
+    expect(() => threadArgs({ action: "post", path: "trial", message: "No", ...selected })).toThrow(/parent/);
+    expect(() => threadArgs({ action: "post", path: "trial", message: "No", reply_to: ["msg_seed"], author: "Other", ...selected })).toThrow(/author/);
+    const map = JSON.stringify({ map: { roots: [{ root_node_id: "n_0123456789abcdef01234567", sha: pin }], members: [{ root: 0, position, depth: "full" }] } });
+    expect(authoredMember(map, 0)).toEqual({ pin, position });
+    expect(() => authoredMember(map, 1)).toThrow(/no member 1/);
+    expect(() => authoredMember("map: { roots: [], members: [wrong] }", 0)).toThrow(/members\[0\]: invalid_member_type/);
+    expect(() => pinnedView({ pinned: "text", pin: "b".repeat(40), position }, "full", authoredMember(map, 0))).toThrow(/fallback/);
   });
   it("refuses hosted ids and implicit HEAD; projects only the pinned post", () => {
     expect(() => threadArgs({ action: "open", path: "x_" + "a".repeat(24) })).toThrow(/hosted/);
