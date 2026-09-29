@@ -32,6 +32,8 @@ describe("local Thread CLI adapter", () => {
     expect(() => threadArgs({ action: "post", path: "trial", message: "No", reply_to: ["msg_seed"], author: "Other", ...selected })).toThrow(/author/);
     const map = JSON.stringify({ map: { roots: [{ root_node_id: "n_0123456789abcdef01234567", sha: pin }], members: [{ root: 0, position, depth: "full" }] } });
     expect(authoredMember(map, 0)).toEqual({ pin, position });
+    expect(() => authoredMember(map, 1)).toThrow(/no member 1/);
+    expect(() => authoredMember("map: { roots: [], members: [wrong] }", 0)).toThrow(/members\[0\]: invalid_member_type/);
     expect(() => pinnedView({ pinned: "text", pin: "b".repeat(40), position }, "full", authoredMember(map, 0))).toThrow(/fallback/);
   });
   it("refuses hosted ids and implicit HEAD; projects only the pinned post", () => {

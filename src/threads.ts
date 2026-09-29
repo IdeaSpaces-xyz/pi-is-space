@@ -60,23 +60,31 @@ function selectionArgs(input: ThreadRequest): string[] {
   return ["--map", input.map!, "--member", String(input.member), ...(input.checkout ? ["--checkout", input.checkout] : [])];
 }
 
-/** Check CLI's selected response against the authored coordinate, not its own echo. CLI validates checkout identity. */
+/** Independently check CLI's returned coordinate against authored bytes, not its own echo.
+ * Protocol parses Map shape but has no file/inline Map reader; mirror CLI input
+ * resolution here, leaving checkout identity and all write checks to the CLI. */
 export function authoredMember(mapInput: string, ordinal: number, cwd = process.cwd()): { pin: string; position: string } {
   const path = resolve(cwd, mapInput);
   let value: unknown;
-  if (existsSync(path)) {
-    const stat = lstatSync(path);
-    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 128 * 1024) throw new Error("Map must be a regular file no larger than 128 KiB.");
-    const text = readFileSync(path, "utf8");
-    value = parseFrontmatter(text)?.map ?? parseYaml(text);
-  } else {
-    value = parseYaml(mapInput);
+  try {
+    if (existsSync(path)) {
+      const stat = lstatSync(path);
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 128 * 1024) throw new Error("Map must be a regular file no larger than 128 KiB.");
+      const text = readFileSync(path, "utf8");
+      value = parseFrontmatter(text)?.map ?? parseYaml(text);
+    } else {
+      value = parseYaml(mapInput);
+    }
+  } catch (error) {
+    throw new Error(`Cannot read authored Map: ${error instanceof Error ? error.message : String(error)}`);
   }
   if (value && typeof value === "object" && "map" in value) value = (value as { map: unknown }).map;
   const parsed = parseMap(value);
-  if (parsed.status !== "valid") throw new Error("Invalid authored Map.");
+  if (parsed.status === "absent") throw new Error("Authored Map has no roots or members.");
+  if (parsed.status === "invalid") throw new Error(`Invalid authored Map: ${parsed.issues.map((issue) => `${issue.path}: ${issue.code}`).join(", ")}`);
   const member = parsed.map.members[ordinal];
-  if (!member || !("position" in member) || typeof member.position !== "string" || typeof member.root !== "number") throw new Error("Selected Map member is not a pinned position.");
+  if (!member) throw new Error(`Authored Map has no member ${ordinal}.`);
+  if (!("position" in member) || typeof member.position !== "string" || typeof member.root !== "number") throw new Error(`Map member ${ordinal} is not a pinned position.`);
   const pin = parsed.map.roots[member.root]?.sha;
   if (!pin) throw new Error("Selected Map root has no authored commit pin.");
   return { pin, position: member.position };

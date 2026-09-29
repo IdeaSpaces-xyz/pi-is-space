@@ -1997,6 +1997,7 @@ export default function (pi: ExtensionAPI) {
         if (!result.ok) throw new Error(result.error);
         return ok(pinnedView(result.data, params.depth ?? "summary", expected));
       }
+      // CLI owns selected-write pin, parent and live-target validation; preserve its post path/id result.
       return runTool(args, undefined, selected ? ctx.cwd : params.cwd || ctx.cwd);
     },
   });
