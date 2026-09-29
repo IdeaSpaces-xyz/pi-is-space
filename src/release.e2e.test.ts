@@ -17,7 +17,7 @@ import {
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -223,6 +223,91 @@ describe("local Threads through the real Pi runtime and installed CLI", () => {
     expect(bounded.text).toContain("Look truncated:");
     expect(bounded.text).not.toContain("line\n".repeat(2500));
   }, T);
+});
+
+describe("selected cross-Space Threads through Pi and installed CLI", () => {
+  test("typed and untyped caller Agreement read the authored pin and reply without changing cwd", async () => {
+    const target = mkdtempSync(join(tmpdir(), "is-pi-s2-disposable-target-"));
+    const id = "n_0123456789abcdef01234567";
+    const cli = process.env.IS_CLI_PATH!;
+    const command = (cwd: string, program: string, args: string[]) => {
+      const r = spawnSync(program, args, { cwd, encoding: "utf8", env: { ...process.env, HOME: home } });
+      if (r.status !== 0) throw new Error(`${args.join(" ")}: ${r.stderr}`);
+      return r.stdout.trim();
+    };
+    const count = () => readdirSync(join(target, "_threads/decision")).filter((file) => file !== "README.md").length;
+    try {
+      command(target, "git", ["init", "-q", "-b", "main"]);
+      command(target, "git", ["config", "user.name", "Target"]);
+      command(target, "git", ["config", "user.email", "target@example.org"]);
+      mkdirSync(join(target, "_agent"));
+      writeFileSync(join(target, "_agent/agreement.md"), `---\nname: Agreement — Target\nroot_node_id: ${id}\n---\n`);
+      command(target, "git", ["add", "_agent/agreement.md"]);
+      command(target, "git", ["commit", "-qm", "contract"]);
+      command(target, "node", [cli, "--json", "threads", "new", "decision", "--about", "Disposable target"]);
+      const seed = JSON.parse(command(target, "node", [cli, "--json", "threads", "post", "decision", "--message", "Immutable seed", "--author", "Target"])) as { id: string; path: string };
+      command(target, "git", ["add", "_threads/decision"]);
+      command(target, "git", ["commit", "-qm", "pin seed"]);
+      const pin = command(target, "git", ["rev-parse", "HEAD"]);
+      const position = `_threads/decision/${seed.path.split("/").at(-1)}`;
+      command(target, "node", [cli, "--json", "threads", "post", "decision", "--message", "Later live post", "--reply-to", seed.id, "--author", "Target"]);
+      const map = join(space, "s2-selection.json");
+      const selection = (root = id, sha = pin, member = position) => ({ roots: [{ root_node_id: root, sha }], members: [{ root: 0, position: member, depth: "full" }] });
+      const setMap = (value: unknown) => writeFileSync(map, JSON.stringify({ map: value }));
+      setMap(selection());
+      const base = { path: "decision", map, member: 0, checkout: target };
+      const initial = count();
+      for (const typed of [true, false]) {
+        writeFileSync(join(space, "_agent/agreement.md"), `---\nname: Agreement — ${typed ? "Typed" : "Untyped"}\n${typed ? "agreement: agent:repo:n_ffffffffffffffffffffffff\n" : ""}---\n`);
+        const opened = await call("is_threads", { action: "open", depth: "summary", ...base });
+        expect(opened.error).toBeUndefined();
+        expect(opened.text).toContain("Immutable seed");
+        expect(opened.text).not.toContain("Later live post");
+        const posted = await call("is_threads", { action: "post", message: `${typed ? "Typed" : "Untyped"} reply`, reply_to: [seed.id], ...base });
+        expect(posted.error).toBeUndefined();
+        const result = JSON.parse(posted.text) as { id: string; path: string };
+        expect(result.id).toMatch(/^msg_/);
+        const body = readFileSync(result.path, "utf8");
+        expect(body).toContain(`author: ${typed ? "Typed" : "Untyped"}`);
+        expect(body).toContain(seed.id);
+        expect(body).toContain("root_node_id: " + id);
+        expect(count()).toBe(initial + (typed ? 1 : 2));
+      }
+      const before = count();
+      const refuse = async (params: Record<string, unknown>, pattern: RegExp) => {
+        expect((await call("is_threads", params)).error).toMatch(pattern);
+        expect(count()).toBe(before);
+      };
+      await refuse({ action: "open", path: "decision", map }, /member/);
+      await refuse({ action: "post", message: "No", reply_to: [seed.id], path: "decision", member: 0 }, /map/);
+      await refuse({ action: "post", message: "No", ...base }, /parent/);
+      await refuse({ action: "post", message: "No", reply_to: [seed.id], ...base, cwd: target }, /cwd/);
+      await refuse({ action: "post", message: "No", reply_to: [seed.id], ...base, author: "Target" }, /author/);
+      await refuse({ action: "open", path: "decision", map, member: 0 }, /0 registered|checkout/i);
+      const registryDir = join(home, ".ideaspaces");
+      mkdirSync(registryDir, { recursive: true });
+      const record = { repo_id: "repo_test", slug: "target", namespace: "team", root_node_id: id };
+      writeFileSync(join(registryDir, "spaces.json"), JSON.stringify({ [target]: record, [space]: record }));
+      await refuse({ action: "post", path: "decision", map, member: 0, message: "No", reply_to: [seed.id] }, /2 registered|checkout/i);
+      rmSync(join(registryDir, "spaces.json"));
+      setMap(selection("n_aaaaaaaaaaaaaaaaaaaaaaaa"));
+      await refuse({ action: "open", ...base }, /mismatch|identity|root/i);
+      await refuse({ action: "post", message: "No", reply_to: [seed.id], ...base }, /mismatch|identity|root/i);
+      setMap(selection(id, "a".repeat(40)));
+      await refuse({ action: "post", message: "No", reply_to: [seed.id], ...base }, /pin|commit|revision/i);
+      setMap(selection());
+      await refuse({ action: "post", message: "No", reply_to: ["msg_missing"], ...base }, /parent|reply/i);
+      const readme = join(target, "_threads/decision/README.md");
+      const originalReadme = readFileSync(readme, "utf8");
+      writeFileSync(readme, originalReadme + "\nChanged live target\n");
+      await refuse({ action: "post", message: "No", reply_to: [seed.id], ...base }, /changed|mismatch|live/i);
+      writeFileSync(readme, originalReadme);
+      command(target, "node", [cli, "--json", "threads", "close", "decision", "--message", "Closed", "--author", "Target"]);
+      const closedCount = count();
+      expect((await call("is_threads", { action: "post", message: "No", reply_to: [seed.id], ...base })).error).toMatch(/closed/i);
+      expect(count()).toBe(closedCount);
+    } finally { rmSync(target, { recursive: true, force: true }); }
+  }, T * 2);
 });
 
 describe("pinned Thread reads in a mounted reference Space", () => {

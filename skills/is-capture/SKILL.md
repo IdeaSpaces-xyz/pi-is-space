@@ -55,7 +55,7 @@ is_cli() {
     ideaspaces "$@"
   fi
 }
-is_cli map <repo> --depth full --json
+is_cli map <folder> --depth full --json
 ```
 
 This is an offline working-tree observation, not an automatic capture. Review `portable`, `dirty`, and `local_only_paths`; selection still needs agreement. Numeric depth remains bounded to 1–4, and `full` is explicit enumeration rather than ambient orientation.

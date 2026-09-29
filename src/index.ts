@@ -49,7 +49,7 @@ import {
   type LocalToolResult,
 } from "./local-tools.js";
 import { parseMountEnv } from "./mounts.js";
-import { pinnedView, postView, threadArgs, threadPost } from "./threads.js";
+import { authoredMember, pinnedView, postView, threadArgs, threadPost } from "./threads.js";
 import {
   CHANGE_ID_SHAPE,
   armingDecision,
@@ -1969,7 +1969,7 @@ export default function (pi: ExtensionAPI) {
   roster.register({
     name: "is_threads",
     label: "IS Threads",
-    description: "List, open at name/summary/full, post to, or close a local Thread. Nothing loads ambiently; posts are immutable files. Reading does not advance the cursor. Hosted x_ Threads are not supported here.",
+    description: "List, open at name/summary/full, post to, or close a local Thread. Select another Space's pinned Thread with map, member and validated checkout; caller stays at its Agreement cwd. Reading never acknowledges. Hosted x_ Threads are not supported here.",
     promptSnippet: "Work with a local Thread through the installed CLI",
     parameters: Type.Object({
       action: StringEnum(["list", "open", "post", "close"] as const),
@@ -1980,19 +1980,24 @@ export default function (pi: ExtensionAPI) {
       author: Type.Optional(Type.String({ description: "Agent Agreement name if running outside its folder" })),
       name: Type.Optional(Type.String()),
       summary: Type.Optional(Type.String()),
-      map: Type.Optional(Type.String({ description: "Authored Map selection for a citing post; CLI validates pins" })),
-      pin: Type.Optional(Type.String({ description: "Authored commit pin for open; pair with position" })),
+      map: Type.Optional(Type.String({ description: "Authored Map for a citation or selected pinned Thread" })),
+      member: Type.Optional(Type.Integer({ minimum: 0, description: "Zero-based authored Map member; use with map to select a Thread" })),
+      checkout: Type.Optional(Type.String({ description: "Explicit local Space root hint; CLI validates against the selected Map root" })),
+      pin: Type.Optional(Type.String({ description: "Authored commit pin for same-Space open; pair with position" })),
       position: Type.Optional(Type.String({ description: "Authored _threads/ post position; pair with pin" })),
       cwd: Type.Optional(Type.String({ description: "Working directory when different from session cwd" })),
     }),
     async execute(_id, params, _signal, _onUpdate, ctx) {
+      const selected = params.member !== undefined || params.checkout !== undefined;
+      if (selected && params.cwd !== undefined) throw new Error("Selected Thread uses the caller's Agreement cwd; omit cwd override.");
       const args = threadArgs(params);
-      if (params.action === "open" && params.pin) {
+      if (params.action === "open" && (params.pin || selected)) {
+        const expected = selected ? authoredMember(params.map!, params.member!, ctx.cwd) : { pin: params.pin!, position: params.position! };
         const result = await runJson<{ pinned?: string; pin?: string; position?: string }>(args, params.cwd || ctx.cwd);
         if (!result.ok) throw new Error(result.error);
-        return ok(pinnedView(result.data, params.depth ?? "summary", { pin: params.pin, position: params.position! }));
+        return ok(pinnedView(result.data, params.depth ?? "summary", expected));
       }
-      return runTool(args, undefined, params.cwd || ctx.cwd);
+      return runTool(args, undefined, selected ? ctx.cwd : params.cwd || ctx.cwd);
     },
   });
 

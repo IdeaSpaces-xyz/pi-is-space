@@ -20,8 +20,8 @@ describe("derived local Map distribution", () => {
     const skill = readFileSync(join(ROOT, "skills/is-capture/SKILL.md"), "utf8");
 
     expect(help.status).toBe(0);
-    expect(text).toContain("map [<repo>] [--depth <1..4|full>]");
-    expect(skill).toContain("is_cli map <repo> --depth full --json");
+    expect(text).toContain("map [<folder|map-note>] [--depth <1..4|full>]");
+    expect(skill).toContain("is_cli map <folder> --depth full --json");
     expect(skill).toContain("offline working-tree observation, not an automatic capture");
     expect(skill).toContain("`portable`, `dirty`, and `local_only_paths`");
   });
