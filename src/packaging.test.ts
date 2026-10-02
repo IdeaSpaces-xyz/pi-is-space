@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { CLI_COMMIT, PACKAGE_VERSION } from "./pins.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -23,12 +24,12 @@ describe("packaging", () => {
   });
 
   it("pins the Content-tail composition in the protocol and CLI", () => {
-    expect(pkg.version).toBe("0.1.39");
+    expect(pkg.version).toBe(PACKAGE_VERSION);
     expect(pkg.dependencies?.["@ideaspaces/protocol"]).toBe(
       "github:IdeaSpaces-xyz/ideaspace-protocol#3e0364ce174b154befe389f50afff6c1c4b980be",
     );
     expect(pkg.dependencies?.["@ideaspaces/cli"]).toBe(
-      "github:IdeaSpaces-xyz/cli#dc0314080ff177a43af9a22b79d1d3d43626bc81",
+      `github:IdeaSpaces-xyz/cli#${CLI_COMMIT}`,
     );
   });
 

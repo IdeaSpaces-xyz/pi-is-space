@@ -117,6 +117,15 @@ describe("Pi Map address reads", () => {
     expect(recorded()).toEqual([{ args: ["look", "notes/a.md", "--pin", PIN, "--depth", "full"], map: "/launch/space.map.md" }]);
   });
 
+  it("reads at a pin a Note the working tree no longer has", async () => {
+    await call("is_look", { path: "notes/gone.md", pin: PIN, position: "notes/gone.md" });
+    expect(recorded()).toEqual([{ args: ["look", "notes/gone.md", "--pin", PIN, "--depth", "summary"], map: "/launch/space.map.md" }]);
+  });
+
+  it("names what an address was given beside it", async () => {
+    await expect(call("is_look", { address: "@notes//x", pin: PIN, root: "elsewhere" })).rejects.toThrow("drop pin, root");
+  });
+
   it("refuses mixed or missing coordinates before invoking the CLI", async () => {
     for (const params of [
       { address: "@notes//x", path: "notes/a.md" },

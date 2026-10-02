@@ -1690,7 +1690,13 @@ export default function (pi: ExtensionAPI) {
       const address = params.address?.trim() || (isMapAddress(pathArg) ? pathArg : undefined);
       if (address) {
         if ((params.address && pathArg) || params.pin || params.position || (rootArg && rootArg !== "home")) {
-          throw new Error("Give an address, or a path with its root and pin; not both. An address takes its commit from the Map; use at: pin or head.");
+          const extra = [
+            params.address && pathArg ? "path" : "",
+            params.pin ? "pin" : "",
+            params.position ? "position" : "",
+            rootArg && rootArg !== "home" ? "root" : "",
+          ].filter(Boolean);
+          throw new Error(`An address is read on its own; drop ${extra.join(", ")}. It takes its commit from the Map: use at: pin or head.`);
         }
         const depth = params.depth ?? "summary";
         const read = await runRendered(
@@ -1721,6 +1727,22 @@ export default function (pi: ExtensionAPI) {
       if (!isPathInside(target, readRoot)) {
         throw new Error(`Refusing to look outside the selected root (${readRoot}): ${target}`);
       }
+      if ((params.pin || params.position) && !threadPost(target, readRoot)) {
+        // Before the existence check: what was at the pin may be gone from the working tree.
+        // Any Content at an authored commit: the pinned post read, generalized.
+        if (!params.pin || !params.position) throw new Error("A pinned look requires both authored pin and position.");
+        const local = relative(readRoot, target).split(sep).join("/") || ".";
+        if (local !== params.position) throw new Error("Authored position does not match the requested path.");
+        const depth = params.depth ?? "summary";
+        const read = await runRendered(
+          ["look", params.position, "--pin", params.pin, "--depth", depth, ...(params.contract ? ["--contract", params.contract] : [])],
+          readRoot,
+        );
+        if (!read.ok) throw new Error(read.error);
+        const rendered = truncateLook(read.text, target);
+        const { content: _boundedContent, ...truncation } = rendered.truncation;
+        return { content: [{ type: "text", text: rendered.text }], details: { path: target, depth, pin: params.pin, position: params.position, truncation } };
+      }
       let stats: ReturnType<typeof statSync>;
       try {
         stats = statSync(target);
@@ -1748,21 +1770,6 @@ export default function (pi: ExtensionAPI) {
         const rendered = truncateLook(body, target);
         const { content: _boundedContent, ...truncation } = rendered.truncation;
         return { content: [{ type: "text", text: rendered.text }], details: { path: target, depth, pin: params.pin ?? null, position: post.position, truncation } };
-      }
-      if (params.pin || params.position) {
-        // Any Content at an authored commit: the pinned post read, generalized.
-        if (!params.pin || !params.position) throw new Error("A pinned look requires both authored pin and position.");
-        const local = relative(readRoot, target).split(sep).join("/") || ".";
-        if (local !== params.position) throw new Error("Authored position does not match the requested path.");
-        const depth = params.depth ?? "summary";
-        const read = await runRendered(
-          ["look", params.position, "--pin", params.pin, "--depth", depth, ...(params.contract ? ["--contract", params.contract] : [])],
-          readRoot,
-        );
-        if (!read.ok) throw new Error(read.error);
-        const rendered = truncateLook(read.text, target);
-        const { content: _boundedContent, ...truncation } = rendered.truncation;
-        return { content: [{ type: "text", text: rendered.text }], details: { path: target, depth, pin: params.pin, position: params.position, truncation } };
       }
       const looked = await readLookAwareness(
         target,
