@@ -1835,12 +1835,13 @@ export default function (pi: ExtensionAPI) {
       const pathArg = params.path?.trim() ?? "";
       const address = params.address?.trim() || (isMapAddress(pathArg) ? pathArg : undefined);
       if (address) {
-        if ((params.address && pathArg) || (rootArg && rootArg !== "home") || params.depth !== undefined) {
-          throw new Error("An address is read as focus at a commit; give it without path, root or depth.");
-        }
-        const read = await runRendered(addressArgs("navigate", address, params.map, params.at), ctx.cwd);
-        if (!read.ok) throw new Error(read.error);
-        return ok(read.text);
+        const extra = [
+          params.address && pathArg ? "path" : "",
+          rootArg && rootArg !== "home" ? "root" : "",
+          params.depth !== undefined ? "depth" : "",
+        ].filter(Boolean);
+        if (extra.length) throw new Error(`An address is read as focus at a commit; drop ${extra.join(", ")}.`);
+        return renderedLook(addressArgs("navigate", address, params.map, params.at), ctx.cwd, address, { address, at: params.at ?? null });
       }
       if (params.map || params.at) throw new Error("map and at read an address (@<root>//<position>); pass address, not path.");
       const depth = params.depth && params.depth > 1 ? params.depth : undefined;
