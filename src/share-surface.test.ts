@@ -15,7 +15,7 @@ describe("recipient-shaped Share distribution", () => {
     const pkg = JSON.parse(read("package.json"));
     expect(pkg.version).toBe("0.1.39");
     expect(pkg.dependencies?.["@ideaspaces/cli"]).toBe(
-      "github:IdeaSpaces-xyz/cli#9ca1f3ae94fd7c913dfceef8e289ea8e4d1fb171",
+      "github:IdeaSpaces-xyz/cli#4afbcf43fea17015c3c18e445545b54bcc37c1b5",
     );
   });
 
