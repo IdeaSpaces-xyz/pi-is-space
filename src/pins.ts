@@ -3,4 +3,4 @@
  * plus package.json. Tests assert package.json agrees; nothing at runtime reads these.
  */
 export const PACKAGE_VERSION = "0.1.39";
-export const CLI_COMMIT = "17182e8b8e48624e5c0161ac669757e6b9921ea5";
+export const CLI_COMMIT = "9352e84895b0d2a5c430fc5d4ecf45a2db140643";
