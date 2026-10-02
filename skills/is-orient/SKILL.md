@@ -28,6 +28,7 @@ Stop as soon as the user's question is answered:
 
 1. Use `is_navigate` when another position needs bounded reference focus or the map needs a tree probe. Navigation appends history context without changing the session's authority head; it does not justify loading document bodies.
 2. Use `is_look` to deepen one target already identified by awareness or navigation. Start at `summary` for meaning or `children` for Note headings/directory handles; request `surface` or `full` only when body evidence is needed.
+   When the session was launched with a Map, or one names the target, read a member by `address` (`@<root>//<position>`) rather than finding its folder: the launch Map is the default, `map` names another, and the result names the root and its identity.
 3. Use `is_status` when capture or git state materially affects the answer.
 4. For change questions, inspect only the relevant `git status` or short recent history.
 5. Keep `is_inspect` as the compatibility path for an exact named Markdown section while surfaces converge on `is_look`.

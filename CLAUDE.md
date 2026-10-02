@@ -21,8 +21,8 @@ Agent (Pi) → pi-is-space → protocol (local reads + explicit local effects)
 
 IdeaSpaces-aware primitives:
 
-- `is_navigate` — read a home or mounted position as bounded history reference without changing authority
-- `is_look` — deepen exactly one local Note or directory at a canonical Map rung beneath its reference-only frame
+- `is_navigate` — read a home or mounted position as bounded history reference without changing authority; `address` focuses on a Map member directory at a commit, through the CLI
+- `is_look` — deepen exactly one local Note or directory at a canonical Map rung beneath its reference-only frame; `address` (`@<root>//<position>`) reads a Map member at a commit against `map` or the launch Map (`IDEASPACES_MAP`), and `pin` + `position` read this checkout at an authored commit, both through the CLI
 - `is_inspect` — compatibility inspection of one Markdown file by summary, outline, or exact section
 - `is_mount` / `is_unmount` — manage the conversation's read-only working set without changing authority
 - `is_status` — inspect capture/git state and full file revision, with compatibility `sha` for safe updates

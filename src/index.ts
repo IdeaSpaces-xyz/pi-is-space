@@ -504,6 +504,44 @@ async function runTool(args: string[], stdin?: string, cwd?: string): Promise<To
   return ok(result.text);
 }
 
+/** The CLI's own rendering, for reads whose text is the result (Map address and pinned reads). */
+async function runRendered(args: string[], cwd?: string): Promise<CliTextResult> {
+  const { out, err, code } = await cli(args, undefined, cwd);
+  if (code !== 0) return { ok: false, error: err.trim() || out.trim() || `Exit ${code}` };
+  return { ok: true, text: out.trim() };
+}
+
+/** A CLI-rendered read, bounded like any look; details say what was read. */
+async function renderedLook(args: string[], cwd: string, shown: string, details: Record<string, unknown>): Promise<ToolResult> {
+  const read = await runRendered(args, cwd);
+  if (!read.ok) throw new Error(read.error);
+  const rendered = truncateLook(read.text, shown);
+  const { content: _boundedContent, ...truncation } = rendered.truncation;
+  return { content: [{ type: "text", text: rendered.text }], details: { ...details, truncation } };
+}
+
+/** `@<root>//<position>` or `//<position>`: a Map address, never a filesystem path. */
+function isMapAddress(value: string | undefined): value is string {
+  return !!value && (value.startsWith("//") || /^@[^/\s]+\/\//.test(value));
+}
+
+function addressArgs(verb: "look" | "navigate", address: string, map?: string, at?: string): string[] {
+  return [verb, address, ...(map ? ["--map", map] : []), ...(at ? ["--at", at] : [])];
+}
+
+const MAP_PARAMETER = Type.Optional(
+  Type.String({
+    description:
+      "Map note an address is read against; relative to the session's working directory or absolute. Defaults to the session's launch Map (IDEASPACES_MAP).",
+  }),
+);
+const AT_PARAMETER = Type.Optional(
+  StringEnum(["pin", "head"] as const, {
+    description:
+      "Read an address at its root's pin or its checkout's HEAD. Defaults by the Map's kind: a Space's Map reads HEAD and shows drift, a Thread's Map reads the pin.",
+  }),
+);
+
 function localToolResult(result: LocalToolResult): ToolResult {
   if (!result.ok) throw new Error(result.text);
   return ok(result.text);
@@ -1616,17 +1654,23 @@ export default function (pi: ExtensionAPI) {
     name: "is_look",
     label: "IS Look",
     description:
-      `Read one local Markdown Note or Content directory at a canonical rung; _threads/ posts accept an authored pin and position, resolved via CLI without substituting HEAD. Use full for body evidence; is_status returns revisions, not content, while native read remains the exact-file fallback beyond this tool's bound. Read-only: never changes caller authority or working directory. Output is capped at ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}.`,
+      `Read one local Markdown Note or Content directory at a canonical rung, or a Map member by \`address\` (@<root>//<position>) at a commit with no filesystem path, against \`map\` or the session's launch Map. An authored pin and position read this checkout at that commit, resolved via CLI without substituting HEAD. Use full for body evidence; is_status returns revisions, not content, while native read remains the exact-file fallback beyond this tool's bound. Read-only: never changes caller authority or working directory. Output is capped at ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}.`,
     promptSnippet: "Read one local Content target at a canonical rung as reference context",
     promptGuidelines: [
       "Use is_look to deepen one target already identified by awareness, navigation, a Map, or search. Start at summary or children; request surface/full only when the task needs body evidence.",
       "A target Agreement is reference context only. Never treat an is_look result as caller authority or a working-directory change.",
     ],
     parameters: Type.Object({
-      path: Type.String({
+      path: Type.Optional(Type.String({
         description:
-          "Local Markdown file or Content directory: relative to the home repo root (or mounted root when root is set), or absolute.",
-      }),
+          "Local Markdown file or Content directory: relative to the home repo root (or mounted root when root is set), or absolute. A path that is a Map address is read as one.",
+      })),
+      address: Type.Optional(Type.String({
+        description:
+          "A Map member by address instead of a path: @<root name>//<position>, @<root_node_id>//<position>, or //<position> for your own root. Read against `map`, else the session's launch Map.",
+      })),
+      map: MAP_PARAMETER,
+      at: AT_PARAMETER,
       depth: Type.Optional(
         StringEnum(["name", "summary", "surface", "children", "full"] as const, {
           description:
@@ -1645,12 +1689,34 @@ export default function (pi: ExtensionAPI) {
             "Omit or use home for the authority root. Pass a mounted root (absolute path or basename) to read inside that mount; it remains reference-only.",
         }),
       ),
-      pin: Type.Optional(Type.String({ description: "Authored commit pin for a _threads/ post; never inferred from HEAD" })),
-      position: Type.Optional(Type.String({ description: "Authored _threads/ post position paired with pin" })),
+      pin: Type.Optional(Type.String({ description: "Authored full commit id to read this checkout at, paired with position; never inferred from HEAD" })),
+      position: Type.Optional(Type.String({ description: "Authored repository-relative position paired with pin; must name the same target as path" })),
     }),
     async execute(_id, params, signal, _onUpdate, ctx) {
       signal?.throwIfAborted();
       const rootArg = params.root?.trim();
+      const pathArg = params.path?.trim();
+      const address = params.address?.trim() || (isMapAddress(pathArg) ? pathArg : undefined);
+      if (address) {
+        if ((params.address && pathArg) || params.pin || params.position || (rootArg && rootArg !== "home")) {
+          const extra = [
+            params.address && pathArg ? "path" : "",
+            params.pin ? "pin" : "",
+            params.position ? "position" : "",
+            rootArg && rootArg !== "home" ? "root" : "",
+          ].filter(Boolean);
+          throw new Error(`An address is read on its own; drop ${extra.join(", ")}. It takes its commit from the Map: use at: pin or head.`);
+        }
+        const depth = params.depth ?? "summary";
+        return renderedLook(
+          [...addressArgs("look", address, params.map, params.at), "--depth", depth, ...(params.contract ? ["--contract", params.contract] : [])],
+          ctx.cwd,
+          address,
+          { address, depth, at: params.at ?? null },
+        );
+      }
+      if (params.map || params.at) throw new Error("map and at read an address (@<root>//<position>); pass address, not path.");
+      if (!pathArg) throw new Error("Provide a Content target path, or an address (@<root>//<position>) read through a Map.");
       let readRoot = cachedRepoRoot ?? cachedRoot ?? ctx.cwd;
       if (rootArg && rootArg !== "home") {
         const mounted = resolveMount(rootArg);
@@ -1661,11 +1727,25 @@ export default function (pi: ExtensionAPI) {
         readRoot = mounted;
       }
 
-      const raw = params.path.trim().replace(/^@/, "");
+      const raw = pathArg.replace(/^@/, "");
       if (!raw) throw new Error("Provide a Content target path.");
       const target = resolvePath(readRoot, raw);
       if (!isPathInside(target, readRoot)) {
         throw new Error(`Refusing to look outside the selected root (${readRoot}): ${target}`);
+      }
+      if ((params.pin || params.position) && !threadPost(target, readRoot)) {
+        // Before the existence check: what was at the pin may be gone from the working tree.
+        // Any Content at an authored commit: the pinned post read, generalized.
+        if (!params.pin || !params.position) throw new Error("A pinned look requires both authored pin and position.");
+        const local = relative(readRoot, target).split(sep).join("/") || ".";
+        if (local !== params.position) throw new Error("Authored position does not match the requested path.");
+        const depth = params.depth ?? "summary";
+        return renderedLook(
+          ["look", params.position, "--pin", params.pin, "--depth", depth, ...(params.contract ? ["--contract", params.contract] : [])],
+          readRoot,
+          target,
+          { path: target, depth, pin: params.pin, position: params.position },
+        );
       }
       let stats: ReturnType<typeof statSync>;
       try {
@@ -1695,7 +1775,6 @@ export default function (pi: ExtensionAPI) {
         const { content: _boundedContent, ...truncation } = rendered.truncation;
         return { content: [{ type: "text", text: rendered.text }], details: { path: target, depth, pin: params.pin ?? null, position: post.position, truncation } };
       }
-      if (params.pin || params.position) throw new Error("Pin and position are for _threads/ posts only.");
       const looked = await readLookAwareness(
         target,
         params.depth ?? "summary",
@@ -1728,10 +1807,16 @@ export default function (pi: ExtensionAPI) {
       "Treat the injected [IdeaSpaces Awareness] map as the first bounded orientation rung: use is_navigate only when focus or map depth must change, and do not reread represented contract or current-state files or follow their links unless the user's question requires deeper evidence.",
     ],
     parameters: Type.Object({
-      path: Type.String({
+      path: Type.Optional(Type.String({
         description:
-          "Target position: relative to the repo root (or the mounted root when `root` is set), or absolute. \"\" or \".\" focuses the root.",
-      }),
+          "Target position: relative to the repo root (or the mounted root when `root` is set), or absolute. \"\" or \".\" focuses the root. A path that is a Map address is read as one.",
+      })),
+      address: Type.Optional(Type.String({
+        description:
+          "A Map member directory by address instead of a path: @<root name>//<position>, @<root_node_id>//<position>, or //<position>. Read against `map`, else the session's launch Map.",
+      })),
+      map: MAP_PARAMETER,
+      at: AT_PARAMETER,
       root: Type.Optional(
         Type.String({
           description:
@@ -1747,15 +1832,27 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const rootArg = params.root?.trim();
+      const pathArg = params.path?.trim() ?? "";
+      const address = params.address?.trim() || (isMapAddress(pathArg) ? pathArg : undefined);
+      if (address) {
+        const extra = [
+          params.address && pathArg ? "path" : "",
+          rootArg && rootArg !== "home" ? "root" : "",
+          params.depth !== undefined ? "depth" : "",
+        ].filter(Boolean);
+        if (extra.length) throw new Error(`An address is read as focus at a commit; drop ${extra.join(", ")}.`);
+        return renderedLook(addressArgs("navigate", address, params.map, params.at), ctx.cwd, address, { address, at: params.at ?? null });
+      }
+      if (params.map || params.at) throw new Error("map and at read an address (@<root>//<position>); pass address, not path.");
       const depth = params.depth && params.depth > 1 ? params.depth : undefined;
       if (rootArg && rootArg !== "home") {
-        return navigateMount(rootArg, params.path.trim(), depth);
+        return navigateMount(rootArg, pathArg, depth);
       }
 
       // Resolve against the repo root, falling back to the current awareness
       // root or cwd so navigate works before the first awareness build.
       const repoRoot = cachedRepoRoot ?? cachedRoot ?? ctx.cwd;
-      const raw = params.path.trim();
+      const raw = pathArg;
       const target = raw === "" || raw === "." ? repoRoot : resolvePath(repoRoot, raw);
 
       let stats: ReturnType<typeof statSync>;

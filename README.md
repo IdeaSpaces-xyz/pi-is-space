@@ -68,8 +68,8 @@ Pi's native `read`, `edit`, `write`, and `bash` cover exact full-document eviden
 
 | Tool | What |
 |---|---|
-| `is_navigate` | Read a home or mounted position as bounded history reference without changing authority. |
-| `is_look` | Read one local Note or directory at `name`, `summary`, `surface`, `children`, or `full` beneath its reference-only frame; for a `_threads/` post, accept an authored pin and position without substituting HEAD. |
+| `is_navigate` | Read a home or mounted position as bounded history reference without changing authority; `address` focuses on a Map member directory at a commit. |
+| `is_look` | Read one local Note or directory at `name`, `summary`, `surface`, `children`, or `full` beneath its reference-only frame. `address` (`@<root>//<position>`) reads a Map member at a commit with no filesystem path, against `map` or the session's launch Map (`IDEASPACES_MAP`); an authored `pin` and `position` read this checkout at that commit, never HEAD. |
 | `is_inspect` | Compatibility inspection of one Markdown file by summary, ATX outline, or exact section. |
 | `is_mount` / `is_unmount` | Add or remove read-only repositories from the conversation's working set. |
 | `is_status` | Inspect git/capture state, or return a file's full revision and compatibility `sha` for safe Note updates. |
