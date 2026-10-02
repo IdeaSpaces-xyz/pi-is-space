@@ -32,7 +32,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ideaspaces/cli": "github:IdeaSpaces-xyz/cli#53b14ae78e2766a34bc64c6612e05db5ef8472f3",
+    "@ideaspaces/cli": "github:IdeaSpaces-xyz/cli#641aff156495e5e05a23a1beb48a791db4f57cc7",
     "@ideaspaces/protocol": "github:IdeaSpaces-xyz/ideaspace-protocol#3e0364ce174b154befe389f50afff6c1c4b980be",
     "yaml": "2.9.0"
   },
