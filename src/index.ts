@@ -511,6 +511,15 @@ async function runRendered(args: string[], cwd?: string): Promise<CliTextResult>
   return { ok: true, text: out.trim() };
 }
 
+/** A CLI-rendered read, bounded like any look; details say what was read. */
+async function renderedLook(args: string[], cwd: string, shown: string, details: Record<string, unknown>): Promise<ToolResult> {
+  const read = await runRendered(args, cwd);
+  if (!read.ok) throw new Error(read.error);
+  const rendered = truncateLook(read.text, shown);
+  const { content: _boundedContent, ...truncation } = rendered.truncation;
+  return { content: [{ type: "text", text: rendered.text }], details: { ...details, truncation } };
+}
+
 /** `@<root>//<position>` or `//<position>`: a Map address, never a filesystem path. */
 function isMapAddress(value: string | undefined): value is string {
   return !!value && (value.startsWith("//") || /^@[^/\s]+\/\//.test(value));
@@ -1699,15 +1708,12 @@ export default function (pi: ExtensionAPI) {
           throw new Error(`An address is read on its own; drop ${extra.join(", ")}. It takes its commit from the Map: use at: pin or head.`);
         }
         const depth = params.depth ?? "summary";
-        const read = await runRendered(
+        return renderedLook(
           [...addressArgs("look", address, params.map, params.at), "--depth", depth, ...(params.contract ? ["--contract", params.contract] : [])],
           ctx.cwd,
+          address,
+          { address, depth, at: params.at ?? null },
         );
-        if (!read.ok) throw new Error(read.error);
-        signal?.throwIfAborted();
-        const rendered = truncateLook(read.text, address);
-        const { content: _boundedContent, ...truncation } = rendered.truncation;
-        return { content: [{ type: "text", text: rendered.text }], details: { address, depth, at: params.at ?? null, truncation } };
       }
       if (params.map || params.at) throw new Error("map and at read an address (@<root>//<position>); pass address, not path.");
       if (!pathArg) throw new Error("Provide a Content target path, or an address (@<root>//<position>) read through a Map.");
@@ -1734,14 +1740,12 @@ export default function (pi: ExtensionAPI) {
         const local = relative(readRoot, target).split(sep).join("/") || ".";
         if (local !== params.position) throw new Error("Authored position does not match the requested path.");
         const depth = params.depth ?? "summary";
-        const read = await runRendered(
+        return renderedLook(
           ["look", params.position, "--pin", params.pin, "--depth", depth, ...(params.contract ? ["--contract", params.contract] : [])],
           readRoot,
+          target,
+          { path: target, depth, pin: params.pin, position: params.position },
         );
-        if (!read.ok) throw new Error(read.error);
-        const rendered = truncateLook(read.text, target);
-        const { content: _boundedContent, ...truncation } = rendered.truncation;
-        return { content: [{ type: "text", text: rendered.text }], details: { path: target, depth, pin: params.pin, position: params.position, truncation } };
       }
       let stats: ReturnType<typeof statSync>;
       try {
