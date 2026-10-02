@@ -23,12 +23,12 @@ describe("packaging", () => {
   });
 
   it("pins the Content-tail composition in the protocol and CLI", () => {
-    expect(pkg.version).toBe("0.1.38");
+    expect(pkg.version).toBe("0.1.39");
     expect(pkg.dependencies?.["@ideaspaces/protocol"]).toBe(
       "github:IdeaSpaces-xyz/ideaspace-protocol#3e0364ce174b154befe389f50afff6c1c4b980be",
     );
     expect(pkg.dependencies?.["@ideaspaces/cli"]).toBe(
-      "github:IdeaSpaces-xyz/cli#cd5da0e2ca24aa52f3b3df75e3f1f6bbe605d041",
+      "github:IdeaSpaces-xyz/cli#9ca1f3ae94fd7c913dfceef8e289ea8e4d1fb171",
     );
   });
 
