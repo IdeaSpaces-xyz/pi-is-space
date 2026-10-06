@@ -11,7 +11,7 @@ function read(relative: string): string {
   return readFileSync(join(ROOT, relative), "utf-8");
 }
 
-describe("direct Inbox distribution", () => {
+describe("hosted Thread distribution", () => {
   it("pins the CLI release carrying direct exchanges", () => {
     const pkg = JSON.parse(read("package.json"));
     expect(pkg.version).toBe(PACKAGE_VERSION);
@@ -21,15 +21,22 @@ describe("direct Inbox distribution", () => {
   });
 
   it("ships follow, cursor reads, send, and reply through the installed CLI", () => {
-    const result = spawnSync(process.execPath, [CLI, "inbox", "--help"], { encoding: "utf-8" });
+    const result = spawnSync(process.execPath, [CLI, "threads", "--help"], { encoding: "utf-8" });
     const help = `${result.stdout}${result.stderr}`;
 
     expect(result.status).toBe(0);
-    expect(help).toContain("inbox <list|read|send|reply|expand>");
-    expect(help).toContain("inbox list --new --depth name");
-    expect(help).toContain("inbox read x_example --new --depth full --ack");
-    expect(help).toContain("inbox send @owner --about");
-    expect(help).toContain("inbox reply x_example");
+    expect(help).toContain("ideaspaces threads <list|");
+    expect(help).toContain("threads read x_<id> --new --ack");
+
+    // Subcommand usage, unlike the generic help, reveals whether this installed CLI accepts a Map.
+    const send = spawnSync(process.execPath, [CLI, "threads", "send"], { encoding: "utf-8" });
+    const reply = spawnSync(process.execPath, [CLI, "threads", "reply"], { encoding: "utf-8" });
+    expect(send.status).toBe(1);
+    expect(`${send.stdout}${send.stderr}`).toContain("[--map <selection.json>]");
+    expect(reply.status).toBe(1);
+    expect(`${reply.stdout}${reply.stderr}`).toContain("threads reply <thread_id>");
+    // A future CLI pin adding reply Maps must update the skill's pin-specific limitation too.
+    expect(`${reply.stdout}${reply.stderr}`).not.toContain("[--map <selection.json>]");
 
     const follow = spawnSync(process.execPath, [CLI, "follow", "--help"], { encoding: "utf-8" });
     const followHelp = `${follow.stdout}${follow.stderr}`;
@@ -46,11 +53,20 @@ describe("direct Inbox distribution", () => {
     const skill = read("skills/is-inbox/SKILL.md");
 
     expect(skill).toContain("$IS_CLI_PATH");
-    expect(skill).toContain("is_cli inbox list --new --depth name");
+    expect(skill).toContain("is_cli threads list --new --depth name");
     expect(skill).toContain("Use `is_follow`");
     expect(skill).toContain("Only explicit acknowledgement advances");
-    expect(skill).toContain("is_cli inbox send");
-    expect(skill).toContain("is_cli inbox reply");
+    expect(skill).toContain("is_cli threads send");
+    expect(skill).toContain("is_cli threads reply");
+    expect(skill).toContain("A Map is optional");
+    expect(skill).toContain("**No Map**");
+    expect(skill).toContain("**Inherit**");
+    expect(skill).toContain("`is_cli threads reply` **without");
+    expect(skill).toContain("`threads --help` is a generic overview");
+    expect(skill).toContain("older versions may silently ignore it");
+    expect(skill).toContain("do not use raw API calls");
+    expect(skill).toContain("is_cli inbox list --kind request");
+    expect(skill).toContain("use `is-threads` and its `is_threads` tool");
     expect(skill).toContain("acts as the logged-in person");
     expect(skill).toContain("Never substitute a bare Agent");
     expect(skill).toContain("reuse that exact id only when retrying");
