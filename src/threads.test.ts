@@ -46,6 +46,7 @@ describe("local Thread CLI adapter", () => {
       .toEqual(["threads", "open", hosted, "--depth", "children", "--since", "2026-10-07"]);
     expect(threadArgs({ action: "post", path: hosted, message: "Body", name: "Reply", summary: "Why" }))
       .toEqual(["threads", "reply", hosted, "--message", "Body", "--name", "Reply", "--summary", "Why"]);
+    expect(() => threadArgs({ action: "post", path: hosted, message: "Body", name: "Reply", summary: "Why", author: "Other" })).toThrow(/logged-in/);
     expect(() => threadArgs({ action: "post", path: hosted, message: "Body", name: "Reply", summary: "Why", reply_to: ["n_post"] })).toThrow(/cannot carry in_reply_to/);
     expect(() => threadArgs({ action: "open", path: hosted, pin, position })).toThrow(/Hosted Threads cannot/);
     expect(() => threadArgs({ action: "open", path: "trial", pin })).toThrow(/HEAD/);

@@ -53,6 +53,7 @@ export function threadArgs(input: ThreadRequest): string[] {
   if (input.pin || input.position || input.depth || input.new || input.since || input.post) throw new Error("Pin, position, depth, --new, --since and --post apply to opening, not writing.");
   if (hosted) {
     if (action !== "post") throw new Error("Hosted close is an owner-only lifecycle operation; use threads close x_id --yes after preview.");
+    if (input.author) throw new Error("Hosted replies use the logged-in person's identity; omit author.");
     if (input.reply_to?.length) throw new Error("The hosted reply API cannot carry in_reply_to yet; omit reply_to until the server exposes reply parents.");
     if (!input.message?.trim() || !input.name?.trim() || !input.summary?.trim()) throw new Error("Hosted reply needs message, name and summary. The server checks your participation grade.");
     return ["threads", "reply", path, "--message", input.message, "--name", input.name, "--summary", input.summary,
