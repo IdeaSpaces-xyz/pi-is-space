@@ -1654,7 +1654,7 @@ export default function (pi: ExtensionAPI) {
     name: "is_look",
     label: "IS Look",
     description:
-      `Read one local Markdown Note or Content directory at a canonical rung, or a Map member by \`address\` (@<root>//<position>) at a commit with no filesystem path, against \`map\` or the session's launch Map. An authored pin and position read this checkout at that commit, resolved via CLI without substituting HEAD. Use full for body evidence; is_status returns revisions, not content, while native read remains the exact-file fallback beyond this tool's bound. Read-only: never changes caller authority or working directory. Output is capped at ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}.`,
+      `Read one local Markdown Note, Content directory or Thread folder at a canonical rung, or a Map member by \`address\` (@<root>//<position>) at a commit with no filesystem path, against \`map\` or the session's launch Map. An authored pin and position read this checkout at that commit, resolved via CLI without substituting HEAD. Use full for body evidence; is_status returns revisions, not content, while native read remains the exact-file fallback beyond this tool's bound. Read-only: never changes caller authority or working directory. Output is capped at ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}.`,
     promptSnippet: "Read one local Content target at a canonical rung as reference context",
     promptGuidelines: [
       "Use is_look to deepen one target already identified by awareness, navigation, a Map, or search. Start at summary or children; request surface/full only when the task needs body evidence.",
@@ -1754,7 +1754,16 @@ export default function (pi: ExtensionAPI) {
         throw new Error(`No such path: ${target}`);
       }
       if (!stats.isFile() && !stats.isDirectory()) {
-        throw new Error(`Not a Markdown file or Content directory: ${target}`);
+        throw new Error(`Not a Markdown file, Content directory or Thread folder: ${target}`);
+      }
+
+      // Thread folders are extension payload, not Content; use the same CLI
+      // rung reader as is_threads, including when read through a mounted root.
+      const localThreadPath = relative(readRoot, target).split(sep).join("/");
+      if (stats.isDirectory() && /^_threads\/[^/]+$/.test(localThreadPath)) {
+        if (params.contract || params.pin || params.position) throw new Error("A Thread folder has its own Agreement and rungs; omit contract, pin and position.");
+        const depth = params.depth ?? "summary";
+        return renderedLook(["look", target, "--depth", depth], readRoot, target, { path: target, depth });
       }
 
       const post = threadPost(target, readRoot);
@@ -2066,12 +2075,15 @@ export default function (pi: ExtensionAPI) {
   roster.register({
     name: "is_threads",
     label: "IS Threads",
-    description: "List, open at name/summary/full, post to, or close a local Thread. Select another Space's pinned Thread with map, member and validated checkout; caller stays at its Agreement cwd. Reading never acknowledges. Hosted x_ Threads are not supported here.",
-    promptSnippet: "Work with a local Thread through the installed CLI",
+    description: "List, open at five rungs, post to or close a local Thread; open or reply to a hosted x_ Thread through the CLI. Hosted children remains flat until reply-parent links ship. Reading never acknowledges.",
+    promptSnippet: "Read or reply to local and hosted Threads through the CLI",
     parameters: Type.Object({
       action: StringEnum(["list", "open", "post", "close"] as const),
-      path: Type.Optional(Type.String({ description: "Local Thread path; omit for list in cwd" })),
-      depth: Type.Optional(StringEnum(["name", "summary", "full"] as const)),
+      path: Type.Optional(Type.String({ description: "Local Thread path or hosted x_ id; omit for list in cwd" })),
+      depth: Type.Optional(StringEnum(["name", "summary", "children", "surface", "full"] as const)),
+      new: Type.Optional(Type.Boolean({ description: "Open only: posts after the followed cursor" })),
+      since: Type.Optional(Type.String({ description: "Open only: ISO date, post id or hosted numeric position" })),
+      post: Type.Optional(Type.String({ description: "Open only: one post by id, in full" })),
       message: Type.Optional(Type.String({ description: "Body of an immutable post or closure" })),
       reply_to: Type.Optional(Type.Array(Type.String({ description: "Parent post id" }))),
       author: Type.Optional(Type.String({ description: "Agent Agreement name if running outside its folder" })),
@@ -2092,7 +2104,7 @@ export default function (pi: ExtensionAPI) {
         const expected = selected ? authoredMember(params.map!, params.member!, ctx.cwd) : { pin: params.pin!, position: params.position! };
         const result = await runJson<{ pinned?: string; pin?: string; position?: string }>(args, params.cwd || ctx.cwd);
         if (!result.ok) throw new Error(result.error);
-        return ok(pinnedView(result.data, params.depth ?? "summary", expected));
+        return ok(pinnedView(result.data, params.depth === "children" ? "name" : params.depth ?? "summary", expected));
       }
       // CLI owns selected-write pin, parent and live-target validation; preserve its post path/id result.
       return runTool(args, undefined, selected ? ctx.cwd : params.cwd || ctx.cwd);

@@ -6,7 +6,10 @@ import { parse as parseYaml } from "yaml";
 export type ThreadRequest = {
   action: "list" | "open" | "post" | "close";
   path?: string;
-  depth?: "name" | "summary" | "full";
+  depth?: "name" | "summary" | "children" | "surface" | "full";
+  since?: string;
+  new?: boolean;
+  post?: string;
   message?: string;
   reply_to?: string[];
   author?: string;
@@ -29,20 +32,33 @@ export function threadArgs(input: ThreadRequest): string[] {
   if (input.map && action === "open" && !selected) throw new Error("Pinned Map open requires a member; never infer HEAD.");
   if (action === "list") {
     if (input.map || selected) throw new Error("Selection applies only to open or post.");
-    if (path?.startsWith("x_")) throw new Error("is_threads is local-only; use a directory, not a hosted x_ id.");
+    if (path?.startsWith("x_")) throw new Error("List hosted Threads without a path, then open one x_ id.");
+    if (input.since || input.post || input.new) throw new Error("--since, --new and --post select an opened Thread, not a list.");
     return ["threads", "list", path || ".", "--depth", input.depth ?? "summary"];
   }
-  if (!path?.trim() || path.trim().startsWith("x_")) {
-    throw new Error("Provide a local Thread path, not a hosted x_ id.");
-  }
+  if (!path?.trim()) throw new Error("Provide a local Thread path or hosted x_ id.");
+  const hosted = /^x_[0-9a-f]{24}$/.test(path);
+  if (path.startsWith("x_") && !hosted) throw new Error("Hosted Thread id must be x_ followed by 24 lowercase hex digits.");
+  if (hosted && (input.pin || input.position || selected || input.map || input.checkout)) throw new Error("Hosted Threads cannot use local authored pin, Map member or checkout selection.");
+  if (input.new && input.since) throw new Error("Use --new or --since, not both.");
   if (action === "open") {
+    if ((selected || input.pin) && (input.new || input.since || input.post || input.depth === "children")) throw new Error("An authored pinned post cannot use --new, --since, --post or children; open the live Thread to traverse it.");
     if (input.pin && !input.position || input.position && !input.pin) throw new Error("Pinned open requires both authored pin and position; never substitute HEAD.");
     if (selected && (input.pin || input.position)) throw new Error("Use either selected Map member or explicit pin and position, not both.");
     return ["threads", "open", path, "--depth", input.pin || selected ? "full" : input.depth ?? "summary",
+      ...(input.new ? ["--new"] : []), ...(input.since ? ["--since", input.since] : []), ...(input.post ? ["--post", input.post] : []),
       ...(input.pin ? ["--pin", input.pin, "--position", input.position!] : []),
       ...(selected ? selectionArgs(input) : [])];
   }
-  if (input.pin || input.position || input.depth) throw new Error("Pin, position and depth apply to opening, not writing.");
+  if (input.pin || input.position || input.depth || input.new || input.since || input.post) throw new Error("Pin, position, depth, --new, --since and --post apply to opening, not writing.");
+  if (hosted) {
+    if (action !== "post") throw new Error("Hosted close is an owner-only lifecycle operation; use threads close x_id --yes after preview.");
+    if (input.author) throw new Error("Hosted replies use the logged-in person's identity; omit author.");
+    if (input.reply_to?.length) throw new Error("The hosted reply API cannot carry in_reply_to yet; omit reply_to until the server exposes reply parents.");
+    if (!input.message?.trim() || !input.name?.trim() || !input.summary?.trim()) throw new Error("Hosted reply needs message, name and summary. The server checks your participation grade.");
+    return ["threads", "reply", path, "--message", input.message, "--name", input.name, "--summary", input.summary,
+      ...(input.map ? ["--map", input.map] : [])];
+  }
   if (selected && (input.author || !input.reply_to?.length)) throw new Error("Selected post requires an explicit parent and the caller's Agreement author; omit author.");
   if (!input.message?.trim()) throw new Error("A post or closure needs a nonempty message.");
   if (action === "close" && (input.reply_to?.length || input.name || input.summary || input.map)) throw new Error("Closure only accepts message and author; omit reply_to, name, summary and map.");
