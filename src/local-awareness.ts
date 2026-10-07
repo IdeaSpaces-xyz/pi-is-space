@@ -158,25 +158,55 @@ export function withOpenChange(volatile: string | null, change: string | undefin
 }
 
 /**
- * Append the volatile tail OUTSIDE the cached prefix. Pi places the history
- * cache breakpoint on the last user-role message's last content block; a text
- * block pushed after it is never part of any cached prefix, so per-call churn
- * costs only itself. Mutates the payload in place. Returns false (payload
- * untouched) for shapes it does not recognize — a provider without this
- * layout keeps its default behavior.
+ * Append the volatile tail after provider-built history. Anthropic's explicit
+ * cache breakpoint stays on the last user's prior block; Codex uses Responses
+ * input (tool outputs are top-level items), and Vertex uses Gemini contents
+ * (tool responses are user parts). Keep the changing tail outside the stable
+ * instructions and before-request history, without rewriting either. Returns
+ * false without mutation for unknown or malformed shapes so the caller warns.
  */
 export function appendVolatileTail(payload: unknown, text: string): boolean {
-  if (!payload || typeof payload !== "object") return false;
-  const messages = (payload as { messages?: unknown }).messages;
-  if (!Array.isArray(messages)) return false;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const message = messages[i] as { role?: unknown; content?: unknown };
-    if (message?.role !== "user") continue;
-    if (!Array.isArray(message.content)) return false;
-    message.content.push({ type: "text", text });
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false;
+  const body = payload as Record<string, unknown>;
+  const shapes = ["messages", "input", "contents"].filter((key) => key in body);
+  if (shapes.length !== 1) return false;
+  const key = shapes[0];
+  const entries = body[key];
+  if (!Array.isArray(entries) || entries.length === 0) return false;
+  const last = entries[entries.length - 1];
+  if (!last || typeof last !== "object" || Array.isArray(last)) return false;
+
+  if (key === "input") {
+    // Responses tool results are standalone function_call_output items. Never
+    // insert a user turn between the call and its result, or edit the result.
+    // Pi's converted final user turn is an input_text block array.
+    if (last.type === "function_call_output" || last.type === "custom_tool_call_output") {
+      if (typeof last.call_id !== "string" ||
+        !(typeof last.output === "string" || Array.isArray(last.output))) return false;
+    } else if (last.role !== "user" || !Array.isArray(last.content) ||
+      !last.content.every((block: unknown) => block && typeof block === "object" &&
+        ["input_text", "input_image"].includes((block as { type?: string }).type ?? ""))) {
+      return false;
+    }
+    entries.push({ role: "user", content: [{ type: "input_text", text }] });
     return true;
   }
-  return false;
+
+  if (last.role !== "user") return false;
+  if (key === "messages") {
+    if (!Array.isArray(last.content) || !last.content.every((block: unknown) =>
+      block && typeof block === "object" && typeof (block as { type?: unknown }).type === "string")) return false;
+    last.content.push({ type: "text", text });
+    return true;
+  }
+  if (!Array.isArray(last.parts) || !last.parts.every((part: unknown) =>
+    part && typeof part === "object" && !Array.isArray(part))) return false;
+  // Gemini requires the functionResponse turn immediately after a model
+  // functionCall. Keep that turn intact; put volatile text in a subsequent
+  // user turn. Mixing text into functionResponse parts yielded a Vertex 400
+  // on Pi 1.0.2 ("Requests ending with a model turn are not supported").
+  entries.push({ role: "user", parts: [{ text }] });
+  return true;
 }
 
 /**

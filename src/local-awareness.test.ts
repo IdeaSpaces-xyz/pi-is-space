@@ -436,12 +436,81 @@ describe("appendVolatileTail", () => {
     expect(last[1]).toEqual({ type: "text", text: "[IdeaSpaces State]\ntail" });
   });
 
-  it("leaves unrecognized payload shapes untouched", () => {
-    const stringContent = { messages: [{ role: "user", content: "plain" }] };
-    expect(appendVolatileTail(stringContent, "tail")).toBe(false);
-    expect(stringContent.messages[0].content).toBe("plain");
-    expect(appendVolatileTail({ prompt: "x" }, "tail")).toBe(false);
-    expect(appendVolatileTail(null, "tail")).toBe(false);
+  it("appends a Responses user input after the complete tool exchange, without changing history", () => {
+    const payload = {
+      instructions: "stable instructions",
+      prompt_cache_key: "session-key",
+      input: [
+        { role: "user", content: [{ type: "input_text", text: "run a tool" }] },
+        { type: "function_call", call_id: "c1", name: "bash", arguments: "{}" },
+        { type: "function_call_output", call_id: "c1", output: "first result" },
+        { type: "function_call_output", call_id: "c2", output: "second result" },
+      ],
+    };
+    const prefix = JSON.stringify(payload);
+    expect(appendVolatileTail(payload, "[IdeaSpaces State]\nbranch: main")).toBe(true);
+    expect(JSON.stringify({ ...payload, input: payload.input.slice(0, -1) })).toBe(prefix);
+    expect(payload.input.at(-1)).toEqual({
+      role: "user", content: [{ type: "input_text", text: "[IdeaSpaces State]\nbranch: main" }],
+    });
+    expect(JSON.stringify(payload).match(/\[IdeaSpaces State\]/g)).toHaveLength(1);
+    // A new provider request is built afresh: the changing tail never enters
+    // the reusable prefix, including on a tool follow-up.
+    const next = structuredClone({ ...payload, input: payload.input.slice(0, -1) });
+    expect(appendVolatileTail(next, "[IdeaSpaces State]\nbranch: feature")).toBe(true);
+    expect(next.input.at(-1)).toEqual({ role: "user", content: [{ type: "input_text", text: "[IdeaSpaces State]\nbranch: feature" }] });
+    expect(JSON.stringify(next).match(/\[IdeaSpaces State\]/g)).toHaveLength(1);
+  });
+
+  it("appends a Responses tail after a plain user input", () => {
+    const payload = { input: [{ role: "user", content: [{ type: "input_text", text: "hello" }] }] };
+    expect(appendVolatileTail(payload, "[IdeaSpaces State]\nstate")).toBe(true);
+    expect(payload.input[0].content).toEqual([{ type: "input_text", text: "hello" }]);
+    expect(payload.input.at(-1)?.content).toEqual([{ type: "input_text", text: "[IdeaSpaces State]\nstate" }]);
+  });
+
+  it("appends a Vertex user turn after the complete functionResponse turn", () => {
+    const payload = {
+      config: { systemInstruction: "stable", cachedContent: "cached-prefix" },
+      contents: [
+        { role: "user", parts: [{ text: "run tools" }] },
+        { role: "model", parts: [{ functionCall: { name: "bash", args: {} } }] },
+        { role: "user", parts: [
+          { functionResponse: { name: "bash", response: { output: "one" } } },
+          { functionResponse: { name: "read", response: { output: "two" } } },
+        ] },
+      ],
+    };
+    const before = structuredClone(payload);
+    expect(appendVolatileTail(payload, "[IdeaSpaces State]\nbranch: main")).toBe(true);
+    expect(payload.config).toEqual(before.config);
+    expect(payload.contents.slice(0, -1)).toEqual(before.contents);
+    expect(payload.contents.at(-1)).toEqual({
+      role: "user", parts: [{ text: "[IdeaSpaces State]\nbranch: main" }],
+    });
+    expect(JSON.stringify(payload).match(/\[IdeaSpaces State\]/g)).toHaveLength(1);
+    const next = structuredClone(before);
+    expect(appendVolatileTail(next, "[IdeaSpaces State]\nbranch: feature")).toBe(true);
+    expect(next.contents.at(-1)).toEqual({ role: "user", parts: [{ text: "[IdeaSpaces State]\nbranch: feature" }] });
+    expect(JSON.stringify(next).match(/\[IdeaSpaces State\]/g)).toHaveLength(1);
+  });
+
+  it("leaves malformed, ambiguous and unknown payloads untouched (caller warns)", () => {
+    const invalid: unknown[] = [
+      { messages: [{ role: "user", content: "plain" }] },
+      { messages: [{ role: "assistant", content: [] }] },
+      { input: [{ role: "user", content: "plain" }] },
+      { input: [{ type: "function_call_output", call_id: 123, output: "x" }] },
+      { contents: [{ role: "user", parts: "plain" }] },
+      { contents: [{ role: "model", parts: [{ text: "hi" }] }] },
+      { messages: [], input: [{ role: "user", content: [] }] },
+      { prompt: "x" }, null,
+    ];
+    for (const payload of invalid) {
+      const before = structuredClone(payload);
+      expect(appendVolatileTail(payload, "tail")).toBe(false);
+      expect(payload).toEqual(before);
+    }
   });
 });
 
