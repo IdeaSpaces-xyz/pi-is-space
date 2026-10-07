@@ -1158,12 +1158,11 @@ export default function (pi: ExtensionAPI) {
   });
 
   // The VOLATILE register (State, activity, catalog, drift, Change line) is
-  // appended per LLM call, strictly AFTER the last cache breakpoint. Transient
-  // content anywhere inside the cached prefix would poison every later lookup
-  // — and the `context` event cannot control breakpoint placement (pi puts it
-  // on the last user message, which a transient tail would become). Here the
-  // payload is already built: the breakpoint sits on the real last user
-  // message, and this block lands after it, outside every cached prefix.
+  // appended per LLM call after the provider has built the payload. The
+  // `context` event cannot control cache placement. Anthropic's explicit
+  // breakpoint remains on the real user block; Codex adds a final user input
+  // after any tool output, and Vertex adds a final user turn after tool responses.
+  // Changing state never enters the system instruction or earlier history.
   let warnedTailShape = false;
   pi.on("before_provider_request", async (event, ctx) => {
     const tail = withOpenChange(cachedVolatile, openChangeLine(ctx));
