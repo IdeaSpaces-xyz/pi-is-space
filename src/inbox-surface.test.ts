@@ -32,11 +32,11 @@ describe("hosted Thread distribution", () => {
     const send = spawnSync(process.execPath, [CLI, "threads", "send"], { encoding: "utf-8" });
     const reply = spawnSync(process.execPath, [CLI, "threads", "reply"], { encoding: "utf-8" });
     expect(send.status).toBe(1);
-    expect(`${send.stdout}${send.stderr}`).toContain("[--map <selection.json>]");
+    expect(`${send.stdout}${send.stderr}`).toContain("Say who to send to");
+    expect(read("skills/is-inbox/SKILL.md")).toContain("`threads send --map`");
     expect(reply.status).toBe(1);
     expect(`${reply.stdout}${reply.stderr}`).toContain("threads reply <thread_id>");
-    // A future CLI pin adding reply Maps must update the skill's pin-specific limitation too.
-    expect(`${reply.stdout}${reply.stderr}`).not.toContain("[--map <selection.json>]");
+    expect(`${reply.stdout}${reply.stderr}`).toContain("[--map <selection.json>]");
 
     const follow = spawnSync(process.execPath, [CLI, "follow", "--help"], { encoding: "utf-8" });
     const followHelp = `${follow.stdout}${follow.stderr}`;
@@ -63,7 +63,7 @@ describe("hosted Thread distribution", () => {
     expect(skill).toContain("**Inherit**");
     expect(skill).toContain("`is_cli threads reply` **without");
     expect(skill).toContain("`threads --help` is a generic overview");
-    expect(skill).toContain("older versions may silently ignore it");
+    expect(skill).toContain("Older CLIs may silently ignore an unknown flag");
     expect(skill).toContain("do not use raw API calls");
     expect(skill).toContain("is_cli inbox list --kind request");
     expect(skill).toContain("use `is-threads` and its `is_threads` tool");

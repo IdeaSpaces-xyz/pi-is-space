@@ -1654,7 +1654,7 @@ export default function (pi: ExtensionAPI) {
     name: "is_look",
     label: "IS Look",
     description:
-      `Read one local Markdown Note or Content directory at a canonical rung, or a Map member by \`address\` (@<root>//<position>) at a commit with no filesystem path, against \`map\` or the session's launch Map. An authored pin and position read this checkout at that commit, resolved via CLI without substituting HEAD. Use full for body evidence; is_status returns revisions, not content, while native read remains the exact-file fallback beyond this tool's bound. Read-only: never changes caller authority or working directory. Output is capped at ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}.`,
+      `Read one local Markdown Note, Content directory or Thread folder at a canonical rung, or a Map member by \`address\` (@<root>//<position>) at a commit with no filesystem path, against \`map\` or the session's launch Map. An authored pin and position read this checkout at that commit, resolved via CLI without substituting HEAD. Use full for body evidence; is_status returns revisions, not content, while native read remains the exact-file fallback beyond this tool's bound. Read-only: never changes caller authority or working directory. Output is capped at ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}.`,
     promptSnippet: "Read one local Content target at a canonical rung as reference context",
     promptGuidelines: [
       "Use is_look to deepen one target already identified by awareness, navigation, a Map, or search. Start at summary or children; request surface/full only when the task needs body evidence.",
@@ -1754,7 +1754,16 @@ export default function (pi: ExtensionAPI) {
         throw new Error(`No such path: ${target}`);
       }
       if (!stats.isFile() && !stats.isDirectory()) {
-        throw new Error(`Not a Markdown file or Content directory: ${target}`);
+        throw new Error(`Not a Markdown file, Content directory or Thread folder: ${target}`);
+      }
+
+      // Thread folders are extension payload, not Content; use the same CLI
+      // rung reader as is_threads, including when read through a mounted root.
+      const localThreadPath = relative(readRoot, target).split(sep).join("/");
+      if (stats.isDirectory() && /^_threads\/[^/]+$/.test(localThreadPath)) {
+        if (params.contract || params.pin || params.position) throw new Error("A Thread folder has its own Agreement and rungs; omit contract, pin and position.");
+        const depth = params.depth ?? "summary";
+        return renderedLook(["look", target, "--depth", depth], readRoot, target, { path: target, depth });
       }
 
       const post = threadPost(target, readRoot);

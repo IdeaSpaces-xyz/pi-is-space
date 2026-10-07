@@ -48,9 +48,9 @@ is_cli threads read "<thread-id>" --new --depth full
 ```
 
 `threads list` includes local and hosted Threads; `threads read x_…` addresses a hosted exchange.
-For local-only Thread work, use `is-threads` and its `is_threads` tool instead of this hosted workflow.
-Use `--since <position>` for a supplied hosted event position, `--kind message|reframe` to narrow
-hosted results, and `--depth name|summary|full` for the disclosure rung. Access requests are not
+For local-only Thread work, use `is-threads` and its `is_threads` tool instead of this hosted workflow. For a known hosted Thread id, `is-threads` and its `is_threads` tool can also read it at the same five rungs.
+Use `--since <position|ISO date|hosted Note id>` for a supplied hosted boundary, `--kind message|reframe` to narrow
+hosted results, and `--depth name|summary|children|surface|full` for the disclosure rung (hosted children are flat until reply-parent links ship). Access requests are not
 Threads: the pinned CLI temporarily requires `is_cli inbox list --kind request` for them. Use normal
 human output unless exact structured fields are needed; then append `--json`. Preserve the CLI's
 distinction between an empty result and an unavailable service. A hosted Thread's Notes remain
@@ -95,12 +95,11 @@ When a new Map is warranted:
 2. Preview the exact member order, annotations, and disclosure ceilings before sending.
 3. Ensure positioned Notes are committed, pushed, indexed, and bound to their hosted Space. A local
    path is not shared context.
-4. Send only through a CLI surface that accepts the reviewed selection. `threads send --map` is
-   available in the pinned CLI. For a reply, inspect the usage from `is_cli threads reply` **without
-   a thread id** (it exits nonzero without sending). Check specifically for `[--map <selection.json>]`:
-   `threads --help` is a generic overview, not reply-specific. The current Pi pin lacks reply Map
-   support; newer CLI versions have it. If the installed CLI lacks the flag, say so; never pass an
-   unrecognized `--map` (older versions may silently ignore it), and do not use raw API calls.
+4. Send only through a CLI surface that accepts the reviewed selection. Pinned CLI 0.2.11 accepts
+   `threads send --map` and `threads reply --map`. For a reply, inspect the usage from
+   `is_cli threads reply` **without a thread id** (it exits nonzero without sending); look for
+   `[--map <selection.json>]`. `threads --help` is a generic overview, not reply-specific.
+   Older CLIs may silently ignore an unknown flag; update the CLI; do not use raw API calls.
 5. Read the sent message back at `--depth full` and expand one member before claiming the Map or Note
    was shared.
 
