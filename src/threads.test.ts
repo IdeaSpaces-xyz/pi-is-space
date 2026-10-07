@@ -36,8 +36,18 @@ describe("local Thread CLI adapter", () => {
     expect(() => authoredMember("map: { roots: [], members: [wrong] }", 0)).toThrow(/members\[0\]: invalid_member_type/);
     expect(() => pinnedView({ pinned: "text", pin: "b".repeat(40), position }, "full", authoredMember(map, 0))).toThrow(/fallback/);
   });
-  it("refuses hosted ids and implicit HEAD; projects only the pinned post", () => {
-    expect(() => threadArgs({ action: "open", path: "x_" + "a".repeat(24) })).toThrow(/hosted/);
+  it("opens and replies to hosted ids through CLI; never guesses an authored pin", () => {
+    const hosted = "x_" + "a".repeat(24);
+    expect(threadArgs({ action: "open", path: hosted, depth: "summary", new: true }))
+      .toEqual(["threads", "open", hosted, "--depth", "summary", "--new"]);
+    expect(threadArgs({ action: "open", path: hosted, depth: "surface", post: "n_post" }))
+      .toEqual(["threads", "open", hosted, "--depth", "surface", "--post", "n_post"]);
+    expect(threadArgs({ action: "open", path: hosted, depth: "children", since: "2026-10-07" }))
+      .toEqual(["threads", "open", hosted, "--depth", "children", "--since", "2026-10-07"]);
+    expect(threadArgs({ action: "post", path: hosted, message: "Body", name: "Reply", summary: "Why" }))
+      .toEqual(["threads", "reply", hosted, "--message", "Body", "--name", "Reply", "--summary", "Why"]);
+    expect(() => threadArgs({ action: "post", path: hosted, message: "Body", name: "Reply", summary: "Why", reply_to: ["n_post"] })).toThrow(/cannot carry in_reply_to/);
+    expect(() => threadArgs({ action: "open", path: hosted, pin, position })).toThrow(/Hosted Threads cannot/);
     expect(() => threadArgs({ action: "open", path: "trial", pin })).toThrow(/HEAD/);
     expect(threadArgs({ action: "open", path: "trial", depth: "summary", pin, position }))
       .toEqual(["threads", "open", "trial", "--depth", "full", "--pin", pin, "--position", position]);
