@@ -51,9 +51,10 @@ export interface LocalAwarenessResult {
    * The volatile register: the protocol's one Content-tail composition —
    * local State, catalog/floor hint, then the manifest tail (activity and
    * drift). The open Change line joins it at request time, last. Changes
-   * freely; must never enter the cached prefix — appended after the last
-   * cache breakpoint in before_provider_request. Byte-identical to the CLI's
-   * `status` for the same inputs.
+   * freely; appended at request time, after the provider-built conversation.
+   * Only Anthropic has an explicit breakpoint; Codex and Vertex reuse matching
+   * prefixes opportunistically. Byte-identical to the CLI's `status` for the
+   * same inputs.
    */
   volatile: string | null;
 }
@@ -192,6 +193,10 @@ export function appendVolatileTail(payload: unknown, text: string): boolean {
     return true;
   }
 
+  // Do not reach backward past a tool/assistant item. OpenAI Completions uses
+  // top-level role: "tool" results (often string content); inserting state
+  // before that result breaks ordering. This shape needs its own tested
+  // provider-specific placement; until then the caller warns visibly.
   if (last.role !== "user") return false;
   if (key === "messages") {
     if (!Array.isArray(last.content) || !last.content.every((block: unknown) =>

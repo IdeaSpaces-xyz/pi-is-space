@@ -1157,12 +1157,10 @@ export default function (pi: ExtensionAPI) {
     };
   });
 
-  // The VOLATILE register (State, activity, catalog, drift, Change line) is
-  // appended per LLM call after the provider has built the payload. The
-  // `context` event cannot control cache placement. Anthropic's explicit
-  // breakpoint remains on the real user block; Codex adds a final user input
-  // after any tool output, and Vertex adds a final user turn after tool responses.
-  // Changing state never enters the system instruction or earlier history.
+  // Append changing State after provider-built history on each request, not
+  // into the system instruction or saved transcript. Anthropic has an explicit
+  // breakpoint; Codex and Vertex rely on matching provider cache prefixes.
+  // A tool result always precedes the appended tail.
   let warnedTailShape = false;
   pi.on("before_provider_request", async (event, ctx) => {
     const tail = withOpenChange(cachedVolatile, openChangeLine(ctx));
@@ -1174,7 +1172,7 @@ export default function (pi: ExtensionAPI) {
       // model this session — the opposite of drift surfacing honestly.
       warnedTailShape = true;
       console.warn(
-        "IdeaSpaces: volatile awareness could not attach to this provider's payload shape; git state, activity, and the Change line are absent from model context this session.",
+        "IdeaSpaces: volatile awareness could not attach to this provider payload shape or ordering; git state, activity, and the Change line are absent from model context this session.",
       );
     }
   });

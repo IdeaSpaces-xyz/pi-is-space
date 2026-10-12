@@ -447,16 +447,16 @@ describe("appendVolatileTail", () => {
         { type: "function_call_output", call_id: "c2", output: "second result" },
       ],
     };
-    const prefix = JSON.stringify(payload);
+    const before = structuredClone(payload);
     expect(appendVolatileTail(payload, "[IdeaSpaces State]\nbranch: main")).toBe(true);
-    expect(JSON.stringify({ ...payload, input: payload.input.slice(0, -1) })).toBe(prefix);
+    expect({ ...payload, input: payload.input.slice(0, -1) }).toEqual(before);
     expect(payload.input.at(-1)).toEqual({
       role: "user", content: [{ type: "input_text", text: "[IdeaSpaces State]\nbranch: main" }],
     });
     expect(JSON.stringify(payload).match(/\[IdeaSpaces State\]/g)).toHaveLength(1);
     // A new provider request is built afresh: the changing tail never enters
     // the reusable prefix, including on a tool follow-up.
-    const next = structuredClone({ ...payload, input: payload.input.slice(0, -1) });
+    const next = structuredClone(before);
     expect(appendVolatileTail(next, "[IdeaSpaces State]\nbranch: feature")).toBe(true);
     expect(next.input.at(-1)).toEqual({ role: "user", content: [{ type: "input_text", text: "[IdeaSpaces State]\nbranch: feature" }] });
     expect(JSON.stringify(next).match(/\[IdeaSpaces State\]/g)).toHaveLength(1);
@@ -493,6 +493,21 @@ describe("appendVolatileTail", () => {
     expect(appendVolatileTail(next, "[IdeaSpaces State]\nbranch: feature")).toBe(true);
     expect(next.contents.at(-1)).toEqual({ role: "user", parts: [{ text: "[IdeaSpaces State]\nbranch: feature" }] });
     expect(JSON.stringify(next).match(/\[IdeaSpaces State\]/g)).toHaveLength(1);
+  });
+
+  it("refuses a Completions tool suffix rather than inserting before the tool result", () => {
+    // Pi openai-completions converts tool results to top-level role: tool
+    // messages with string content. The old backward scan found the prior
+    // array-valued user content and put State BEFORE the result. No generic
+    // messages placement is valid for every such provider; fail visibly.
+    const payload = { messages: [
+      { role: "user", content: [{ type: "text", text: "call bash" }] },
+      { role: "assistant", content: "", tool_calls: [{ id: "c1", type: "function" }] },
+      { role: "tool", tool_call_id: "c1", content: "result" },
+    ] };
+    const before = structuredClone(payload);
+    expect(appendVolatileTail(payload, "[IdeaSpaces State]\ntail")).toBe(false);
+    expect(payload).toEqual(before);
   });
 
   it("leaves malformed, ambiguous and unknown payloads untouched (caller warns)", () => {
