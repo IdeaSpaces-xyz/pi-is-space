@@ -162,9 +162,9 @@ export function withOpenChange(volatile: string | null, change: string | undefin
  * Append the volatile tail after provider-built history. Anthropic's explicit
  * cache breakpoint stays on the last user's prior block; Codex uses Responses
  * input (tool outputs are top-level items), and Vertex uses Gemini contents
- * (tool responses are user parts). Keep the changing tail outside the stable
- * instructions and before-request history, without rewriting either. Returns
- * false without mutation for unknown or malformed shapes so the caller warns.
+ * (tool responses are user parts). Do not rewrite the system instruction or
+ * prior messages. Returns false without mutation for unknown or malformed
+ * shapes so the caller warns.
  */
 export function appendVolatileTail(payload: unknown, text: string): boolean {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false;
@@ -208,8 +208,9 @@ export function appendVolatileTail(payload: unknown, text: string): boolean {
     part && typeof part === "object" && !Array.isArray(part))) return false;
   // Gemini requires the functionResponse turn immediately after a model
   // functionCall. Keep that turn intact; put volatile text in a subsequent
-  // user turn. Mixing text into functionResponse parts yielded a Vertex 400
-  // on Pi 1.0.2 ("Requests ending with a model turn are not supported").
+  // user turn. Pi 1.0.2 accepts consecutive user turns for plain prompts;
+  // mixing text into functionResponse parts yielded a Vertex 400
+  // ("Requests ending with a model turn are not supported").
   entries.push({ role: "user", parts: [{ text }] });
   return true;
 }

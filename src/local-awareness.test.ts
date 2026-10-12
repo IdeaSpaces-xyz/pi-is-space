@@ -505,9 +505,16 @@ describe("appendVolatileTail", () => {
       { role: "assistant", content: "", tool_calls: [{ id: "c1", type: "function" }] },
       { role: "tool", tool_call_id: "c1", content: "result" },
     ] };
-    const before = structuredClone(payload);
-    expect(appendVolatileTail(payload, "[IdeaSpaces State]\ntail")).toBe(false);
-    expect(payload).toEqual(before);
+    const mistral = { messages: [
+      { role: "user", content: [{ type: "text", text: "call bash" }] },
+      { role: "assistant", content: [], toolCalls: [{ id: "c1" }] },
+      { role: "tool", toolCallId: "c1", content: [{ type: "text", text: "result" }] },
+    ] };
+    for (const candidate of [payload, mistral]) {
+      const before = structuredClone(candidate);
+      expect(appendVolatileTail(candidate, "[IdeaSpaces State]\ntail")).toBe(false);
+      expect(candidate).toEqual(before);
+    }
   });
 
   it("leaves malformed, ambiguous and unknown payloads untouched (caller warns)", () => {

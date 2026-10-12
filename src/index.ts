@@ -1158,7 +1158,8 @@ export default function (pi: ExtensionAPI) {
   });
 
   // Append changing State after provider-built history on each request, not
-  // into the system instruction or saved transcript. Anthropic has an explicit
+  // via `context`: Pi could cache a transient user message as history there.
+  // Leave the system instruction and saved transcript intact. Anthropic has an explicit
   // breakpoint; Codex and Vertex rely on matching provider cache prefixes.
   // A tool result always precedes the appended tail.
   let warnedTailShape = false;
