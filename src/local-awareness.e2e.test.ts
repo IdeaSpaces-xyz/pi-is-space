@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   discoverAndLoadExtensions,
   ExtensionRunner,
@@ -188,8 +188,8 @@ describe("Pi in-process local awareness", () => {
     expect(injected?.systemPrompt).not.toContain("Repos in scope (local):");
     expect(injected?.systemPrompt).not.toContain("State:");
 
-    // The volatile register lands per LLM call, strictly after the last
-    // cache breakpoint — outside every cached prefix.
+    // Anthropic receives the volatile block after its explicit breakpoint.
+    // Codex and Vertex instead rely on matching provider cache prefixes.
     const payload = {
       system: [{ type: "text", text: injected!.systemPrompt, cache_control: { type: "ephemeral" } }],
       messages: [
@@ -312,6 +312,37 @@ describe("Pi in-process local awareness", () => {
     expect(calls.length).toBeGreaterThan(0);
     expect(calls.every((line) => line.split(/\s+/).includes("catalog"))).toBe(true);
   }, 10_000);
+
+  it("warns once for an unsupported tool follow-up without claiming the whole session failed", async () => {
+    const initial = { messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }] };
+    await runner.emitBeforeProviderRequest(initial);
+    expect(initial.messages[0].content.at(-1)?.text).toContain("[IdeaSpaces State]");
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const toolFollowUp = () => ({ messages: [
+        { role: "user", content: [{ type: "text", text: "run tool" }] },
+        { role: "tool", content: "result", tool_call_id: "c1" },
+      ] });
+      const failed = toolFollowUp();
+      await runner.emitBeforeProviderRequest(failed);
+      expect(failed).toEqual(toolFollowUp());
+      expect(warn).toHaveBeenCalledTimes(1);
+      const warning = String(warn.mock.calls[0]?.[0]);
+      expect(warning).toContain("tool-follow-up request");
+      expect(warning).toContain("absent from this request");
+      expect(warning).toContain("other requests may still receive them");
+      expect(warning).not.toContain("absent from model context this session");
+
+      await runner.emitBeforeProviderRequest(toolFollowUp());
+      expect(warn).toHaveBeenCalledTimes(1);
+      const later = { messages: [{ role: "user", content: [{ type: "text", text: "next" }] }] };
+      await runner.emitBeforeProviderRequest(later);
+      expect(later.messages[0].content.at(-1)?.text).toContain("[IdeaSpaces State]");
+    } finally {
+      warn.mockRestore();
+    }
+  });
 
   it("seeds mounts from IS_MOUNTS at load — navigable and readable without is_mount", async () => {
     // No is_mount call here: `seeded` was mounted purely by the IS_MOUNTS env at
