@@ -1157,26 +1157,31 @@ export default function (pi: ExtensionAPI) {
     };
   });
 
-  // The VOLATILE register (State, activity, catalog, drift, Change line) is
-  // appended per LLM call, strictly AFTER the last cache breakpoint. Transient
-  // content anywhere inside the cached prefix would poison every later lookup
-  // — and the `context` event cannot control breakpoint placement (pi puts it
-  // on the last user message, which a transient tail would become). Here the
-  // payload is already built: the breakpoint sits on the real last user
-  // message, and this block lands after it, outside every cached prefix.
+  // Append State only after Pi builds each provider request. In `context`,
+  // transient State would enter history and could become a cache breakpoint.
+  // Anthropic adds a block after the tool_result in the same user message;
+  // Codex and Vertex add a final user turn after tool outputs. Neither changes
+  // prior messages or the system instruction. Only Anthropic has an explicit
+  // breakpoint; the other providers rely on matching prefixes.
   let warnedTailShape = false;
   pi.on("before_provider_request", async (event, ctx) => {
     const tail = withOpenChange(cachedVolatile, openChangeLine(ctx));
     if (!tail) return;
     const appended = appendVolatileTail(event.payload, `[IdeaSpaces State]\n${tail}`);
     if (!appended && !warnedTailShape) {
-      // Surface the degradation once, not per call: an unrecognized payload
-      // shape means git state / activity / the Change line never reach the
-      // model this session — the opposite of drift surfacing honestly.
+      // A tool-follow-up can fail after an initial request succeeded. Report
+      // this request, not the whole session; notify in the TUI as well as
+      // logging once so recurring unsupported turns do not flood the person.
       warnedTailShape = true;
-      console.warn(
-        "IdeaSpaces: volatile awareness could not attach to this provider's payload shape; git state, activity, and the Change line are absent from model context this session.",
-      );
+      const messages = event.payload && typeof event.payload === "object"
+        ? (event.payload as { messages?: unknown }).messages
+        : undefined;
+      const toolSuffix = Array.isArray(messages) && messages.at(-1)?.role === "tool";
+      const warning = toolSuffix
+        ? "IdeaSpaces: State could not attach to this tool-follow-up request (unsupported messages ordering). Git state, activity, and the Change line are absent from this request; other requests may still receive them. Warning shown once per session."
+        : "IdeaSpaces: State could not attach to this provider request (unsupported payload shape or ordering). Git state, activity, and the Change line are absent from this request; other requests may still receive them. Warning shown once per session.";
+      console.warn(warning);
+      if (ctx.hasUI) ctx.ui.notify(warning, "warning");
     }
   });
 
