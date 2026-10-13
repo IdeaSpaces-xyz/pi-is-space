@@ -46,6 +46,10 @@ describe("local Thread CLI adapter", () => {
     expect(() => threadArgs({ action: "open", path: "trial", post: "msg_one", limit: 1 })).toThrow(/exact post/);
     expect(() => threadArgs({ action: "open", path: "trial", tags: ["friction"] })).toThrow(/only to local posts/);
     expect(() => threadArgs({ action: "list", reply_to: ["latest"] })).toThrow(/only to posts/);
+    expect(threadArgs({ action: "list", reply_to: [], tags: [] })).toEqual(["threads", "list", ".", "--depth", "summary"]);
+    expect(threadArgs({ action: "open", path: "trial", reply_to: [], tags: [] })).toEqual(["threads", "open", "trial", "--depth", "surface"]);
+    expect(threadArgs({ action: "close", path: "trial", message: "Done", tags: [], reply_to: [] }))
+      .toEqual(["threads", "close", "trial", "--message", "Done"]);
     expect(() => threadArgs({ action: "post", path: "trial", message: "No", tags: ["a,b"] })).toThrow(/commas/);
     expect(() => threadArgs({ action: "post", path: "trial", message: "No", tags: [" "] })).toThrow(/non-empty/);
     expect(() => threadArgs({ action: "close", path: "trial", message: "No", tags: ["friction"] })).toThrow(/only to local posts/);

@@ -29,8 +29,8 @@ export type ThreadRequest = {
 export function threadArgs(input: ThreadRequest): string[] {
   const { action, path } = input;
   const selected = input.member !== undefined || input.checkout !== undefined;
-  if (input.tags !== undefined && action !== "post") throw new Error("tags apply only to local posts.");
-  if (input.reply_to !== undefined && action !== "post") throw new Error("reply_to applies only to posts.");
+  if (input.tags?.length && action !== "post") throw new Error("tags apply only to local posts.");
+  if (input.reply_to?.length && action !== "post") throw new Error("reply_to applies only to posts.");
   if (selected && (action !== "open" && action !== "post" || !input.map || input.member === undefined || !Number.isSafeInteger(input.member) || input.member < 0)) {
     throw new Error("Selected Thread requires map and a zero-based member for open or post.");
   }
