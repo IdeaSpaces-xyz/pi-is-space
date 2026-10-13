@@ -2080,7 +2080,7 @@ export default function (pi: ExtensionAPI) {
   roster.register({
     name: "is_threads",
     label: "IS Threads",
-    description: "List, open at five rungs, post to or close a local Thread; open or reply to a hosted x_ Thread through the CLI. Hosted children remains flat until reply-parent links ship. Reading never acknowledges.",
+    description: "List or open at five rungs: local cold reads start at the newest snapshot; children shows branches and attached child Threads; limit/order pages posts; post opens one body plus child Threads. Reply to the post you answer; a new topic replies to the post it serves (omission branches from the opening post, 'latest' explicit). Local posts accept tags. Hosted children remains flat. Reading never acknowledges.",
     promptSnippet: "Read or reply to local and hosted Threads through the CLI",
     parameters: Type.Object({
       action: StringEnum(["list", "open", "post", "close"] as const),
@@ -2088,9 +2088,12 @@ export default function (pi: ExtensionAPI) {
       depth: Type.Optional(StringEnum(["name", "summary", "children", "surface", "full"] as const)),
       new: Type.Optional(Type.Boolean({ description: "Open only: posts after the followed cursor" })),
       since: Type.Optional(Type.String({ description: "Open only: ISO date, post id or hosted numeric position" })),
-      post: Type.Optional(Type.String({ description: "Open only: one post by id, in full" })),
+      post: Type.Optional(Type.String({ description: "Open only: one post by id in full plus its child Threads" })),
+      limit: Type.Optional(Type.Integer({ minimum: 1, description: "Local open only: posts or branches per page" })),
+      order: Type.Optional(StringEnum(["newer", "older"] as const)),
       message: Type.Optional(Type.String({ description: "Body of an immutable post or closure" })),
-      reply_to: Type.Optional(Type.Array(Type.String({ description: "Parent post id" }))),
+      reply_to: Type.Optional(Type.Array(Type.String({ description: "Post answered; a new topic branches from the post it serves, not the newest. Use latest explicitly only when intended." }))),
+      tags: Type.Optional(Type.Array(Type.String({ description: "Local post retrieval tag (e.g. friction)" }))),
       author: Type.Optional(Type.String({ description: "Agent Agreement name if running outside its folder" })),
       name: Type.Optional(Type.String()),
       summary: Type.Optional(Type.String()),

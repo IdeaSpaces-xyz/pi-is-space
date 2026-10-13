@@ -36,6 +36,15 @@ describe("local Thread CLI adapter", () => {
     expect(() => authoredMember("map: { roots: [], members: [wrong] }", 0)).toThrow(/members\[0\]: invalid_member_type/);
     expect(() => pinnedView({ pinned: "text", pin: "b".repeat(40), position }, "full", authoredMember(map, 0))).toThrow(/fallback/);
   });
+  it("defaults local cold reads to surface and forwards bounded pages and tags", () => {
+    expect(threadArgs({ action: "open", path: "trial" })).toEqual(["threads", "open", "trial", "--depth", "surface"]);
+    expect(threadArgs({ action: "open", path: "trial", depth: "children", limit: 5, order: "newer" }))
+      .toEqual(["threads", "open", "trial", "--depth", "children", "--limit", "5", "--order", "newer"]);
+    expect(threadArgs({ action: "post", path: "trial", message: "Friction", reply_to: ["msg_one"], tags: ["friction", "ux"] }))
+      .toEqual(["threads", "post", "trial", "--message", "Friction", "--reply-to", "msg_one", "--tags", "friction,ux"]);
+    expect(() => threadArgs({ action: "open", path: "trial", limit: 0 })).toThrow(/positive/);
+    expect(() => threadArgs({ action: "open", path: "x_" + "a".repeat(24), order: "newer" })).toThrow(/local-only/);
+  });
   it("opens and replies to hosted ids through CLI; never guesses an authored pin", () => {
     const hosted = "x_" + "a".repeat(24);
     expect(threadArgs({ action: "open", path: hosted, depth: "summary", new: true }))
