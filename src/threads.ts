@@ -10,8 +10,11 @@ export type ThreadRequest = {
   since?: string;
   new?: boolean;
   post?: string;
+  limit?: number;
+  order?: "newer" | "older";
   message?: string;
   reply_to?: string[];
+  tags?: string[];
   author?: string;
   name?: string;
   summary?: string;
@@ -26,6 +29,8 @@ export type ThreadRequest = {
 export function threadArgs(input: ThreadRequest): string[] {
   const { action, path } = input;
   const selected = input.member !== undefined || input.checkout !== undefined;
+  if (input.tags?.length && action !== "post") throw new Error("tags apply only to local posts.");
+  if (input.reply_to?.length && action !== "post") throw new Error("reply_to applies only to posts.");
   if (selected && (action !== "open" && action !== "post" || !input.map || input.member === undefined || !Number.isSafeInteger(input.member) || input.member < 0)) {
     throw new Error("Selected Thread requires map and a zero-based member for open or post.");
   }
@@ -41,17 +46,25 @@ export function threadArgs(input: ThreadRequest): string[] {
   if (path.startsWith("x_") && !hosted) throw new Error("Hosted Thread id must be x_ followed by 24 lowercase hex digits.");
   if (hosted && (input.pin || input.position || selected || input.map || input.checkout)) throw new Error("Hosted Threads cannot use local authored pin, Map member or checkout selection.");
   if (input.new && input.since) throw new Error("Use --new or --since, not both.");
+  if (input.limit !== undefined && (!Number.isSafeInteger(input.limit) || input.limit < 1)) throw new Error("limit must be a positive integer.");
+  if (input.order !== undefined && input.order !== "newer" && input.order !== "older") throw new Error("order must be newer or older.");
+  if ((input.limit !== undefined || input.order !== undefined) && action !== "open") throw new Error("limit and order apply to opening, not writing.");
   if (action === "open") {
+    if (input.post && (input.limit !== undefined || input.order !== undefined)) throw new Error("One exact post needs no limit or order.");
+    if ((selected || input.pin) && (input.limit !== undefined || input.order !== undefined)) throw new Error("Pinned selection needs no limit or order.");
     if ((selected || input.pin) && (input.new || input.since || input.post || input.depth === "children")) throw new Error("An authored pinned post cannot use --new, --since, --post or children; open the live Thread to traverse it.");
     if (input.pin && !input.position || input.position && !input.pin) throw new Error("Pinned open requires both authored pin and position; never substitute HEAD.");
     if (selected && (input.pin || input.position)) throw new Error("Use either selected Map member or explicit pin and position, not both.");
-    return ["threads", "open", path, "--depth", input.pin || selected ? "full" : input.depth ?? "summary",
+    if (hosted && (input.limit !== undefined || input.order !== undefined)) throw new Error("limit and order on open are local-only for this release.");
+    return ["threads", "open", path, "--depth", input.pin || selected ? "full" : input.depth ?? (hosted ? "summary" : "surface"),
       ...(input.new ? ["--new"] : []), ...(input.since ? ["--since", input.since] : []), ...(input.post ? ["--post", input.post] : []),
+      ...(input.limit ? ["--limit", String(input.limit)] : []), ...(input.order ? ["--order", input.order] : []),
       ...(input.pin ? ["--pin", input.pin, "--position", input.position!] : []),
       ...(selected ? selectionArgs(input) : [])];
   }
   if (input.pin || input.position || input.depth || input.new || input.since || input.post) throw new Error("Pin, position, depth, --new, --since and --post apply to opening, not writing.");
   if (hosted) {
+    if (input.tags?.length) throw new Error("tags on posts are local-only for this release.");
     if (action !== "post") throw new Error("Hosted close is an owner-only lifecycle operation; use threads close x_id --yes after preview.");
     if (input.author) throw new Error("Hosted replies use the logged-in person's identity; omit author.");
     if (input.reply_to?.length) throw new Error("The hosted reply API cannot carry in_reply_to yet; omit reply_to until the server exposes reply parents.");
@@ -59,15 +72,17 @@ export function threadArgs(input: ThreadRequest): string[] {
     return ["threads", "reply", path, "--message", input.message, "--name", input.name, "--summary", input.summary,
       ...(input.map ? ["--map", input.map] : [])];
   }
+  if (input.tags?.some((tag) => !tag?.trim() || tag.includes(","))) throw new Error("tags must be non-empty and may not contain commas.");
   if (selected && (input.author || !input.reply_to?.length)) throw new Error("Selected post requires an explicit parent and the caller's Agreement author; omit author.");
   if (!input.message?.trim()) throw new Error("A post or closure needs a nonempty message.");
-  if (action === "close" && (input.reply_to?.length || input.name || input.summary || input.map)) throw new Error("Closure only accepts message and author; omit reply_to, name, summary and map.");
+  if (action === "close" && (input.reply_to?.length || input.name || input.summary || input.map || input.tags?.length)) throw new Error("Closure only accepts message and author; omit reply_to, name, summary, tags and map.");
   return ["threads", action, path, "--message", input.message,
     ...(input.author ? ["--author", input.author] : []),
     ...(action === "post" ? [
       ...(input.reply_to?.length ? ["--reply-to", input.reply_to.join(",")] : []),
       ...(input.name ? ["--name", input.name] : []),
       ...(input.summary ? ["--summary", input.summary] : []),
+      ...(input.tags?.length ? ["--tags", input.tags.join(",")] : []),
       ...(selected ? selectionArgs(input) : input.map ? ["--map", input.map] : []),
     ] : [])];
 }

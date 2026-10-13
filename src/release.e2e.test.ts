@@ -192,11 +192,12 @@ describe("local Threads through the real Pi runtime and installed CLI", () => {
       expect(opened.error).toBeUndefined();
       expect(JSON.parse(opened.text).thread.name).toBe("Agreement trial");
     }
-    const posted = await call("is_threads", { action: "post", path: "trial", message: "Authored truth", name: "First", summary: "Decision one", author: "Pi Agent" });
+    const posted = await call("is_threads", { action: "post", path: "trial", message: "Authored truth", name: "First", summary: "Decision one", author: "Pi Agent", tags: ["friction"] });
     expect(posted.error).toBeUndefined();
     const first = JSON.parse(posted.text) as { path: string; id: string };
     expect((await call("is_look", { path: first.path, depth: "full" })).error).toBeUndefined();
     expect((await call("is_look", { path: first.path, depth: "full" })).text).toContain("author: Pi Agent");
+    expect(readFileSync(first.path, "utf8")).toContain("- friction");
     git(["add", "_threads/trial"]);
     git(["commit", "-q", "-m", "pin first post"]);
     const pin = git(["rev-parse", "HEAD"]);
