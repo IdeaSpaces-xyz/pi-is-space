@@ -29,6 +29,8 @@ export type ThreadRequest = {
 export function threadArgs(input: ThreadRequest): string[] {
   const { action, path } = input;
   const selected = input.member !== undefined || input.checkout !== undefined;
+  if (input.tags !== undefined && action !== "post") throw new Error("tags apply only to local posts.");
+  if (input.reply_to !== undefined && action !== "post") throw new Error("reply_to applies only to posts.");
   if (selected && (action !== "open" && action !== "post" || !input.map || input.member === undefined || !Number.isSafeInteger(input.member) || input.member < 0)) {
     throw new Error("Selected Thread requires map and a zero-based member for open or post.");
   }
@@ -46,12 +48,14 @@ export function threadArgs(input: ThreadRequest): string[] {
   if (input.new && input.since) throw new Error("Use --new or --since, not both.");
   if (input.limit !== undefined && (!Number.isSafeInteger(input.limit) || input.limit < 1)) throw new Error("limit must be a positive integer.");
   if (input.order !== undefined && input.order !== "newer" && input.order !== "older") throw new Error("order must be newer or older.");
-  if ((input.limit || input.order) && action !== "open") throw new Error("limit and order apply to opening, not writing.");
+  if ((input.limit !== undefined || input.order !== undefined) && action !== "open") throw new Error("limit and order apply to opening, not writing.");
   if (action === "open") {
+    if (input.post && (input.limit !== undefined || input.order !== undefined)) throw new Error("One exact post needs no limit or order.");
+    if ((selected || input.pin) && (input.limit !== undefined || input.order !== undefined)) throw new Error("Pinned selection needs no limit or order.");
     if ((selected || input.pin) && (input.new || input.since || input.post || input.depth === "children")) throw new Error("An authored pinned post cannot use --new, --since, --post or children; open the live Thread to traverse it.");
     if (input.pin && !input.position || input.position && !input.pin) throw new Error("Pinned open requires both authored pin and position; never substitute HEAD.");
     if (selected && (input.pin || input.position)) throw new Error("Use either selected Map member or explicit pin and position, not both.");
-    if (hosted && (input.limit || input.order)) throw new Error("limit and order on open are local-only for this release.");
+    if (hosted && (input.limit !== undefined || input.order !== undefined)) throw new Error("limit and order on open are local-only for this release.");
     return ["threads", "open", path, "--depth", input.pin || selected ? "full" : input.depth ?? (hosted ? "summary" : "surface"),
       ...(input.new ? ["--new"] : []), ...(input.since ? ["--since", input.since] : []), ...(input.post ? ["--post", input.post] : []),
       ...(input.limit ? ["--limit", String(input.limit)] : []), ...(input.order ? ["--order", input.order] : []),

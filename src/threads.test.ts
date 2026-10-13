@@ -43,7 +43,16 @@ describe("local Thread CLI adapter", () => {
     expect(threadArgs({ action: "post", path: "trial", message: "Friction", reply_to: ["msg_one"], tags: ["friction", "ux"] }))
       .toEqual(["threads", "post", "trial", "--message", "Friction", "--reply-to", "msg_one", "--tags", "friction,ux"]);
     expect(() => threadArgs({ action: "open", path: "trial", limit: 0 })).toThrow(/positive/);
+    expect(() => threadArgs({ action: "open", path: "trial", post: "msg_one", limit: 1 })).toThrow(/exact post/);
+    expect(() => threadArgs({ action: "open", path: "trial", tags: ["friction"] })).toThrow(/only to local posts/);
+    expect(() => threadArgs({ action: "list", reply_to: ["latest"] })).toThrow(/only to posts/);
+    expect(() => threadArgs({ action: "post", path: "trial", message: "No", tags: ["a,b"] })).toThrow(/commas/);
+    expect(() => threadArgs({ action: "post", path: "trial", message: "No", tags: [" "] })).toThrow(/non-empty/);
+    expect(() => threadArgs({ action: "close", path: "trial", message: "No", tags: ["friction"] })).toThrow(/only to local posts/);
+    expect(() => threadArgs({ action: "post", path: "trial", message: "No", limit: 2 })).toThrow(/opening/);
+    expect(threadArgs({ action: "post", path: "trial", message: "Yes", reply_to: ["latest"] })).toContain("latest");
     expect(() => threadArgs({ action: "open", path: "x_" + "a".repeat(24), order: "newer" })).toThrow(/local-only/);
+    expect(() => threadArgs({ action: "post", path: "x_" + "a".repeat(24), message: "No", tags: ["friction"] })).toThrow(/local-only/);
   });
   it("opens and replies to hosted ids through CLI; never guesses an authored pin", () => {
     const hosted = "x_" + "a".repeat(24);
