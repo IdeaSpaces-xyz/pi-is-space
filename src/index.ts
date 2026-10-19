@@ -1173,19 +1173,16 @@ export default function (pi: ExtensionAPI) {
   // landed capture or a deliberate navigate changes the bytes — a legitimate,
   // automatic invalidation, never per-turn churn.
   //
-  // For providers relying on implicit prefix matching (Codex Responses, Vertex,
-  // OpenAI Completions), volatile State is persisted in session history as an
-  // initial custom message turn and subsequent delta turns when state changes.
-  // Anthropic has explicit in-message cache breakpoints and uses
-  // before_provider_request instead.
+  // Codex Responses alone persists State as an initial custom message and
+  // changed deltas. Other providers retain their pre-fix request-time tail;
+  // Vertex's separate cache investigation is a follow-up.
   pi.on("before_agent_start", async (event, ctx) => {
     await refreshAwareness(ctx.cwd);
     const systemPrompt = cachedStable
       ? `${event.systemPrompt}\n\n[IdeaSpaces Awareness]\n${cachedStable}`
       : undefined;
 
-    const isAnthropic = ctx.model?.provider === "anthropic";
-    if (isAnthropic) {
+    if (ctx.model?.provider !== "openai-codex") {
       return systemPrompt ? { systemPrompt } : undefined;
     }
 
@@ -1214,20 +1211,24 @@ export default function (pi: ExtensionAPI) {
     return systemPrompt ? { systemPrompt } : undefined;
   });
 
-  // Append State to Anthropic's messages payload after the explicit cache breakpoint.
-  // Non-Anthropic providers receive persisted state via before_agent_start and tool_result.
+  // Keep the pre-fix request-time tail on non-Codex providers. In particular,
+  // Vertex still receives a final Gemini user turn after a functionResponse;
+  // only Codex skips the ephemeral final Responses item.
   let warnedTailShape = false;
   pi.on("before_provider_request", async (event, ctx) => {
-    const isAnthropic = ctx.model?.provider === "anthropic";
-    if (!isAnthropic) return;
-
+    if (ctx.model?.provider === "openai-codex") return;
     const tail = withOpenChange(cachedVolatile, openChangeLine(ctx));
     if (!tail) return;
     const appended = appendVolatileTail(event.payload, `[IdeaSpaces State]\n${tail}`);
     if (!appended && !warnedTailShape) {
       warnedTailShape = true;
-      const warning =
-        "IdeaSpaces: State could not attach to this Anthropic request (unsupported messages ordering). Git state, activity, and the Change line are absent from this request; other requests may still receive them. Warning shown once per session.";
+      const messages = event.payload && typeof event.payload === "object"
+        ? (event.payload as { messages?: unknown }).messages
+        : undefined;
+      const toolSuffix = Array.isArray(messages) && messages.at(-1)?.role === "tool";
+      const warning = toolSuffix
+        ? "IdeaSpaces: State could not attach to this tool-follow-up request (unsupported messages ordering). Git state, activity, and the Change line are absent from this request; other requests may still receive them. Warning shown once per session."
+        : "IdeaSpaces: State could not attach to this provider request (unsupported payload shape or ordering). Git state, activity, and the Change line are absent from this request; other requests may still receive them. Warning shown once per session.";
       console.warn(warning);
       if (ctx.hasUI) ctx.ui.notify(warning, "warning");
     }
@@ -1314,8 +1315,7 @@ export default function (pi: ExtensionAPI) {
     // Nested tool results never enter the transcript; only the outer result
     // may carry the delta. Otherwise the in-memory watermark advances and the
     // following provider request silently misses a change.
-    const isAnthropic = ctx.model?.provider === "anthropic";
-    if (!isAnthropic && !("parentToolCallId" in event && event.parentToolCallId)) {
+    if (ctx.model?.provider === "openai-codex" && !("parentToolCallId" in event && event.parentToolCallId)) {
       await refreshAwareness(ctx.cwd);
       const tail = withOpenChange(cachedVolatile, openChangeLine(ctx));
       if (tail) {
@@ -1337,7 +1337,7 @@ export default function (pi: ExtensionAPI) {
     // Model-facing State/nudge text does not alter a tool's machine result.
     // Pi drops structuredContent when content alone is replaced; preserve it
     // for codemode and other programmatic callers.
-    const result = { content, ...( "structuredContent" in event ? { structuredContent: event.structuredContent } : {} ) };
+    const result = { content, ...("structuredContent" in event ? { structuredContent: event.structuredContent } : {}) };
     return modified ? result : undefined;
   });
 

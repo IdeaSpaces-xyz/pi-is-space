@@ -416,6 +416,35 @@ describe("Pi in-process local awareness", () => {
     (runner as any).cwd = workspace;
   });
 
+  it("leaves Vertex on its pre-PR request-time State path, including tool follow-ups", async () => {
+    (runner as any).getModel = () => ({ provider: "google-vertex", id: "gemini-3.7-flash" });
+    (runner as any).cwd = space;
+    const start = await runner.emitBeforeAgentStart("run tool", undefined, "base prompt", { cwd: space } as any);
+    expect(start?.messages ?? []).toHaveLength(0); // No persisted State on Vertex.
+
+    const payload = {
+      config: { systemInstruction: "stable" },
+      contents: [
+        { role: "user", parts: [{ text: "run tool" }] },
+        { role: "model", parts: [{ functionCall: { name: "bash", args: {} } }] },
+        { role: "user", parts: [{ functionResponse: { name: "bash", response: { output: "ok" } } }] },
+      ],
+    };
+    const before = structuredClone(payload);
+    await runner.emitBeforeProviderRequest(payload);
+    expect(payload.config).toEqual(before.config);
+    expect(payload.contents.slice(0, -1)).toEqual(before.contents);
+    expect(payload.contents.at(-1)).toEqual({
+      role: "user", parts: [{ text: expect.stringContaining("[IdeaSpaces State]") }],
+    });
+    // A tool result is not rewritten by the Codex-only delta path.
+    expect(await runner.emitToolResult({
+      toolName: "bash", toolCallId: "vertex-call", input: { command: "true" },
+      content: [{ type: "text", text: "ok" }], isError: false,
+    } as any)).toBeUndefined();
+    (runner as any).cwd = workspace;
+  });
+
   it("warns once for an unsupported Anthropic tool follow-up without claiming the whole session failed", async () => {
     (runner as any).getModel = () => ({ provider: "anthropic", id: "claude-3-7-sonnet" });
     const initial = { messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }] };
@@ -433,7 +462,7 @@ describe("Pi in-process local awareness", () => {
       expect(failed).toEqual(toolFollowUp());
       expect(warn).toHaveBeenCalledTimes(1);
       const warning = String(warn.mock.calls[0]?.[0]);
-      expect(warning).toContain("Anthropic request");
+      expect(warning).toContain("tool-follow-up request");
       expect(warning).toContain("absent from this request");
       expect(warning).toContain("other requests may still receive them");
       expect(warning).not.toContain("absent from model context this session");
