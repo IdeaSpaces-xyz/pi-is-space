@@ -436,63 +436,31 @@ describe("appendVolatileTail", () => {
     expect(last[1]).toEqual({ type: "text", text: "[IdeaSpaces State]\ntail" });
   });
 
-  it("appends a Responses user input after the complete tool exchange, without changing history", () => {
-    const payload = {
+  it("refuses Responses and Vertex payloads (handled via persisted state deltas instead)", () => {
+    const responsesPayload = {
       instructions: "stable instructions",
       prompt_cache_key: "session-key",
       input: [
         { role: "user", content: [{ type: "input_text", text: "run a tool" }] },
         { type: "function_call", call_id: "c1", name: "bash", arguments: "{}" },
         { type: "function_call_output", call_id: "c1", output: "first result" },
-        { type: "function_call_output", call_id: "c2", output: "second result" },
       ],
     };
-    const before = structuredClone(payload);
-    expect(appendVolatileTail(payload, "[IdeaSpaces State]\nbranch: main")).toBe(true);
-    expect({ ...payload, input: payload.input.slice(0, -1) }).toEqual(before);
-    expect(payload.input.at(-1)).toEqual({
-      role: "user", content: [{ type: "input_text", text: "[IdeaSpaces State]\nbranch: main" }],
-    });
-    expect(JSON.stringify(payload).match(/\[IdeaSpaces State\]/g)).toHaveLength(1);
-    // A new provider request is built afresh: the changing tail never enters
-    // the reusable prefix, including on a tool follow-up.
-    const next = structuredClone(before);
-    expect(appendVolatileTail(next, "[IdeaSpaces State]\nbranch: feature")).toBe(true);
-    expect(next.input.at(-1)).toEqual({ role: "user", content: [{ type: "input_text", text: "[IdeaSpaces State]\nbranch: feature" }] });
-    expect(JSON.stringify(next).match(/\[IdeaSpaces State\]/g)).toHaveLength(1);
-  });
-
-  it("appends a Responses tail after a plain user input", () => {
-    const payload = { input: [{ role: "user", content: [{ type: "input_text", text: "hello" }] }] };
-    expect(appendVolatileTail(payload, "[IdeaSpaces State]\nstate")).toBe(true);
-    expect(payload.input[0].content).toEqual([{ type: "input_text", text: "hello" }]);
-    expect(payload.input.at(-1)?.content).toEqual([{ type: "input_text", text: "[IdeaSpaces State]\nstate" }]);
-  });
-
-  it("appends a Vertex user turn after the complete functionResponse turn", () => {
-    const payload = {
+    const plainResponses = { input: [{ role: "user", content: [{ type: "input_text", text: "hello" }] }] };
+    const vertexPayload = {
       config: { systemInstruction: "stable", cachedContent: "cached-prefix" },
       contents: [
         { role: "user", parts: [{ text: "run tools" }] },
         { role: "model", parts: [{ functionCall: { name: "bash", args: {} } }] },
-        { role: "user", parts: [
-          { functionResponse: { name: "bash", response: { output: "one" } } },
-          { functionResponse: { name: "read", response: { output: "two" } } },
-        ] },
+        { role: "user", parts: [{ functionResponse: { name: "bash", response: { output: "one" } } }] },
       ],
     };
-    const before = structuredClone(payload);
-    expect(appendVolatileTail(payload, "[IdeaSpaces State]\nbranch: main")).toBe(true);
-    expect(payload.config).toEqual(before.config);
-    expect(payload.contents.slice(0, -1)).toEqual(before.contents);
-    expect(payload.contents.at(-1)).toEqual({
-      role: "user", parts: [{ text: "[IdeaSpaces State]\nbranch: main" }],
-    });
-    expect(JSON.stringify(payload).match(/\[IdeaSpaces State\]/g)).toHaveLength(1);
-    const next = structuredClone(before);
-    expect(appendVolatileTail(next, "[IdeaSpaces State]\nbranch: feature")).toBe(true);
-    expect(next.contents.at(-1)).toEqual({ role: "user", parts: [{ text: "[IdeaSpaces State]\nbranch: feature" }] });
-    expect(JSON.stringify(next).match(/\[IdeaSpaces State\]/g)).toHaveLength(1);
+
+    for (const candidate of [responsesPayload, plainResponses, vertexPayload]) {
+      const before = structuredClone(candidate);
+      expect(appendVolatileTail(candidate, "[IdeaSpaces State]\nbranch: main")).toBe(false);
+      expect(candidate).toEqual(before);
+    }
   });
 
   it("refuses a Completions tool suffix rather than inserting before the tool result", () => {

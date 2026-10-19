@@ -732,6 +732,8 @@ export default function (pi: ExtensionAPI) {
   let cachedVolatile: string | null = null;
   let cachedRoot: string | null = null;
   let cachedRepoRoot: string | null = null;
+  // Last state snapshot persisted in session history (for non-Anthropic prefix-matching providers).
+  let lastPersistedState: string | null = null;
   // The conversation's working set beyond home: mounted roots (absolute, deduped).
   // Mounts are content, never authority — read-only reference surfaced as thin
   // handles. Mounting never changes authority, cwd, or file-op paths.
@@ -1050,6 +1052,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_start", async (_event, ctx) => {
+    lastPersistedState = null;
     await refreshAwareness(ctx.cwd);
     await refreshSpaceUi(ctx);
 
@@ -1143,43 +1146,88 @@ export default function (pi: ExtensionAPI) {
         : undefined;
   }
 
-  // Cache placement (design + measurement: pi-cache-placement in the team
-  // roadmap space — a separate private repo, not a path in this one): only the
-  // STABLE register enters the system prompt. Its bytes are deterministic for
+  // Pi saves before_agent_start messages as custom_message entries, and tool
+  // deltas in message entries. Reconstruct from the active branch on resume;
+  // never mistake an arbitrary tool output quoting a State block for our delta.
+  function findLastPersistedState(ctx: ExtensionContext): string | null {
+    for (const entry of ctx.sessionManager.getBranch().reverse()) {
+      if (entry.type === "custom_message" && entry.customType === "is_state") {
+        const content = entry.content;
+        if (typeof content === "string") return content;
+        const text = content[0]?.type === "text" ? content[0].text : undefined;
+        if (text) return text;
+      }
+      if (entry.type === "message" && entry.message.role === "toolResult") {
+        for (const block of [...entry.message.content].reverse()) {
+          if (block.type === "text" && block.text.startsWith("\n\n[IdeaSpaces State]\n")) {
+            return block.text.trim();
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  // Cache placement: only the STABLE register enters the system prompt. Its bytes are deterministic for
   // unchanged state, so an unchanged session keeps its prompt-cache prefix; a
   // landed capture or a deliberate navigate changes the bytes — a legitimate,
   // automatic invalidation, never per-turn churn.
+  //
+  // For providers relying on implicit prefix matching (Codex Responses, Vertex,
+  // OpenAI Completions), volatile State is persisted in session history as an
+  // initial custom message turn and subsequent delta turns when state changes.
+  // Anthropic has explicit in-message cache breakpoints and uses
+  // before_provider_request instead.
   pi.on("before_agent_start", async (event, ctx) => {
     await refreshAwareness(ctx.cwd);
-    if (!cachedStable) return;
-    return {
-      systemPrompt: `${event.systemPrompt}\n\n[IdeaSpaces Awareness]\n${cachedStable}`,
-    };
+    const systemPrompt = cachedStable
+      ? `${event.systemPrompt}\n\n[IdeaSpaces Awareness]\n${cachedStable}`
+      : undefined;
+
+    const isAnthropic = ctx.model?.provider === "anthropic";
+    if (isAnthropic) {
+      return systemPrompt ? { systemPrompt } : undefined;
+    }
+
+    const tail = withOpenChange(cachedVolatile, openChangeLine(ctx));
+    if (!tail) {
+      return systemPrompt ? { systemPrompt } : undefined;
+    }
+
+    const stateText = `[IdeaSpaces State]\n${tail}`;
+    if (lastPersistedState === null) {
+      lastPersistedState = findLastPersistedState(ctx);
+    }
+
+    if (stateText !== lastPersistedState) {
+      lastPersistedState = stateText;
+      return {
+        ...(systemPrompt ? { systemPrompt } : {}),
+        message: {
+          customType: "is_state",
+          content: [{ type: "text", text: stateText }],
+          display: false,
+        },
+      };
+    }
+
+    return systemPrompt ? { systemPrompt } : undefined;
   });
 
-  // Append State only after Pi builds each provider request. In `context`,
-  // transient State would enter history and could become a cache breakpoint.
-  // Anthropic adds a block after the tool_result in the same user message;
-  // Codex and Vertex add a final user turn after tool outputs. Neither changes
-  // prior messages or the system instruction. Only Anthropic has an explicit
-  // breakpoint; the other providers rely on matching prefixes.
+  // Append State to Anthropic's messages payload after the explicit cache breakpoint.
+  // Non-Anthropic providers receive persisted state via before_agent_start and tool_result.
   let warnedTailShape = false;
   pi.on("before_provider_request", async (event, ctx) => {
+    const isAnthropic = ctx.model?.provider === "anthropic";
+    if (!isAnthropic) return;
+
     const tail = withOpenChange(cachedVolatile, openChangeLine(ctx));
     if (!tail) return;
     const appended = appendVolatileTail(event.payload, `[IdeaSpaces State]\n${tail}`);
     if (!appended && !warnedTailShape) {
-      // A tool-follow-up can fail after an initial request succeeded. Report
-      // this request, not the whole session; notify in the TUI as well as
-      // logging once so recurring unsupported turns do not flood the person.
       warnedTailShape = true;
-      const messages = event.payload && typeof event.payload === "object"
-        ? (event.payload as { messages?: unknown }).messages
-        : undefined;
-      const toolSuffix = Array.isArray(messages) && messages.at(-1)?.role === "tool";
-      const warning = toolSuffix
-        ? "IdeaSpaces: State could not attach to this tool-follow-up request (unsupported messages ordering). Git state, activity, and the Change line are absent from this request; other requests may still receive them. Warning shown once per session."
-        : "IdeaSpaces: State could not attach to this provider request (unsupported payload shape or ordering). Git state, activity, and the Change line are absent from this request; other requests may still receive them. Warning shown once per session.";
+      const warning =
+        "IdeaSpaces: State could not attach to this Anthropic request (unsupported messages ordering). Git state, activity, and the Change line are absent from this request; other requests may still receive them. Warning shown once per session.";
       console.warn(warning);
       if (ctx.hasUI) ctx.ui.notify(warning, "warning");
     }
@@ -1233,38 +1281,64 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("tool_result", async (event, ctx) => {
-    if (event.isError) return undefined;
-    if (event.toolName !== "write" && event.toolName !== "edit") return undefined;
+    let content = Array.isArray(event.content) ? [...event.content] : [];
+    let modified = false;
 
-    const rawPath = toolPath(event.input);
-    if (!rawPath) return undefined;
-
-    try {
-      const nudge = await shouldNudgeKnowledgeWrite(
-        pi,
-        ctx.cwd,
-        rawPath,
-        gitRootCache,
-        ctx.signal,
-      );
-      if (!nudge) return undefined;
-
-      const displayPath = relative(nudge.spaceRoot, nudge.path) || rawPath;
-      return {
-        content: [
-          ...(event.content ?? []),
-          {
-            type: "text" as const,
-            text:
-              `IdeaSpaces note: \`${displayPath}\` is a knowledge file changed with native ${event.toolName}. ` +
-              "If this represents durable shared understanding, use the capture flow (`is-capture` / `/is-commit`) so it is staged, tracked, and committed deliberately.",
-          },
-        ],
-      };
-    } catch {
-      // Capture nudges are best-effort; never break the original tool result.
-      return undefined;
+    if (!event.isError && (event.toolName === "write" || event.toolName === "edit")) {
+      const rawPath = toolPath(event.input);
+      if (rawPath) {
+        try {
+          const nudge = await shouldNudgeKnowledgeWrite(
+            pi,
+            ctx.cwd,
+            rawPath,
+            gitRootCache,
+            ctx.signal,
+          );
+          if (nudge) {
+            const displayPath = relative(nudge.spaceRoot, nudge.path) || rawPath;
+            content.push({
+              type: "text" as const,
+              text:
+                `IdeaSpaces note: \`${displayPath}\` is a knowledge file changed with native ${event.toolName}. ` +
+                "If this represents durable shared understanding, use the capture flow (`is-capture` / `/is-commit`) so it is staged, tracked, and committed deliberately.",
+            });
+            modified = true;
+          }
+        } catch {
+          // Capture nudges are best-effort; never break the original tool result.
+        }
+      }
     }
+
+    // Nested tool results never enter the transcript; only the outer result
+    // may carry the delta. Otherwise the in-memory watermark advances and the
+    // following provider request silently misses a change.
+    const isAnthropic = ctx.model?.provider === "anthropic";
+    if (!isAnthropic && !("parentToolCallId" in event && event.parentToolCallId)) {
+      await refreshAwareness(ctx.cwd);
+      const tail = withOpenChange(cachedVolatile, openChangeLine(ctx));
+      if (tail) {
+        const stateText = `[IdeaSpaces State]\n${tail}`;
+        if (lastPersistedState === null) {
+          lastPersistedState = findLastPersistedState(ctx);
+        }
+        if (stateText !== lastPersistedState) {
+          lastPersistedState = stateText;
+          content.push({
+            type: "text" as const,
+            text: `\n\n${stateText}`,
+          });
+          modified = true;
+        }
+      }
+    }
+
+    // Model-facing State/nudge text does not alter a tool's machine result.
+    // Pi drops structuredContent when content alone is replaced; preserve it
+    // for codemode and other programmatic callers.
+    const result = { content, ...( "structuredContent" in event ? { structuredContent: event.structuredContent } : {} ) };
+    return modified ? result : undefined;
   });
 
   pi.on("session_before_switch", async (event, ctx) => {

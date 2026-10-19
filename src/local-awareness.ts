@@ -159,12 +159,16 @@ export function withOpenChange(volatile: string | null, change: string | undefin
 }
 
 /**
- * Append the volatile tail after provider-built history. Anthropic's explicit
- * cache breakpoint stays on the last user's prior block; Codex uses Responses
- * input (tool outputs are top-level items), and Vertex uses Gemini contents
- * (tool responses are user parts). Do not rewrite the system instruction or
- * prior messages. Returns false without mutation for unknown or malformed
- * shapes so the caller warns.
+ * Append the volatile tail to Anthropic's messages payload after the explicit
+ * cache breakpoint in the last user message's content array.
+ *
+ * Other providers (Codex Responses input, OpenAI Completions, Vertex contents)
+ * use prefix matching without explicit in-message cache breakpoints; adding an
+ * ephemeral final user turn per request breaks multi-turn history cache reuse.
+ * Those providers receive State as persisted session context (initial turn and
+ * changed deltas) via before_agent_start and tool_result instead.
+ *
+ * Returns true if appended, false if the payload shape is not supported.
  */
 export function appendVolatileTail(payload: unknown, text: string): boolean {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false;
@@ -172,46 +176,19 @@ export function appendVolatileTail(payload: unknown, text: string): boolean {
   const shapes = ["messages", "input", "contents"].filter((key) => key in body);
   if (shapes.length !== 1) return false;
   const key = shapes[0];
-  const entries = body[key];
+  if (key !== "messages") return false;
+  const entries = body.messages;
   if (!Array.isArray(entries) || entries.length === 0) return false;
   const last = entries[entries.length - 1];
   if (!last || typeof last !== "object" || Array.isArray(last)) return false;
 
-  if (key === "input") {
-    // Responses tool results are standalone function_call_output items. Never
-    // insert a user turn between the call and its result, or edit the result.
-    // Pi's converted final user turn is an input_text block array.
-    if (last.type === "function_call_output" || last.type === "custom_tool_call_output") {
-      if (typeof last.call_id !== "string" ||
-        !(typeof last.output === "string" || Array.isArray(last.output))) return false;
-    } else if (last.role !== "user" || !Array.isArray(last.content) ||
-      !last.content.every((block: unknown) => block && typeof block === "object" &&
-        ["input_text", "input_image"].includes((block as { type?: string }).type ?? ""))) {
-      return false;
-    }
-    entries.push({ role: "user", content: [{ type: "input_text", text }] });
-    return true;
-  }
-
   // Do not reach backward past a tool/assistant item. OpenAI Completions uses
   // top-level role: "tool" results (often string content); inserting state
-  // before that result breaks ordering. This shape needs its own tested
-  // provider-specific placement; until then the caller warns visibly.
+  // before that result breaks ordering.
   if (last.role !== "user") return false;
-  if (key === "messages") {
-    if (!Array.isArray(last.content) || !last.content.every((block: unknown) =>
-      block && typeof block === "object" && typeof (block as { type?: unknown }).type === "string")) return false;
-    last.content.push({ type: "text", text });
-    return true;
-  }
-  if (!Array.isArray(last.parts) || !last.parts.every((part: unknown) =>
-    part && typeof part === "object" && !Array.isArray(part))) return false;
-  // Gemini requires the functionResponse turn immediately after a model
-  // functionCall. Keep that turn intact; put volatile text in a subsequent
-  // user turn. Pi 1.0.2 accepts consecutive user turns for plain prompts;
-  // mixing text into functionResponse parts yielded a Vertex 400
-  // ("Requests ending with a model turn are not supported").
-  entries.push({ role: "user", parts: [{ text }] });
+  if (!Array.isArray(last.content) || !last.content.every((block: unknown) =>
+    block && typeof block === "object" && typeof (block as { type?: unknown }).type === "string")) return false;
+  last.content.push({ type: "text", text });
   return true;
 }
 

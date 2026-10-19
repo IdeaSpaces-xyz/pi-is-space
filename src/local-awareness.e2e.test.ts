@@ -22,6 +22,7 @@ let sibling: string;
 let seeded: string;
 let cliLog: string;
 let runner: ExtensionRunner;
+let sessionManager: SessionManager;
 let ctx: import("@earendil-works/pi-coding-agent").ExtensionContext;
 
 function git(cwd: string, ...args: string[]): string {
@@ -141,7 +142,7 @@ beforeAll(async () => {
     workspace,
     agentDir,
   );
-  const sessionManager = SessionManager.inMemory();
+  sessionManager = SessionManager.inMemory();
   const modelRuntime = await ModelRuntime.create({
     authPath: join(home, "auth.json"),
     modelsPath: null,
@@ -189,7 +190,8 @@ describe("Pi in-process local awareness", () => {
     expect(injected?.systemPrompt).not.toContain("State:");
 
     // Anthropic receives the volatile block after its explicit breakpoint.
-    // Codex and Vertex instead rely on matching provider cache prefixes.
+    // Codex and other prefix-matching providers receive persisted state instead.
+    (runner as any).getModel = () => ({ provider: "anthropic", id: "claude-3-7-sonnet" });
     const payload = {
       system: [{ type: "text", text: injected!.systemPrompt, cache_control: { type: "ephemeral" } }],
       messages: [
@@ -313,7 +315,109 @@ describe("Pi in-process local awareness", () => {
     expect(calls.every((line) => line.split(/\s+/).includes("catalog"))).toBe(true);
   }, 10_000);
 
-  it("warns once for an unsupported tool follow-up without claiming the whole session failed", async () => {
+  it("persists State as custom messages across Codex turns without mutating provider input", async () => {
+    (runner as any).getModel = () => ({ provider: "openai-codex", id: "gpt-6-sol" });
+    (runner as any).cwd = space;
+
+    // Turn 1: Initial state is emitted as a persisted custom message turn.
+    const turn1 = await runner.emitBeforeAgentStart("hello", undefined, "base prompt", { cwd: space } as any);
+    expect(turn1?.systemPrompt).toContain("[IdeaSpaces Awareness]");
+    const firstState = turn1?.messages?.[0];
+    expect(firstState?.customType).toBe("is_state");
+    const stateText = (firstState?.content?.[0] as { text: string }).text;
+    expect(stateText).toContain("[IdeaSpaces State]");
+    expect(stateText).toContain("branch: main");
+    sessionManager.appendCustomMessageEntry("is_state", firstState!.content, false);
+
+    // Turn 1 provider request: input is untouched by before_provider_request.
+    const turn1Input = {
+      input: [
+        { role: "user", content: [{ type: "input_text", text: "hello" }] },
+        { role: "user", content: [{ type: "input_text", text: stateText }] },
+      ],
+    };
+    const beforeTurn1 = structuredClone(turn1Input);
+    await runner.emitBeforeProviderRequest(turn1Input);
+    expect(turn1Input).toEqual(beforeTurn1);
+
+    // Turn 2: Unchanged state emits NO custom message, keeping history cache prefix intact.
+    const turn2 = await runner.emitBeforeAgentStart("next question", undefined, "base prompt", { cwd: space } as any);
+    expect(turn2?.systemPrompt).toContain("[IdeaSpaces Awareness]");
+    expect(turn2?.messages ?? []).toHaveLength(0);
+
+    // Turn 2 provider request: input is untouched.
+    const turn2Input = {
+      input: [
+        ...turn1Input.input,
+        { role: "assistant", content: [{ type: "text", text: "answer 1" }] },
+        { role: "user", content: [{ type: "input_text", text: "next question" }] },
+      ],
+    };
+    const beforeTurn2 = structuredClone(turn2Input);
+    await runner.emitBeforeProviderRequest(turn2Input);
+    expect(turn2Input).toEqual(beforeTurn2);
+    expect(turn2Input.input.slice(0, turn1Input.input.length)).toEqual(turn1Input.input);
+
+    // Tool execution changes state (e.g. stage a capture)
+    const writeResult = await call("is_write", {
+      path: "notes/sample.md",
+      content: "Sample content",
+      cwd: space,
+    });
+    expect(JSON.parse(text(writeResult))).toMatchObject({ staged: true });
+
+    // tool_result event on Codex attaches updated State to tool result content
+    const toolEvent = {
+      toolName: "is_write",
+      toolCallId: "call_1",
+      input: { path: "notes/sample.md" },
+      content: [{ type: "text", text: "tool output" }],
+      structuredContent: { status: "ok" },
+      isError: false,
+    };
+    const nestedResult = await runner.emitToolResult({
+      ...toolEvent, toolCallId: "call_1/0", parentToolCallId: "call_1",
+    } as any);
+    expect(nestedResult).toBeUndefined();
+    const updatedToolResult = await runner.emitToolResult(toolEvent as any);
+    expect(updatedToolResult?.content).toBeDefined();
+    const resultText = updatedToolResult!.content!.map((c: any) => c.text).join("");
+    expect(resultText).toContain("[IdeaSpaces State]");
+    expect(resultText).toContain("captures awaiting commit: 1");
+    const unchangedResult = await runner.emitToolResult({
+      ...toolEvent, toolCallId: "call_2", content: [{ type: "text", text: "unchanged" }],
+    } as any);
+    expect(unchangedResult).toBeUndefined();
+    const followUpInput = {
+      input: [
+        ...turn2Input.input,
+        { role: "assistant", content: [{ type: "text", text: "calling a tool" }] },
+        { type: "function_call", call_id: "call_1", name: "is_write", arguments: "{}" },
+        { type: "function_call_output", call_id: "call_1", output: resultText },
+      ],
+    };
+    const beforeFollowUp = structuredClone(followUpInput);
+    await runner.emitBeforeProviderRequest(followUpInput);
+    expect(followUpInput).toEqual(beforeFollowUp);
+    expect(followUpInput.input.slice(0, turn2Input.input.length)).toEqual(turn2Input.input);
+    expect(JSON.stringify(followUpInput).match(/\[IdeaSpaces State\]/g)).toHaveLength(2);
+    sessionManager.appendMessage({
+      role: "toolResult", toolCallId: "call_1", toolName: "is_write",
+      content: updatedToolResult!.content!, isError: false, timestamp: Date.now(),
+    } as any);
+
+    // Turn 3: State was updated during tool execution, so next turn with same state emits no duplicate.
+    const turn3 = await runner.emitBeforeAgentStart("after tool", undefined, "base prompt", { cwd: space } as any);
+    expect(turn3?.messages ?? []).toHaveLength(0);
+    // A new process resumes from the branch entries, not extension-local memory.
+    await runner.emit({ type: "session_start" } as any);
+    const resumed = await runner.emitBeforeAgentStart("resumed", undefined, "base prompt", { cwd: space } as any);
+    expect(resumed?.messages ?? []).toHaveLength(0);
+    (runner as any).cwd = workspace;
+  });
+
+  it("warns once for an unsupported Anthropic tool follow-up without claiming the whole session failed", async () => {
+    (runner as any).getModel = () => ({ provider: "anthropic", id: "claude-3-7-sonnet" });
     const initial = { messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }] };
     await runner.emitBeforeProviderRequest(initial);
     expect(initial.messages[0].content.at(-1)?.text).toContain("[IdeaSpaces State]");
@@ -329,7 +433,7 @@ describe("Pi in-process local awareness", () => {
       expect(failed).toEqual(toolFollowUp());
       expect(warn).toHaveBeenCalledTimes(1);
       const warning = String(warn.mock.calls[0]?.[0]);
-      expect(warning).toContain("tool-follow-up request");
+      expect(warning).toContain("Anthropic request");
       expect(warning).toContain("absent from this request");
       expect(warning).toContain("other requests may still receive them");
       expect(warning).not.toContain("absent from model context this session");
