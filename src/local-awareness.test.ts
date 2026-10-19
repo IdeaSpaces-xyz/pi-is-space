@@ -436,10 +436,9 @@ describe("appendVolatileTail", () => {
     expect(last[1]).toEqual({ type: "text", text: "[IdeaSpaces State]\ntail" });
   });
 
-  it("appends a Responses user input after the complete tool exchange, without changing history", () => {
+  it("keeps request-time placement for non-Codex Responses", () => {
     const payload = {
       instructions: "stable instructions",
-      prompt_cache_key: "session-key",
       input: [
         { role: "user", content: [{ type: "input_text", text: "run a tool" }] },
         { type: "function_call", call_id: "c1", name: "bash", arguments: "{}" },
@@ -448,28 +447,18 @@ describe("appendVolatileTail", () => {
       ],
     };
     const before = structuredClone(payload);
-    expect(appendVolatileTail(payload, "[IdeaSpaces State]\nbranch: main")).toBe(true);
-    expect({ ...payload, input: payload.input.slice(0, -1) }).toEqual(before);
+    expect(appendVolatileTail(payload, "[IdeaSpaces State]\ntail")).toBe(true);
+    expect(payload.instructions).toBe(before.instructions);
+    expect(payload.input.slice(0, -1)).toEqual(before.input);
     expect(payload.input.at(-1)).toEqual({
-      role: "user", content: [{ type: "input_text", text: "[IdeaSpaces State]\nbranch: main" }],
+      role: "user", content: [{ type: "input_text", text: "[IdeaSpaces State]\ntail" }],
     });
-    expect(JSON.stringify(payload).match(/\[IdeaSpaces State\]/g)).toHaveLength(1);
-    // A new provider request is built afresh: the changing tail never enters
-    // the reusable prefix, including on a tool follow-up.
-    const next = structuredClone(before);
-    expect(appendVolatileTail(next, "[IdeaSpaces State]\nbranch: feature")).toBe(true);
-    expect(next.input.at(-1)).toEqual({ role: "user", content: [{ type: "input_text", text: "[IdeaSpaces State]\nbranch: feature" }] });
-    expect(JSON.stringify(next).match(/\[IdeaSpaces State\]/g)).toHaveLength(1);
+    const plain = { input: [{ role: "user", content: [{ type: "input_text", text: "hello" }] }] };
+    expect(appendVolatileTail(plain, "[IdeaSpaces State]\nplain")).toBe(true);
+    expect(plain.input.at(-1)?.content).toEqual([{ type: "input_text", text: "[IdeaSpaces State]\nplain" }]);
   });
 
-  it("appends a Responses tail after a plain user input", () => {
-    const payload = { input: [{ role: "user", content: [{ type: "input_text", text: "hello" }] }] };
-    expect(appendVolatileTail(payload, "[IdeaSpaces State]\nstate")).toBe(true);
-    expect(payload.input[0].content).toEqual([{ type: "input_text", text: "hello" }]);
-    expect(payload.input.at(-1)?.content).toEqual([{ type: "input_text", text: "[IdeaSpaces State]\nstate" }]);
-  });
-
-  it("appends a Vertex user turn after the complete functionResponse turn", () => {
+  it("keeps Vertex's request-time tail after all functionResponses", () => {
     const payload = {
       config: { systemInstruction: "stable", cachedContent: "cached-prefix" },
       contents: [
@@ -488,11 +477,6 @@ describe("appendVolatileTail", () => {
     expect(payload.contents.at(-1)).toEqual({
       role: "user", parts: [{ text: "[IdeaSpaces State]\nbranch: main" }],
     });
-    expect(JSON.stringify(payload).match(/\[IdeaSpaces State\]/g)).toHaveLength(1);
-    const next = structuredClone(before);
-    expect(appendVolatileTail(next, "[IdeaSpaces State]\nbranch: feature")).toBe(true);
-    expect(next.contents.at(-1)).toEqual({ role: "user", parts: [{ text: "[IdeaSpaces State]\nbranch: feature" }] });
-    expect(JSON.stringify(next).match(/\[IdeaSpaces State\]/g)).toHaveLength(1);
   });
 
   it("refuses a Completions tool suffix rather than inserting before the tool result", () => {

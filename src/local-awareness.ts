@@ -160,11 +160,10 @@ export function withOpenChange(volatile: string | null, change: string | undefin
 
 /**
  * Append the volatile tail after provider-built history. Anthropic's explicit
- * cache breakpoint stays on the last user's prior block; Codex uses Responses
- * input (tool outputs are top-level items), and Vertex uses Gemini contents
- * (tool responses are user parts). Do not rewrite the system instruction or
- * prior messages. Returns false without mutation for unknown or malformed
- * shapes so the caller warns.
+ * cache breakpoint stays on the last user's prior block; Vertex appends a
+ * final Gemini user turn after the conversation. Codex skips
+ * this function and persists State in session history instead. Do not rewrite
+ * the system instruction or prior messages. Returns false for unknown shapes.
  */
 export function appendVolatileTail(payload: unknown, text: string): boolean {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false;
@@ -178,9 +177,7 @@ export function appendVolatileTail(payload: unknown, text: string): boolean {
   if (!last || typeof last !== "object" || Array.isArray(last)) return false;
 
   if (key === "input") {
-    // Responses tool results are standalone function_call_output items. Never
-    // insert a user turn between the call and its result, or edit the result.
-    // Pi's converted final user turn is an input_text block array.
+    // Responses providers other than Codex keep the request-time user turn.
     if (last.type === "function_call_output" || last.type === "custom_tool_call_output") {
       if (typeof last.call_id !== "string" ||
         !(typeof last.output === "string" || Array.isArray(last.output))) return false;
@@ -195,8 +192,7 @@ export function appendVolatileTail(payload: unknown, text: string): boolean {
 
   // Do not reach backward past a tool/assistant item. OpenAI Completions uses
   // top-level role: "tool" results (often string content); inserting state
-  // before that result breaks ordering. This shape needs its own tested
-  // provider-specific placement; until then the caller warns visibly.
+  // before that result breaks ordering.
   if (last.role !== "user") return false;
   if (key === "messages") {
     if (!Array.isArray(last.content) || !last.content.every((block: unknown) =>
@@ -207,10 +203,7 @@ export function appendVolatileTail(payload: unknown, text: string): boolean {
   if (!Array.isArray(last.parts) || !last.parts.every((part: unknown) =>
     part && typeof part === "object" && !Array.isArray(part))) return false;
   // Gemini requires the functionResponse turn immediately after a model
-  // functionCall. Keep that turn intact; put volatile text in a subsequent
-  // user turn. Pi 1.0.2 accepts consecutive user turns for plain prompts;
-  // mixing text into functionResponse parts yielded a Vertex 400
-  // ("Requests ending with a model turn are not supported").
+  // functionCall. Preserve it and append State as the next user turn.
   entries.push({ role: "user", parts: [{ text }] });
   return true;
 }

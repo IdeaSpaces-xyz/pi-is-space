@@ -732,6 +732,8 @@ export default function (pi: ExtensionAPI) {
   let cachedVolatile: string | null = null;
   let cachedRoot: string | null = null;
   let cachedRepoRoot: string | null = null;
+  // Codex's last State snapshot offered to the current run; reconciled with the compaction-aware session context on each new turn.
+  let lastPersistedState: string | null = null;
   // The conversation's working set beyond home: mounted roots (absolute, deduped).
   // Mounts are content, never authority — read-only reference surfaced as thin
   // handles. Mounting never changes authority, cwd, or file-op paths.
@@ -1050,6 +1052,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_start", async (_event, ctx) => {
+    lastPersistedState = null;
     await refreshAwareness(ctx.cwd);
     await refreshSpaceUi(ctx);
 
@@ -1143,35 +1146,86 @@ export default function (pi: ExtensionAPI) {
         : undefined;
   }
 
-  // Cache placement (design + measurement: pi-cache-placement in the team
-  // roadmap space — a separate private repo, not a path in this one): only the
-  // STABLE register enters the system prompt. Its bytes are deterministic for
-  // unchanged state, so an unchanged session keeps its prompt-cache prefix; a
+  // Pi saves before_agent_start messages as custom_message entries, and tool
+  // deltas in message entries. Reconstruct from the compaction-aware context:
+  // getBranch() also contains snapshots already summarized out of model input.
+  function findLastPersistedState(ctx: ExtensionContext): string | null {
+    const branch = ctx.sessionManager.buildContextEntries();
+    for (let i = branch.length - 1; i >= 0; i--) {
+      const entry = branch[i];
+      if (entry.type === "custom_message" && entry.customType === "is_state") {
+        const content = entry.content;
+        if (typeof content === "string") return content;
+        const text = content[0]?.type === "text" ? content[0].text : undefined;
+        if (text) return text;
+      }
+      if (entry.type === "message" && entry.message.role === "toolResult") {
+        for (const block of [...entry.message.content].reverse()) {
+          if (block.type === "text" && block.text.startsWith("\n\n[IdeaSpaces State]\n")) {
+            return block.text.trim();
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function isCodex(ctx: ExtensionContext): boolean {
+    return ctx.model?.provider === "openai-codex";
+  }
+
+  function nextCodexStateDelta(ctx: ExtensionContext): string | null {
+    const tail = withOpenChange(cachedVolatile, openChangeLine(ctx));
+    if (!tail) return null;
+    if (lastPersistedState === null) lastPersistedState = findLastPersistedState(ctx);
+    const stateText = `[IdeaSpaces State]\n${tail}`;
+    if (stateText === lastPersistedState) return null;
+    lastPersistedState = stateText;
+    return stateText;
+  }
+
+  // Cache placement: only the STABLE register enters the system prompt.
+  // Its bytes are deterministic for unchanged state, so a session keeps its prompt-cache prefix; a
   // landed capture or a deliberate navigate changes the bytes — a legitimate,
   // automatic invalidation, never per-turn churn.
+  //
+  // Codex Responses alone persists State as an initial custom message and
+  // changed deltas. Other providers use their request-time tail;
+  // Vertex's separate cache investigation is a follow-up.
   pi.on("before_agent_start", async (event, ctx) => {
     await refreshAwareness(ctx.cwd);
-    if (!cachedStable) return;
-    return {
-      systemPrompt: `${event.systemPrompt}\n\n[IdeaSpaces Awareness]\n${cachedStable}`,
-    };
+    const systemPrompt = cachedStable
+      ? `${event.systemPrompt}\n\n[IdeaSpaces Awareness]\n${cachedStable}`
+      : undefined;
+
+    if (!isCodex(ctx)) return systemPrompt ? { systemPrompt } : undefined;
+
+    // A returned message is not guaranteed to be persisted if the run aborts
+    // before it starts. Reconcile with actual branch entries every new turn.
+    lastPersistedState = findLastPersistedState(ctx);
+    const stateText = nextCodexStateDelta(ctx);
+    return stateText ? {
+      ...(systemPrompt ? { systemPrompt } : {}),
+      message: {
+        customType: "is_state",
+        content: [{ type: "text", text: stateText }],
+        display: false,
+      },
+    } : systemPrompt ? { systemPrompt } : undefined;
   });
 
-  // Append State only after Pi builds each provider request. In `context`,
-  // transient State would enter history and could become a cache breakpoint.
-  // Anthropic adds a block after the tool_result in the same user message;
-  // Codex and Vertex add a final user turn after tool outputs. Neither changes
-  // prior messages or the system instruction. Only Anthropic has an explicit
-  // breakpoint; the other providers rely on matching prefixes.
+  // Keep the request-time tail on non-Codex providers. In particular,
+  // Vertex still receives a final Gemini user turn after a functionResponse;
+  // only Codex skips the ephemeral final Responses item.
   let warnedTailShape = false;
   pi.on("before_provider_request", async (event, ctx) => {
+    if (isCodex(ctx)) return;
     const tail = withOpenChange(cachedVolatile, openChangeLine(ctx));
     if (!tail) return;
     const appended = appendVolatileTail(event.payload, `[IdeaSpaces State]\n${tail}`);
     if (!appended && !warnedTailShape) {
-      // A tool-follow-up can fail after an initial request succeeded. Report
-      // this request, not the whole session; notify in the TUI as well as
-      // logging once so recurring unsupported turns do not flood the person.
+      // An unsupported tool suffix can fail after an earlier request succeeded.
+      // Name this request, not the whole session, without flooding later turns.
       warnedTailShape = true;
       const messages = event.payload && typeof event.payload === "object"
         ? (event.payload as { messages?: unknown }).messages
@@ -1233,38 +1287,55 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("tool_result", async (event, ctx) => {
-    if (event.isError) return undefined;
-    if (event.toolName !== "write" && event.toolName !== "edit") return undefined;
+    let content = Array.isArray(event.content) ? [...event.content] : [];
+    let modified = false;
 
-    const rawPath = toolPath(event.input);
-    if (!rawPath) return undefined;
-
-    try {
-      const nudge = await shouldNudgeKnowledgeWrite(
-        pi,
-        ctx.cwd,
-        rawPath,
-        gitRootCache,
-        ctx.signal,
-      );
-      if (!nudge) return undefined;
-
-      const displayPath = relative(nudge.spaceRoot, nudge.path) || rawPath;
-      return {
-        content: [
-          ...(event.content ?? []),
-          {
-            type: "text" as const,
-            text:
-              `IdeaSpaces note: \`${displayPath}\` is a knowledge file changed with native ${event.toolName}. ` +
-              "If this represents durable shared understanding, use the capture flow (`is-capture` / `/is-commit`) so it is staged, tracked, and committed deliberately.",
-          },
-        ],
-      };
-    } catch {
-      // Capture nudges are best-effort; never break the original tool result.
-      return undefined;
+    if (!event.isError && (event.toolName === "write" || event.toolName === "edit")) {
+      const rawPath = toolPath(event.input);
+      if (rawPath) {
+        try {
+          const nudge = await shouldNudgeKnowledgeWrite(
+            pi,
+            ctx.cwd,
+            rawPath,
+            gitRootCache,
+            ctx.signal,
+          );
+          if (nudge) {
+            const displayPath = relative(nudge.spaceRoot, nudge.path) || rawPath;
+            content.push({
+              type: "text" as const,
+              text:
+                `IdeaSpaces note: \`${displayPath}\` is a knowledge file changed with native ${event.toolName}. ` +
+                "If this represents durable shared understanding, use the capture flow (`is-capture` / `/is-commit`) so it is staged, tracked, and committed deliberately.",
+            });
+            modified = true;
+          }
+        } catch {
+          // Capture nudges are best-effort; never break the original tool result.
+        }
+      }
     }
+
+    // Nested tool results never enter the transcript; only the outer result
+    // may carry the delta. Otherwise the in-memory watermark advances and the
+    // following provider request silently misses a change. Refresh after any
+    // outer tool: even a read can overlap with an external Git change or the
+    // background catalog fetch, and Codex has no request-time State fallback.
+    if (isCodex(ctx) && !("parentToolCallId" in event && event.parentToolCallId)) {
+      await refreshAwareness(ctx.cwd);
+      const stateText = nextCodexStateDelta(ctx);
+      if (stateText) {
+        content.push({ type: "text" as const, text: `\n\n${stateText}` });
+        modified = true;
+      }
+    }
+
+    // Model-facing State/nudge text does not alter a tool's machine result.
+    // Pi drops structuredContent when content alone is replaced; preserve it
+    // for codemode and other programmatic callers.
+    const result = { content, ...("structuredContent" in event ? { structuredContent: event.structuredContent } : {}) };
+    return modified ? result : undefined;
   });
 
   pi.on("session_before_switch", async (event, ctx) => {
