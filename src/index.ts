@@ -1150,7 +1150,9 @@ export default function (pi: ExtensionAPI) {
   // deltas in message entries. Reconstruct from the active branch on resume;
   // never mistake an arbitrary tool output quoting a State block for our delta.
   function findLastPersistedState(ctx: ExtensionContext): string | null {
-    for (const entry of ctx.sessionManager.getBranch().reverse()) {
+    const branch = ctx.sessionManager.getBranch();
+    for (let i = branch.length - 1; i >= 0; i--) {
+      const entry = branch[i];
       if (entry.type === "custom_message" && entry.customType === "is_state") {
         const content = entry.content;
         if (typeof content === "string") return content;
@@ -1168,6 +1170,20 @@ export default function (pi: ExtensionAPI) {
     return null;
   }
 
+  function isCodex(ctx: ExtensionContext): boolean {
+    return ctx.model?.provider === "openai-codex";
+  }
+
+  function nextCodexStateDelta(ctx: ExtensionContext): string | null {
+    const tail = withOpenChange(cachedVolatile, openChangeLine(ctx));
+    if (!tail) return null;
+    if (lastPersistedState === null) lastPersistedState = findLastPersistedState(ctx);
+    const stateText = `[IdeaSpaces State]\n${tail}`;
+    if (stateText === lastPersistedState) return null;
+    lastPersistedState = stateText;
+    return stateText;
+  }
+
   // Cache placement: only the STABLE register enters the system prompt. Its bytes are deterministic for
   // unchanged state, so an unchanged session keeps its prompt-cache prefix; a
   // landed capture or a deliberate navigate changes the bytes — a legitimate,
@@ -1182,33 +1198,20 @@ export default function (pi: ExtensionAPI) {
       ? `${event.systemPrompt}\n\n[IdeaSpaces Awareness]\n${cachedStable}`
       : undefined;
 
-    if (ctx.model?.provider !== "openai-codex") {
-      return systemPrompt ? { systemPrompt } : undefined;
-    }
+    if (!isCodex(ctx)) return systemPrompt ? { systemPrompt } : undefined;
 
-    const tail = withOpenChange(cachedVolatile, openChangeLine(ctx));
-    if (!tail) {
-      return systemPrompt ? { systemPrompt } : undefined;
-    }
-
-    const stateText = `[IdeaSpaces State]\n${tail}`;
-    if (lastPersistedState === null) {
-      lastPersistedState = findLastPersistedState(ctx);
-    }
-
-    if (stateText !== lastPersistedState) {
-      lastPersistedState = stateText;
-      return {
-        ...(systemPrompt ? { systemPrompt } : {}),
-        message: {
-          customType: "is_state",
-          content: [{ type: "text", text: stateText }],
-          display: false,
-        },
-      };
-    }
-
-    return systemPrompt ? { systemPrompt } : undefined;
+    // A returned message is not guaranteed to be persisted if the run aborts
+    // before it starts. Reconcile with actual branch entries every new turn.
+    lastPersistedState = findLastPersistedState(ctx);
+    const stateText = nextCodexStateDelta(ctx);
+    return stateText ? {
+      ...(systemPrompt ? { systemPrompt } : {}),
+      message: {
+        customType: "is_state",
+        content: [{ type: "text", text: stateText }],
+        display: false,
+      },
+    } : systemPrompt ? { systemPrompt } : undefined;
   });
 
   // Keep the pre-fix request-time tail on non-Codex providers. In particular,
@@ -1216,11 +1219,13 @@ export default function (pi: ExtensionAPI) {
   // only Codex skips the ephemeral final Responses item.
   let warnedTailShape = false;
   pi.on("before_provider_request", async (event, ctx) => {
-    if (ctx.model?.provider === "openai-codex") return;
+    if (isCodex(ctx)) return;
     const tail = withOpenChange(cachedVolatile, openChangeLine(ctx));
     if (!tail) return;
     const appended = appendVolatileTail(event.payload, `[IdeaSpaces State]\n${tail}`);
     if (!appended && !warnedTailShape) {
+      // An unsupported tool suffix can fail after an earlier request succeeded.
+      // Name this request, not the whole session, without flooding later turns.
       warnedTailShape = true;
       const messages = event.payload && typeof event.payload === "object"
         ? (event.payload as { messages?: unknown }).messages
@@ -1315,22 +1320,12 @@ export default function (pi: ExtensionAPI) {
     // Nested tool results never enter the transcript; only the outer result
     // may carry the delta. Otherwise the in-memory watermark advances and the
     // following provider request silently misses a change.
-    if (ctx.model?.provider === "openai-codex" && !("parentToolCallId" in event && event.parentToolCallId)) {
+    if (isCodex(ctx) && !("parentToolCallId" in event && event.parentToolCallId)) {
       await refreshAwareness(ctx.cwd);
-      const tail = withOpenChange(cachedVolatile, openChangeLine(ctx));
-      if (tail) {
-        const stateText = `[IdeaSpaces State]\n${tail}`;
-        if (lastPersistedState === null) {
-          lastPersistedState = findLastPersistedState(ctx);
-        }
-        if (stateText !== lastPersistedState) {
-          lastPersistedState = stateText;
-          content.push({
-            type: "text" as const,
-            text: `\n\n${stateText}`,
-          });
-          modified = true;
-        }
+      const stateText = nextCodexStateDelta(ctx);
+      if (stateText) {
+        content.push({ type: "text" as const, text: `\n\n${stateText}` });
+        modified = true;
       }
     }
 

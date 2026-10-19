@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   discoverAndLoadExtensions,
   ExtensionRunner,
@@ -23,6 +23,7 @@ let seeded: string;
 let cliLog: string;
 let runner: ExtensionRunner;
 let sessionManager: SessionManager;
+let originalGetModel: () => unknown;
 let ctx: import("@earendil-works/pi-coding-agent").ExtensionContext;
 
 function git(cwd: string, ...args: string[]): string {
@@ -156,7 +157,13 @@ beforeAll(async () => {
     new ModelRegistry(modelRuntime),
   );
   ctx = runner.createContext();
+  originalGetModel = (runner as any).getModel;
 }, 60_000);
+
+afterEach(() => {
+  (runner as any).getModel = originalGetModel;
+  (runner as any).cwd = workspace;
+});
 
 afterAll(() => {
   for (const [key, value] of Object.entries(savedEnv)) {
@@ -327,6 +334,10 @@ describe("Pi in-process local awareness", () => {
     const stateText = (firstState?.content?.[0] as { text: string }).text;
     expect(stateText).toContain("[IdeaSpaces State]");
     expect(stateText).toContain("branch: main");
+    // An aborted run never writes its returned custom message. The next turn
+    // must offer State again rather than trusting the in-memory watermark.
+    const retry = await runner.emitBeforeAgentStart("retry", undefined, "base prompt", { cwd: space } as any);
+    expect(retry?.messages?.[0]?.content).toEqual(firstState?.content);
     sessionManager.appendCustomMessageEntry("is_state", firstState!.content, false);
 
     // Turn 1 provider request: input is untouched by before_provider_request.
@@ -404,6 +415,13 @@ describe("Pi in-process local awareness", () => {
     sessionManager.appendMessage({
       role: "toolResult", toolCallId: "call_1", toolName: "is_write",
       content: updatedToolResult!.content!, isError: false, timestamp: Date.now(),
+    } as any);
+    // A tool can quote a State heading. Only our separate delta block may be
+    // mistaken for the last persisted snapshot on resume.
+    sessionManager.appendMessage({
+      role: "toolResult", toolCallId: "call_quote", toolName: "read",
+      content: [{ type: "text", text: `Quoted text:\n\n${stateText}` }],
+      isError: false, timestamp: Date.now(),
     } as any);
 
     // Turn 3: State was updated during tool execution, so next turn with same state emits no duplicate.
