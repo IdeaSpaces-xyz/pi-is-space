@@ -431,10 +431,19 @@ describe("Pi in-process local awareness", () => {
     await runner.emit({ type: "session_start" } as any);
     const resumed = await runner.emitBeforeAgentStart("resumed", undefined, "base prompt", { cwd: space } as any);
     expect(resumed?.messages ?? []).toHaveLength(0);
+    // The raw branch retains old snapshots after compaction, but Pi no longer
+    // sends them to the model. State must re-enter the retained context.
+    const kept = sessionManager.appendMessage({
+      role: "user", content: [{ type: "text", text: "keep this turn" }], timestamp: Date.now(),
+    } as any);
+    sessionManager.appendCompaction("summary without State", kept, 1000);
+    const afterCompaction = await runner.emitBeforeAgentStart("next", undefined, "base prompt", { cwd: space } as any);
+    expect(afterCompaction?.messages?.[0]?.customType).toBe("is_state");
+    expect((afterCompaction?.messages?.[0]?.content?.[0] as { text: string }).text).toContain("captures awaiting commit: 1");
     (runner as any).cwd = workspace;
   });
 
-  it("leaves Vertex on its pre-PR request-time State path, including tool follow-ups", async () => {
+  it("leaves Vertex on its request-time State path, including tool follow-ups", async () => {
     (runner as any).getModel = () => ({ provider: "google-vertex", id: "gemini-3.7-flash" });
     (runner as any).cwd = space;
     const start = await runner.emitBeforeAgentStart("run tool", undefined, "base prompt", { cwd: space } as any);

@@ -436,13 +436,14 @@ describe("appendVolatileTail", () => {
     expect(last[1]).toEqual({ type: "text", text: "[IdeaSpaces State]\ntail" });
   });
 
-  it("keeps pre-PR request-time placement for non-Codex Responses", () => {
+  it("keeps request-time placement for non-Codex Responses", () => {
     const payload = {
       instructions: "stable instructions",
       input: [
         { role: "user", content: [{ type: "input_text", text: "run a tool" }] },
         { type: "function_call", call_id: "c1", name: "bash", arguments: "{}" },
         { type: "function_call_output", call_id: "c1", output: "first result" },
+        { type: "function_call_output", call_id: "c2", output: "second result" },
       ],
     };
     const before = structuredClone(payload);
@@ -452,15 +453,21 @@ describe("appendVolatileTail", () => {
     expect(payload.input.at(-1)).toEqual({
       role: "user", content: [{ type: "input_text", text: "[IdeaSpaces State]\ntail" }],
     });
+    const plain = { input: [{ role: "user", content: [{ type: "input_text", text: "hello" }] }] };
+    expect(appendVolatileTail(plain, "[IdeaSpaces State]\nplain")).toBe(true);
+    expect(plain.input.at(-1)?.content).toEqual([{ type: "input_text", text: "[IdeaSpaces State]\nplain" }]);
   });
 
-  it("keeps Vertex's pre-PR final user turn after the functionResponse", () => {
+  it("keeps Vertex's request-time tail after all functionResponses", () => {
     const payload = {
       config: { systemInstruction: "stable", cachedContent: "cached-prefix" },
       contents: [
         { role: "user", parts: [{ text: "run tools" }] },
         { role: "model", parts: [{ functionCall: { name: "bash", args: {} } }] },
-        { role: "user", parts: [{ functionResponse: { name: "bash", response: { output: "one" } } }] },
+        { role: "user", parts: [
+          { functionResponse: { name: "bash", response: { output: "one" } } },
+          { functionResponse: { name: "read", response: { output: "two" } } },
+        ] },
       ],
     };
     const before = structuredClone(payload);

@@ -160,8 +160,8 @@ export function withOpenChange(volatile: string | null, change: string | undefin
 
 /**
  * Append the volatile tail after provider-built history. Anthropic's explicit
- * cache breakpoint stays on the last user's prior block; Vertex retains its
- * pre-Codex-fix Gemini contents placement (a final user turn). Codex skips
+ * cache breakpoint stays on the last user's prior block; Vertex appends a
+ * final Gemini user turn after the conversation. Codex skips
  * this function and persists State in session history instead. Do not rewrite
  * the system instruction or prior messages. Returns false for unknown shapes.
  */
@@ -177,7 +177,7 @@ export function appendVolatileTail(payload: unknown, text: string): boolean {
   if (!last || typeof last !== "object" || Array.isArray(last)) return false;
 
   if (key === "input") {
-    // Keep the pre-fix behavior for Responses providers other than Codex.
+    // Responses providers other than Codex keep the request-time user turn.
     if (last.type === "function_call_output" || last.type === "custom_tool_call_output") {
       if (typeof last.call_id !== "string" ||
         !(typeof last.output === "string" || Array.isArray(last.output))) return false;

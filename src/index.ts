@@ -732,7 +732,7 @@ export default function (pi: ExtensionAPI) {
   let cachedVolatile: string | null = null;
   let cachedRoot: string | null = null;
   let cachedRepoRoot: string | null = null;
-  // Last state snapshot persisted in session history (for non-Anthropic prefix-matching providers).
+  // Codex's last State snapshot offered to the current run; reconciled with the compaction-aware session context on each new turn.
   let lastPersistedState: string | null = null;
   // The conversation's working set beyond home: mounted roots (absolute, deduped).
   // Mounts are content, never authority — read-only reference surfaced as thin
@@ -1147,10 +1147,10 @@ export default function (pi: ExtensionAPI) {
   }
 
   // Pi saves before_agent_start messages as custom_message entries, and tool
-  // deltas in message entries. Reconstruct from the active branch on resume;
-  // never mistake an arbitrary tool output quoting a State block for our delta.
+  // deltas in message entries. Reconstruct from the compaction-aware context:
+  // getBranch() also contains snapshots already summarized out of model input.
   function findLastPersistedState(ctx: ExtensionContext): string | null {
-    const branch = ctx.sessionManager.getBranch();
+    const branch = ctx.sessionManager.buildContextEntries();
     for (let i = branch.length - 1; i >= 0; i--) {
       const entry = branch[i];
       if (entry.type === "custom_message" && entry.customType === "is_state") {
@@ -1184,13 +1184,13 @@ export default function (pi: ExtensionAPI) {
     return stateText;
   }
 
-  // Cache placement: only the STABLE register enters the system prompt. Its bytes are deterministic for
-  // unchanged state, so an unchanged session keeps its prompt-cache prefix; a
+  // Cache placement: only the STABLE register enters the system prompt.
+  // Its bytes are deterministic for unchanged state, so a session keeps its prompt-cache prefix; a
   // landed capture or a deliberate navigate changes the bytes — a legitimate,
   // automatic invalidation, never per-turn churn.
   //
   // Codex Responses alone persists State as an initial custom message and
-  // changed deltas. Other providers retain their pre-fix request-time tail;
+  // changed deltas. Other providers use their request-time tail;
   // Vertex's separate cache investigation is a follow-up.
   pi.on("before_agent_start", async (event, ctx) => {
     await refreshAwareness(ctx.cwd);
@@ -1214,7 +1214,7 @@ export default function (pi: ExtensionAPI) {
     } : systemPrompt ? { systemPrompt } : undefined;
   });
 
-  // Keep the pre-fix request-time tail on non-Codex providers. In particular,
+  // Keep the request-time tail on non-Codex providers. In particular,
   // Vertex still receives a final Gemini user turn after a functionResponse;
   // only Codex skips the ephemeral final Responses item.
   let warnedTailShape = false;
@@ -1319,7 +1319,9 @@ export default function (pi: ExtensionAPI) {
 
     // Nested tool results never enter the transcript; only the outer result
     // may carry the delta. Otherwise the in-memory watermark advances and the
-    // following provider request silently misses a change.
+    // following provider request silently misses a change. Refresh after any
+    // outer tool: even a read can overlap with an external Git change or the
+    // background catalog fetch, and Codex has no request-time State fallback.
     if (isCodex(ctx) && !("parentToolCallId" in event && event.parentToolCallId)) {
       await refreshAwareness(ctx.cwd);
       const stateText = nextCodexStateDelta(ctx);
