@@ -443,23 +443,6 @@ function cliNeedsNode(): boolean {
   return CLI.endsWith(".js");
 }
 
-export function followCliArgs(
-  action: "follow" | "unfollow" | "ack",
-  source: "node" | "repo",
-  id: string,
-  position?: number,
-): string[] {
-  if ((source as string) === "thread") throw new Error("Thread follows retired with the Inbox.");
-  const normalizedId = id.trim();
-  if (!normalizedId) throw new Error("Provide the exact Node or repository id.");
-  if (action === "ack") {
-    if (position === undefined) throw new Error("action=ack requires `position`.");
-    return ["follow", source, normalizedId, "--ack", String(position)];
-  }
-  if (position !== undefined) throw new Error("`position` is valid only with action=ack.");
-  return [action === "unfollow" ? "unfollow" : "follow", source, normalizedId];
-}
-
 // The "last seen" marker — HEAD at the end of the previous session — lives in a
 // local git ref, not a file in HOME. update-ref is atomic, local refs aren't
 // pushed, and `recentActivity` diffs HEAD against it for the since-last-session
@@ -2205,25 +2188,6 @@ export default function (pi: ExtensionAPI) {
       }
       // CLI owns selected-write pin, parent and live-target validation; preserve its post path/id result.
       return runTool(args, undefined, selected ? ctx.cwd : params.cwd || ctx.cwd);
-    },
-  });
-
-  roster.register({
-    name: "is_follow",
-    label: "IS Follow",
-    description:
-      "Choose whether the logged-in person listens to a Node or repository, or explicitly advance that source's event cursor. Reading never acknowledges. Requires person login; never substitutes an Agent credential.",
-    promptSnippet: "Follow, unfollow, or acknowledge one Node or repository",
-    parameters: Type.Object({
-      action: Type.Optional(StringEnum(["follow", "unfollow", "ack"] as const)),
-      source: StringEnum(["node", "repo"] as const),
-      id: Type.String({ description: "Exact Node or repository root (n_…) id" }),
-      position: Type.Optional(
-        Type.Integer({ minimum: 0, description: "Required only for action=ack" }),
-      ),
-    }),
-    async execute(_id, params) {
-      return runTool(followCliArgs(params.action ?? "follow", params.source, params.id, params.position));
     },
   });
 
