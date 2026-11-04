@@ -7,7 +7,9 @@
 
 Useful decisions, findings, plans, and context should not disappear with the chat. This local-first package gives Pi a standard way to orient in your work, recognize when understanding has changed, and capture what matters as ordinary Markdown with git history.
 
-The [protocol](https://github.com/IdeaSpaces-xyz/ideaspace-protocol) defines the repository shape and operating loop. `pi-is-space` makes that standard native to Pi through session awareness, capture skills, and safe commit/sync tools. Everything stays on your machine unless you choose to publish or sync it.
+The [protocol](https://github.com/IdeaSpaces-xyz/ideaspace-protocol) defines the repository shape and operating loop. `pi-is-space` makes that standard native to Pi through session awareness, capture skills, and safe commit/sync tools. Everything stays on your machine unless you choose to publish or sync a Repo.
+
+A **Space** is a lens: a view and a boundary around references to Repos, Notes, Threads, and agents. It holds no content and grants no access to that content. A **Vault** is the larger coordination layer. Grants on a Space govern what someone may do with the Space, such as add items or people; each content owner grants access separately. A reader without access can ask for it through a knock (not yet offered from every reference view). Local and remote Spaces are separate and update independently. Import and export make copies; they do not sync Spaces.
 
 [Install IdeaSpaces](#install) · [Explore the protocol as an Ideaspace](https://ideaspaces.xyz/repos/n_64dbf7878f05362337a6cda6) · [Use IdeaSpaces with Claude](https://github.com/IdeaSpaces-xyz/claude-code-plugin)
 
@@ -131,7 +133,7 @@ Auth is optional:
 - `is_auth` — login (opens browser OAuth)
 - `is_auth action="logout"` — clear credentials
 
-Shared setup mints portable `root_node_id` before login; private gitignored code-repo context stays unstamped. `ideaspaces fork <space-url> [dir]` can also materialize a public, copy-enabled Space locally without an account, source history, remote, or hosted destination. To host a local Space, use `/is-publish`. It checks the committed declaration against index/worktree, canonical origin, and local registry evidence, then confirms the destination and runs `ideaspaces publish`. First publish asks Keeper to adopt that identity exactly. Missing credentials trigger login/retry; drift refuses, and `--force` never forks or rekeys.
+Shared setup mints portable `root_node_id` before login; private gitignored code-repo context stays unstamped. `ideaspaces fork <space-url> [dir]` can also materialize a public, copy-enabled Repo locally without an account, source history, remote, or hosted destination. To host a local Repo, use `/is-publish`. It checks the committed declaration against index/worktree, canonical origin, and local registry evidence, then confirms the destination and runs `ideaspaces publish`. First publish asks Keeper to adopt that identity exactly. Missing credentials trigger login/retry; drift refuses, and `--force` never forks or rekeys.
 
 ## Skills and reference
 
@@ -151,10 +153,10 @@ Pi ships surface-specific entrypoint skills:
 - `is-share` — manage people, teams, and public/private visibility through recipient-shaped choices.
 - `is-threads` — explicitly list, start, read and reply to local or hosted Threads; hosted Unread matches the web.
 
-**Space lifecycle**
-- `is-setup` — form a space or an agent in conversation, written as `_agent/agreement.md`.
-- `is-fork` — bring a copy-enabled Space home and safely preview/apply maintained source updates.
-- `is-publish` — host a local space remotely for the first time.
+**Repo and agent setup**
+- `is-setup` — form a Repo or an agent in conversation, written as `_agent/agreement.md`.
+- `is-fork` — bring a copy-enabled Repo home and safely preview/apply maintained source updates.
+- `is-publish` — host a local Repo remotely for the first time.
 - `is-shape` — evolve the `_agent/` agreement or reusable agent behavior.
 
 Conversation hygiene is intentionally out of scope here; install `pi-local-context` for `context-conversation`, `context-cleanup`, and `context-recall`.
