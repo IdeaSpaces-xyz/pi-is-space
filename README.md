@@ -58,11 +58,11 @@ The wrapper keeps harness placement and session behavior local while reusing the
 
 The package has three surfaces:
 
-- **Skills** — agent procedures for user intent (`is-capture`, `is-share`, `is-inbox`, `is-threads`, `is-push`, `is-pull`).
+- **Skills** — agent procedures for user intent (`is-capture`, `is-share`, `is-threads`, `is-push`, `is-pull`).
 - **Tools** — low-level primitives the skills call (`is_write`, `is_commit`).
 - **Commands** — human-triggered Pi UI flows (`/is-push`, `/is-pull`, `/is-commit`).
 
-Local conversation/session hygiene lives in `pi-local-context` (`context_conversation`, `context_recall`, `context_cleanup`). This package stays focused on Space state: awareness, capture, commit, push, pull, auth, setup, publish, Share access, person-accountable Inbox messages, explicit follow cursors, and local Threads.
+Local conversation/session hygiene lives in `pi-local-context` (`context_conversation`, `context_recall`, `context_cleanup`). This package stays focused on Space state: awareness, capture, commit, push, pull, auth, setup, publish, Share access, person-accountable hosted Threads with the web’s Unread counts and local Threads.
 
 Pi's native `read`, `edit`, `write`, and `bash` cover exact full-document evidence and ordinary edits. `pi-is-space` adds IdeaSpaces-aware primitives used by the skills and commands:
 
@@ -120,7 +120,7 @@ Releases execute at the compaction boundary and nowhere else: history is append-
 
 ## CLI
 
-The package still depends on `@ideaspaces/cli` for auth, sync, publish/setup, account-free local Fork and maintained source updates, recipient-shaped Share, direct Inbox messages, follow/cursor writes, remote catalog discovery, explicit full-depth local Map derivation, and local Thread operations. It resolves the CLI for those calls and exposes the path to skills as `$IS_CLI_PATH` when available. Fork/update, Share, Inbox reads/sends, and derived Map enumeration remain CLI-backed skill flows; the native `is_follow` tool enforces explicit subscription writes while delegating them to that same CLI. Local path status, Markdown write, exact-path commit, Change minting, bounded navigation, ordinary rung-selective look, compatibility inspection, mounted orientation, and capture nudges execute in-process; pinned Thread-post looks delegate the authored Git-tree lookup to the CLI. Remote-catalog refresh remains a best-effort platform call.
+The package still depends on `@ideaspaces/cli` for auth, sync, publish/setup, account-free local Fork and maintained source updates, recipient-shaped Share, hosted Threads and hosted Thread reads and replies, remote catalog discovery, explicit full-depth local Map derivation, and local Thread operations. It resolves the CLI for those calls and exposes the path to skills as `$IS_CLI_PATH` when available. Fork/update, Share, and derived Map enumeration remain CLI-backed skill flows; the native `is_follow` tool enforces explicit subscription writes while delegating them to that same CLI. Local path status, Markdown write, exact-path commit, Change minting, bounded navigation, ordinary rung-selective look, compatibility inspection, mounted orientation, and capture nudges execute in-process; pinned Thread-post looks delegate the authored Git-tree lookup to the CLI. Remote-catalog refresh remains a best-effort platform call.
 
 A host that drives pi one process per turn (e.g. the desktop) owns the conversation's durable working set and passes it as `$IS_MOUNTS` (comma-separated absolute paths) on the inherited env; at load the extension seeds its mounts from it, so a mount survives across turns without the agent re-running `is_mount`.
 
@@ -149,8 +149,7 @@ Pi ships surface-specific entrypoint skills:
 
 **Access and coordination**
 - `is-share` — manage people, teams, and public/private visibility through recipient-shaped choices.
-- `is-inbox` — ask, read, reply, and follow updates through person-accountable hosted Threads about shared Content.
-- `is-threads` — explicitly read and append to local Threads when another vantage or later session should resume the work.
+- `is-threads` — explicitly list, start, read and reply to local or hosted Threads; hosted Unread matches the web.
 
 **Space lifecycle**
 - `is-setup` — form a space or an agent in conversation, written as `_agent/agreement.md`.

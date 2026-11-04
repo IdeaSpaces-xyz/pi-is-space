@@ -4,8 +4,13 @@ import { parseFrontmatter, parseMap, stripFrontmatter, summarizeMarkdown } from 
 import { parse as parseYaml } from "yaml";
 
 export type ThreadRequest = {
-  action: "list" | "open" | "post" | "close";
+  action: "list" | "new" | "open" | "post" | "close";
   path?: string;
+  hosted?: boolean;
+  unread?: boolean;
+  cursor?: string;
+  recipients?: string[];
+  post_id?: string;
   depth?: "name" | "summary" | "children" | "surface" | "full";
   since?: string;
   new?: boolean;
@@ -27,6 +32,10 @@ export type ThreadRequest = {
 
 /** Construct only the local CLI verbs; never infer an authored pin from HEAD. */
 export function threadArgs(input: ThreadRequest): string[] {
+  if ((input.action as string) === "ack") throw new Error("Agent acknowledgement is held until a separate agent token exists; it must not move the person's Unread.");
+  if (input.hosted || /^x_[0-9a-f]+$/.test(input.path?.trim() ?? "")) return hostedArgs(input);
+  if (input.cursor !== undefined || input.recipients !== undefined || input.post_id !== undefined || input.unread !== undefined) throw new Error("Hosted options require hosted: true or an x_ id.");
+  if (input.action === "new") throw new Error("Pi new requires hosted: true; use the CLI for local Thread creation.");
   const { action, path } = input;
   const selected = input.member !== undefined || input.checkout !== undefined;
   if (input.tags?.length && action !== "post") throw new Error("tags apply only to local posts.");
@@ -37,14 +46,11 @@ export function threadArgs(input: ThreadRequest): string[] {
   if (input.map && action === "open" && !selected) throw new Error("Pinned Map open requires a member; never infer HEAD.");
   if (action === "list") {
     if (input.map || selected) throw new Error("Selection applies only to open or post.");
-    if (path?.startsWith("x_")) throw new Error("List hosted Threads without a path, then open one x_ id.");
+    if (input.limit !== undefined) throw new Error("List paging requires hosted: true; local list does not accept limit.");
     if (input.since || input.post || input.new) throw new Error("--since, --new and --post select an opened Thread, not a list.");
-    return ["threads", "list", path || ".", "--depth", input.depth ?? "summary"];
+    return ["threads", "list", ...(path ? [path] : []), "--depth", input.depth ?? "summary"];
   }
   if (!path?.trim()) throw new Error("Provide a local Thread path or hosted x_ id.");
-  const hosted = /^x_[0-9a-f]{24}$/.test(path);
-  if (path.startsWith("x_") && !hosted) throw new Error("Hosted Thread id must be x_ followed by 24 lowercase hex digits.");
-  if (hosted && (input.pin || input.position || selected || input.map || input.checkout)) throw new Error("Hosted Threads cannot use local authored pin, Map member or checkout selection.");
   if (input.new && input.since) throw new Error("Use --new or --since, not both.");
   if (input.limit !== undefined && (!Number.isSafeInteger(input.limit) || input.limit < 1)) throw new Error("limit must be a positive integer.");
   if (input.order !== undefined && input.order !== "newer" && input.order !== "older") throw new Error("order must be newer or older.");
@@ -55,23 +61,13 @@ export function threadArgs(input: ThreadRequest): string[] {
     if ((selected || input.pin) && (input.new || input.since || input.post || input.depth === "children")) throw new Error("An authored pinned post cannot use --new, --since, --post or children; open the live Thread to traverse it.");
     if (input.pin && !input.position || input.position && !input.pin) throw new Error("Pinned open requires both authored pin and position; never substitute HEAD.");
     if (selected && (input.pin || input.position)) throw new Error("Use either selected Map member or explicit pin and position, not both.");
-    if (hosted && (input.limit !== undefined || input.order !== undefined)) throw new Error("limit and order on open are local-only for this release.");
-    return ["threads", "open", path, "--depth", input.pin || selected ? "full" : input.depth ?? (hosted ? "summary" : "surface"),
+    return ["threads", "open", path, "--depth", input.pin || selected ? "full" : input.depth ?? "surface",
       ...(input.new ? ["--new"] : []), ...(input.since ? ["--since", input.since] : []), ...(input.post ? ["--post", input.post] : []),
       ...(input.limit ? ["--limit", String(input.limit)] : []), ...(input.order ? ["--order", input.order] : []),
       ...(input.pin ? ["--pin", input.pin, "--position", input.position!] : []),
       ...(selected ? selectionArgs(input) : [])];
   }
   if (input.pin || input.position || input.depth || input.new || input.since || input.post) throw new Error("Pin, position, depth, --new, --since and --post apply to opening, not writing.");
-  if (hosted) {
-    if (input.tags?.length) throw new Error("tags on posts are local-only for this release.");
-    if (action !== "post") throw new Error("Hosted close is an owner-only lifecycle operation; use threads close x_id --yes after preview.");
-    if (input.author) throw new Error("Hosted replies use the logged-in person's identity; omit author.");
-    if (input.reply_to?.length) throw new Error("The hosted reply API cannot carry in_reply_to yet; omit reply_to until the server exposes reply parents.");
-    if (!input.message?.trim() || !input.name?.trim() || !input.summary?.trim()) throw new Error("Hosted reply needs message, name and summary. The server checks your participation grade.");
-    return ["threads", "reply", path, "--message", input.message, "--name", input.name, "--summary", input.summary,
-      ...(input.map ? ["--map", input.map] : [])];
-  }
   if (input.tags?.some((tag) => !tag?.trim() || tag.includes(","))) throw new Error("tags must be non-empty and may not contain commas.");
   if (selected && (input.author || !input.reply_to?.length)) throw new Error("Selected post requires an explicit parent and the caller's Agreement author; omit author.");
   if (!input.message?.trim()) throw new Error("A post or closure needs a nonempty message.");
@@ -152,4 +148,51 @@ export function threadPost(path: string, root: string): { thread: string; positi
   // this Space's _threads/. Use it for mounted roots; a slug would resolve
   // against the caller's home instead of the target Space.
   return { thread: resolve(realRoot, "_threads", match[1]), position: rel };
+}
+
+/** Hosted requests use only the /threads CLI contract; local pin flags never leak across. */
+function hostedArgs(input: ThreadRequest): string[] {
+  const action = input.action;
+  const path = input.path?.trim();
+  const allowed: Record<string, string[]> = {
+    list: ["hosted", "limit", "cursor", "unread"],
+    new: ["hosted", "name", "summary", "message", "recipients", "map", "post_id"],
+    open: ["hosted", "path", "limit", "cursor"],
+    post: ["hosted", "path", "reply_to", "message", "name", "summary", "map", "post_id"],
+  };
+  if (!allowed[action]) throw new Error("Hosted close requires an explicit CLI preview and confirmation; use threads close x_id --message <why> then --yes.");
+  for (const [key, value] of Object.entries(input)) {
+    if (key !== "action" && key !== "cwd" && value !== undefined && !(Array.isArray(value) && value.length === 0) && !allowed[action].includes(key)) throw new Error(`${key} is local-only or unsupported for hosted ${action}; omit it.`);
+  }
+  if (input.limit !== undefined && (!Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 200)) throw new Error("Hosted limit must be from 1 to 200.");
+  if (action === "list" || action === "new") {
+    if (path) throw new Error("Hosted list/new takes no path; use hosted: true.");
+  } else if (!/^x_(?:[0-9a-f]{24}|[0-9a-f]{32})$/.test(path ?? "")) throw new Error("Hosted Thread id must be x_ followed by 24 or 32 hex digits.");
+  if (input.recipients?.some(r => !r.trim() || r.includes(","))) throw new Error("Each recipients entry must be one selector, not a comma-separated list.");
+  if (input.post_id !== undefined && !/^msg_[A-Za-z0-9_-]{1,60}$/.test(input.post_id)) throw new Error("post_id must be a msg_ id.");
+  if (action === "new" && (!input.name?.trim() || !input.summary?.trim())) throw new Error("Hosted new requires name and summary.");
+  if ((action === "new" || action === "post") && !input.message?.trim()) throw new Error("Hosted writes require message.");
+  if (action === "post" && (!input.reply_to?.length || input.reply_to.length > 16 || new Set(input.reply_to).size !== input.reply_to.length || input.reply_to.some(p => !/^msg_[A-Za-z0-9_-]{1,60}$/.test(p)))) throw new Error("Hosted reply_to requires one to 16 distinct msg_ parent ids. Old n_ ids are not converted.");
+  return ["threads", action, ...(action === "list" || action === "new" ? ["--hosted"] : [path!]),
+    ...(input.limit !== undefined ? ["--limit", String(input.limit)] : []),
+    ...(input.cursor !== undefined ? ["--cursor", input.cursor] : []),
+    ...(input.unread ? ["--unread"] : []),
+    ...(input.reply_to ? ["--reply-to", input.reply_to.join(",")] : []),
+    ...(input.message !== undefined ? ["--message", input.message] : []),
+    ...(input.name !== undefined ? ["--name", input.name] : []),
+    ...(input.summary !== undefined ? ["--summary", input.summary] : []),
+    ...(input.recipients !== undefined ? ["--recipients", input.recipients.join(",")] : []),
+    ...(input.map !== undefined ? ["--map", input.map] : []),
+    ...(input.post_id !== undefined ? ["--post-id", input.post_id] : []),
+  ];
+}
+
+/** A stale CLI must never silently route a ported id back into /exchanges. */
+export function threadsOnlyCapability(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const c = value as Record<string, unknown>;
+  return c.schema === "ideaspaces.threads.capabilities.v1" && c.transport === "/threads" && c.legacy_exchange_fallback === false;
+}
+export function needsHostedThreads(input: ThreadRequest): boolean {
+  return !!input.hosted || /^x_[0-9a-f]+$/.test(input.path?.trim() ?? "") || input.action === "list" && !input.path?.trim();
 }

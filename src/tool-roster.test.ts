@@ -121,17 +121,17 @@ describe("Pi tool registration contract", () => {
   });
 
   it("maps follow actions onto the person-authenticated CLI without implicit acknowledgement", () => {
-    expect(followCliArgs("follow", "thread", "  x_example  ")).toEqual([
-      "follow", "thread", "x_example",
+    expect(followCliArgs("follow", "node", "  n_0123456789abcdef01234567  ")).toEqual([
+      "follow", "node", "n_0123456789abcdef01234567",
     ]);
     expect(followCliArgs("unfollow", "repo", "n_0123456789abcdef01234567")).toEqual([
       "unfollow", "repo", "n_0123456789abcdef01234567",
     ]);
-    expect(followCliArgs("ack", "thread", "x_example", 42)).toEqual([
-      "follow", "thread", "x_example", "--ack", "42",
+    expect(followCliArgs("ack", "node", "n_0123456789abcdef01234567", 42)).toEqual([
+      "follow", "node", "n_0123456789abcdef01234567", "--ack", "42",
     ]);
-    expect(() => followCliArgs("ack", "thread", "x_example")).toThrow("requires `position`");
-    expect(() => followCliArgs("follow", "thread", "x_example", 42)).toThrow("only with action=ack");
+    expect(() => followCliArgs("ack", "node", "n_0123456789abcdef01234567")).toThrow("requires `position`");
+    expect(() => followCliArgs("follow", "node", "n_0123456789abcdef01234567", 42)).toThrow("only with action=ack");
   });
 
   it("requires a handle or id before opening a Change", async () => {
