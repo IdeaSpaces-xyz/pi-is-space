@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import registerIdeaSpaces, { followCliArgs } from "./index.js";
+import registerIdeaSpaces from "./index.js";
 import { frozenParameters, frozenRoster } from "./tool-roster.js";
 
 type RegisteredTool = {
@@ -21,7 +21,6 @@ const EXPECTED_PI_TOOL_NAMES = [
   "is_mount",
   "is_unmount",
   "is_auth",
-  "is_follow",
   "is_threads",
   "is_write",
   "is_status",
@@ -120,18 +119,8 @@ describe("Pi tool registration contract", () => {
     ).rejects.toThrow("require section mode");
   });
 
-  it("maps follow actions onto the person-authenticated CLI without implicit acknowledgement", () => {
-    expect(followCliArgs("follow", "thread", "  x_example  ")).toEqual([
-      "follow", "thread", "x_example",
-    ]);
-    expect(followCliArgs("unfollow", "repo", "n_0123456789abcdef01234567")).toEqual([
-      "unfollow", "repo", "n_0123456789abcdef01234567",
-    ]);
-    expect(followCliArgs("ack", "thread", "x_example", 42)).toEqual([
-      "follow", "thread", "x_example", "--ack", "42",
-    ]);
-    expect(() => followCliArgs("ack", "thread", "x_example")).toThrow("requires `position`");
-    expect(() => followCliArgs("follow", "thread", "x_example", 42)).toThrow("only with action=ack");
+  it("does not register the retired subscription tool", () => {
+    expect(registeredTools().has("is_follow")).toBe(false);
   });
 
   it("requires a handle or id before opening a Change", async () => {

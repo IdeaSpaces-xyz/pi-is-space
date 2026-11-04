@@ -49,7 +49,7 @@ import {
   type LocalToolResult,
 } from "./local-tools.js";
 import { parseMountEnv } from "./mounts.js";
-import { authoredMember, pinnedView, postView, threadArgs, threadPost } from "./threads.js";
+import { authoredMember, pinnedView, postView, threadArgs, needsHostedThreads, threadsOnlyCapability, threadPost } from "./threads.js";
 import {
   CHANGE_ID_SHAPE,
   armingDecision,
@@ -441,22 +441,6 @@ if (!process.env.IS_CLI_PATH) process.env.IS_CLI_PATH = CLI;
 // a slash", which wrongly routed the bundled sidecar through node.
 function cliNeedsNode(): boolean {
   return CLI.endsWith(".js");
-}
-
-export function followCliArgs(
-  action: "follow" | "unfollow" | "ack",
-  source: "thread" | "node" | "repo",
-  id: string,
-  position?: number,
-): string[] {
-  const normalizedId = id.trim();
-  if (!normalizedId) throw new Error("Provide the exact Thread, Node, or repository id.");
-  if (action === "ack") {
-    if (position === undefined) throw new Error("action=ack requires `position`.");
-    return ["follow", source, normalizedId, "--ack", String(position)];
-  }
-  if (position !== undefined) throw new Error("`position` is valid only with action=ack.");
-  return [action === "unfollow" ? "unfollow" : "follow", source, normalizedId];
 }
 
 // The "last seen" marker — HEAD at the end of the previous session — lives in a
@@ -1805,7 +1789,14 @@ export default function (pi: ExtensionAPI) {
 
       const raw = pathArg.replace(/^@/, "");
       if (!raw) throw new Error("Provide a Content target path.");
-      const target = resolvePath(readRoot, raw);
+      // CLI post results use canonical paths. A Pi cwd may still use an OS
+      // alias (/var vs /private/var); compare both sides on the same ground.
+      // Resolving an existing target also keeps symlink escapes outside.
+      readRoot = await localEffectCapabilities.filesystem.realpath(readRoot);
+      const resolved = resolvePath(readRoot, raw);
+      const target = existsSync(resolved)
+        ? await localEffectCapabilities.filesystem.realpath(resolved)
+        : resolved;
       if (!isPathInside(target, readRoot)) {
         throw new Error(`Refusing to look outside the selected root (${readRoot}): ${target}`);
       }
@@ -2151,16 +2142,21 @@ export default function (pi: ExtensionAPI) {
   roster.register({
     name: "is_threads",
     label: "IS Threads",
-    description: "List or open at five rungs: local cold reads start at the newest snapshot; children shows branches and attached child Threads; limit/order pages posts; post opens one body plus child Threads. Reply to the post you answer; a new topic replies to the post it serves (omission branches from the opening post, 'latest' explicit). Local posts accept tags. Hosted children remains flat. Reading never acknowledges.",
+    description: "List or open at five rungs: local cold reads start at the newest snapshot; children shows branches and attached child Threads; limit/order pages posts; post opens one body plus child Threads. Reply to the post you answer; a new topic replies to the post it serves (omission branches from the opening post, 'latest' explicit). Local posts accept tags. Hosted list/new use hosted=true; open/post take an x_ id (24 or 32 hex). Hosted open takes limit/cursor, not depth. Hosted post requires explicit msg_ reply_to and message. New requires name, summary and message; recipients and Map are optional. Unread uses the web counts. Agent acknowledgement is held pending a separate agent token; no feeds, child discovery or reopen. Reading never acknowledges.",
     promptSnippet: "Read or reply to local and hosted Threads through the CLI",
     parameters: Type.Object({
-      action: StringEnum(["list", "open", "post", "close"] as const),
-      path: Type.Optional(Type.String({ description: "Local Thread path or hosted x_ id; omit for list in cwd" })),
+      action: StringEnum(["list", "open", "new", "post", "close"] as const),
+      hosted: Type.Optional(Type.Boolean({ description: "List or start a hosted Thread; omit path. x_ ids route hosted automatically." })),
+      unread: Type.Optional(Type.Boolean({ description: "Hosted list: web unread_count > 0; page using cursor" })),
+      cursor: Type.Optional(Type.String({ description: "Opaque CLI cursor for hosted list/open" })),
+      recipients: Type.Optional(Type.Array(Type.String(), { maxItems: 16, description: "Hosted new: @handles or emails; omit for solo" })),
+      post_id: Type.Optional(Type.String({ description: "Hosted new/post: msg_ id for exact resend after uncertain delivery" })),
+      path: Type.Optional(Type.String({ description: "Local Thread path or hosted x_ id; omit for combined list, use . for local-only" })),
       depth: Type.Optional(StringEnum(["name", "summary", "children", "surface", "full"] as const)),
-      new: Type.Optional(Type.Boolean({ description: "Open only: posts after the followed cursor" })),
-      since: Type.Optional(Type.String({ description: "Open only: ISO date, post id or hosted numeric position" })),
+      new: Type.Optional(Type.Boolean({ description: "Local open only: posts after the private local cursor" })),
+      since: Type.Optional(Type.String({ description: "Local open only: ISO date or post id; hosted reads use cursor" })),
       post: Type.Optional(Type.String({ description: "Open only: one post by id in full plus its child Threads" })),
-      limit: Type.Optional(Type.Integer({ minimum: 1, description: "Local open only: posts or branches per page" })),
+      limit: Type.Optional(Type.Integer({ minimum: 1, description: "Local open or hosted list/open page size (hosted max 200)" })),
       order: Type.Optional(StringEnum(["newer", "older"] as const)),
       message: Type.Optional(Type.String({ description: "Body of an immutable post or closure" })),
       reply_to: Type.Optional(Type.Array(Type.String({ description: "Post answered; a new topic branches from the post it serves, not the newest. Use latest explicitly only when intended." }))),
@@ -2179,6 +2175,18 @@ export default function (pi: ExtensionAPI) {
       const selected = params.member !== undefined || params.checkout !== undefined;
       if (selected && params.cwd !== undefined) throw new Error("Selected Thread uses the caller's Agreement cwd; omit cwd override.");
       const args = threadArgs(params);
+      if (needsHostedThreads(params)) {
+        const capability = await runJson<unknown>(["threads", "capabilities"], params.cwd || ctx.cwd);
+        if (!capability.ok || !threadsOnlyCapability(capability.data)) {
+          const reason = "Hosted Threads require CLI 0.7.0 or newer with /threads-only support. Update Pi’s CLI dependency or IS_CLI_PATH override; no hosted Thread request was sent." + (!capability.ok ? ` CLI capability check failed: ${capability.error.slice(0, 500)}` : "");
+          if (params.action === "list" && !params.hosted && !params.path?.trim()) {
+            const local = await runJson<Record<string, unknown>>(threadArgs({ ...params, path: "." }), params.cwd || ctx.cwd);
+            if (!local.ok) throw new Error(local.error);
+            return ok(JSON.stringify({ ...local.data, hosted_checked: false, hosted_error: reason }, null, 2));
+          }
+          throw new Error(reason);
+        }
+      }
       if (params.action === "open" && (params.pin || selected)) {
         const expected = selected ? authoredMember(params.map!, params.member!, ctx.cwd) : { pin: params.pin!, position: params.position! };
         const result = await runJson<{ pinned?: string; pin?: string; position?: string }>(args, params.cwd || ctx.cwd);
@@ -2187,25 +2195,6 @@ export default function (pi: ExtensionAPI) {
       }
       // CLI owns selected-write pin, parent and live-target validation; preserve its post path/id result.
       return runTool(args, undefined, selected ? ctx.cwd : params.cwd || ctx.cwd);
-    },
-  });
-
-  roster.register({
-    name: "is_follow",
-    label: "IS Follow",
-    description:
-      "Choose whether the logged-in person listens to a Thread, Node, or repository, or explicitly advance that source's event cursor. Reading never acknowledges. Requires person login; never substitutes an Agent credential.",
-    promptSnippet: "Follow, unfollow, or acknowledge one Thread, Node, or repository",
-    parameters: Type.Object({
-      action: Type.Optional(StringEnum(["follow", "unfollow", "ack"] as const)),
-      source: StringEnum(["thread", "node", "repo"] as const),
-      id: Type.String({ description: "Exact Thread (x_…), Node, or repository root (n_…) id" }),
-      position: Type.Optional(
-        Type.Integer({ minimum: 0, description: "Required only for action=ack" }),
-      ),
-    }),
-    async execute(_id, params) {
-      return runTool(followCliArgs(params.action ?? "follow", params.source, params.id, params.position));
     },
   });
 

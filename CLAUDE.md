@@ -14,7 +14,7 @@ The agent chooses intent; the extension/skills choose mechanism. Keep the wrappe
 
 ```txt
 Agent (Pi) → pi-is-space → protocol (local reads + explicit local effects)
-                         → CLI (auth/sync/publish/fork/update/share/inbox/follow/setup, explicit local Threads + remote catalog)
+                         → CLI (auth/sync/publish/fork/update/share/threads/setup, explicit local and hosted Threads + remote catalog)
 ```
 
 ## Tool Surface
@@ -33,8 +33,7 @@ IdeaSpaces-aware primitives:
 - `is_pull` — pull primitive; integrates remote changes into the local space (never pushes)
 - `is_push` — push primitive; sends committed captures to the remote (refuses when behind — pull first)
 - `is_auth` — login/logout for optional sync
-- `is_follow` — follow, unfollow, or explicitly acknowledge a Thread, Node, or repository cursor
-- `is_threads` — explicitly list, open, post to, or close local Threads through the installed CLI; no ambient loading or hosted x_ operations
+- `is_threads` — explicitly list/open/post/close local Threads; hosted list/new/open/post use `/threads` with `hosted: true` or an `x_` path. Nothing loads ambiently; agent acknowledgement is held.
 
 Keep agent-facing language intent-first: orient, capture, push, pull, reflect. Do not make agents choose between equivalent backends at the top level.
 
@@ -66,7 +65,7 @@ On session start, assemble local awareness in-process from `@ideaspaces/protocol
 Use-case layer shipped in `skills/`, grouped by role:
 
 - Daily loop: is-orient, is-capture, is-push, is-pull, is-reflect
-- Access and coordination: is-share for people, teams, and public/private visibility; is-inbox for direct person-accountable questions, replies, and followed updates; is-threads for explicitly reading and writing local Threads across vantages or sessions
+- Access and coordination: is-share for people, teams, and public/private visibility; is-threads for explicitly reading and writing local Threads across vantages or sessions
 - Space lifecycle: is-setup, is-fork, is-publish, is-shape
 - Guidance: is-guide (explaining IdeaSpaces to the person)
 - Reference: is-space, is-writing

@@ -25,7 +25,7 @@ describe("recipient-shaped Share distribution", () => {
     const help = `${result.stdout}${result.stderr}`;
 
     expect(result.status).toBe(0);
-    expect(help).toContain("share <person|team|list|remove|resend|history|visibility>");
+    expect(help).toContain("share <status|log|person|team|list|remove|resend|history|visibility>");
     expect(help).toContain("--grade explore");
     expect(help).toContain("--grade fork");
     expect(help).toContain("--grade collaborate");

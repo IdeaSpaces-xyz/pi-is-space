@@ -49,7 +49,7 @@ The agent chooses the intent; the package chooses the mechanism. Architecture st
 
 ```txt
 Agent (Pi) → pi-is-space → @ideaspaces/protocol (local reads + explicit local effects)
-                         → IdeaSpaces CLI (auth/sync/publish/fork/share/inbox/follow/setup + remote catalog)
+                         → IdeaSpaces CLI (auth/sync/publish/fork/share/threads/setup + remote catalog)
 ```
 
 The wrapper keeps harness placement and session behavior local while reusing the protocol's shape and the CLI's platform capabilities.
@@ -58,11 +58,11 @@ The wrapper keeps harness placement and session behavior local while reusing the
 
 The package has three surfaces:
 
-- **Skills** — agent procedures for user intent (`is-capture`, `is-share`, `is-inbox`, `is-threads`, `is-push`, `is-pull`).
+- **Skills** — agent procedures for user intent (`is-capture`, `is-share`, `is-threads`, `is-push`, `is-pull`).
 - **Tools** — low-level primitives the skills call (`is_write`, `is_commit`).
 - **Commands** — human-triggered Pi UI flows (`/is-push`, `/is-pull`, `/is-commit`).
 
-Local conversation/session hygiene lives in `pi-local-context` (`context_conversation`, `context_recall`, `context_cleanup`). This package stays focused on Space state: awareness, capture, commit, push, pull, auth, setup, publish, Share access, person-accountable Inbox messages, explicit follow cursors, and local Threads.
+Local conversation/session hygiene lives in `pi-local-context` (`context_conversation`, `context_recall`, `context_cleanup`). This package stays focused on Space state: awareness, capture, commit, push, pull, auth, setup, publish, Share access, person-accountable hosted Threads with the web’s Unread counts and local Threads.
 
 Pi's native `read`, `edit`, `write`, and `bash` cover exact full-document evidence and ordinary edits. `pi-is-space` adds IdeaSpaces-aware primitives used by the skills and commands:
 
@@ -80,8 +80,7 @@ Pi's native `read`, `edit`, `write`, and `bash` cover exact full-document eviden
 | `is_pull` | Pull primitive: integrate remote changes into the local space; never pushes; refuses to integrate on staged/dirty tree. |
 | `is_push` | Push primitive: send committed captures to the remote; refuses on uncommitted captures, and when behind — pull first. |
 | `is_auth` | Log in / out for optional remote sync. |
-| `is_follow` | Follow or unfollow a Thread, Node, or repository, or explicitly acknowledge its event cursor. Reads never acknowledge. |
-| `is_threads` | Explicitly list, open at `name`/`summary`/`full`, post to, or close a local Thread through the installed CLI; no ambient load or hosted `x_` id. |
+| `is_threads` | Explicit local Thread list/open/post/close, and hosted list/new/open/post through `/threads` (`hosted: true` or an `x_` path). No ambient load or agent acknowledgement. |
 
 `is_inspect` remains for this compatibility release because exact-heading section selection is not
 yet an `is_look` filter. `is_look` paths resolve from the selected home or mounted root;
@@ -120,7 +119,7 @@ Releases execute at the compaction boundary and nowhere else: history is append-
 
 ## CLI
 
-The package still depends on `@ideaspaces/cli` for auth, sync, publish/setup, account-free local Fork and maintained source updates, recipient-shaped Share, direct Inbox messages, follow/cursor writes, remote catalog discovery, explicit full-depth local Map derivation, and local Thread operations. It resolves the CLI for those calls and exposes the path to skills as `$IS_CLI_PATH` when available. Fork/update, Share, Inbox reads/sends, and derived Map enumeration remain CLI-backed skill flows; the native `is_follow` tool enforces explicit subscription writes while delegating them to that same CLI. Local path status, Markdown write, exact-path commit, Change minting, bounded navigation, ordinary rung-selective look, compatibility inspection, mounted orientation, and capture nudges execute in-process; pinned Thread-post looks delegate the authored Git-tree lookup to the CLI. Remote-catalog refresh remains a best-effort platform call.
+The package still depends on `@ideaspaces/cli` for auth, sync, publish/setup, account-free local Fork and maintained source updates, recipient-shaped Share, hosted Threads and hosted Thread reads and replies, remote catalog discovery, explicit full-depth local Map derivation, and local Thread operations. It resolves the CLI for those calls and exposes the path to skills as `$IS_CLI_PATH` when available. Fork/update, Share, and derived Map enumeration remain CLI-backed skill flows. Local path status, Markdown write, exact-path commit, Change minting, bounded navigation, ordinary rung-selective look, compatibility inspection, mounted orientation, and capture nudges execute in-process; pinned Thread-post looks delegate the authored Git-tree lookup to the CLI. Remote-catalog refresh remains a best-effort platform call.
 
 A host that drives pi one process per turn (e.g. the desktop) owns the conversation's durable working set and passes it as `$IS_MOUNTS` (comma-separated absolute paths) on the inherited env; at load the extension seeds its mounts from it, so a mount survives across turns without the agent re-running `is_mount`.
 
@@ -149,8 +148,7 @@ Pi ships surface-specific entrypoint skills:
 
 **Access and coordination**
 - `is-share` — manage people, teams, and public/private visibility through recipient-shaped choices.
-- `is-inbox` — ask, read, reply, and follow updates through person-accountable hosted Threads about shared Content.
-- `is-threads` — explicitly read and append to local Threads when another vantage or later session should resume the work.
+- `is-threads` — explicitly list, start, read and reply to local or hosted Threads; hosted Unread matches the web.
 
 **Space lifecycle**
 - `is-setup` — form a space or an agent in conversation, written as `_agent/agreement.md`.
@@ -177,3 +175,5 @@ Public preview. The local orientation and capture loop is in active use; the pro
 ## License
 
 [MIT](LICENSE)
+
+`is_follow` is no longer registered; stale calls are unknown tools and send no request. The installed CLI refuses `follow`, `unfollow`, and subscription `--ack` locally with exit 1. Use `is_threads` to list unread Threads; agents do not acknowledge a person’s cursor.

@@ -55,6 +55,7 @@ function baseEnv(): Record<string, string> {
     PATH: process.env.PATH ?? "",
     HOME: home,
     GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_GLOBAL: join(home, ".gitconfig"),
     GIT_TERMINAL_PROMPT: "0",
   };
 }

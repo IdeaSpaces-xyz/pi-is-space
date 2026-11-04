@@ -2,14 +2,14 @@ import { describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { authoredMember, pinnedView, threadArgs, threadPost } from "./threads.js";
+import { authoredMember, pinnedView, threadArgs, threadsOnlyCapability, needsHostedThreads, threadPost } from "./threads.js";
 
 const pin = "a".repeat(40);
 const position = "_threads/trial/post.md";
 
 describe("local Thread CLI adapter", () => {
   it("lists only local rows, opens three rungs without ack, and posts/ closes with author", () => {
-    expect(threadArgs({ action: "list" })).toEqual(["threads", "list", ".", "--depth", "summary"]);
+    expect(threadArgs({ action: "list" })).toEqual(["threads", "list", "--depth", "summary"]);
     for (const depth of ["name", "summary", "full"] as const) {
       expect(threadArgs({ action: "open", path: "trial", depth })).toEqual(["threads", "open", "trial", "--depth", depth]);
     }
@@ -46,7 +46,7 @@ describe("local Thread CLI adapter", () => {
     expect(() => threadArgs({ action: "open", path: "trial", post: "msg_one", limit: 1 })).toThrow(/exact post/);
     expect(() => threadArgs({ action: "open", path: "trial", tags: ["friction"] })).toThrow(/only to local posts/);
     expect(() => threadArgs({ action: "list", reply_to: ["latest"] })).toThrow(/only to posts/);
-    expect(threadArgs({ action: "list", reply_to: [], tags: [] })).toEqual(["threads", "list", ".", "--depth", "summary"]);
+    expect(threadArgs({ action: "list", reply_to: [], tags: [] })).toEqual(["threads", "list", "--depth", "summary"]);
     expect(threadArgs({ action: "open", path: "trial", reply_to: [], tags: [] })).toEqual(["threads", "open", "trial", "--depth", "surface"]);
     expect(threadArgs({ action: "close", path: "trial", message: "Done", tags: [], reply_to: [] }))
       .toEqual(["threads", "close", "trial", "--message", "Done"]);
@@ -60,17 +60,14 @@ describe("local Thread CLI adapter", () => {
   });
   it("opens and replies to hosted ids through CLI; never guesses an authored pin", () => {
     const hosted = "x_" + "a".repeat(24);
-    expect(threadArgs({ action: "open", path: hosted, depth: "summary", new: true }))
-      .toEqual(["threads", "open", hosted, "--depth", "summary", "--new"]);
-    expect(threadArgs({ action: "open", path: hosted, depth: "surface", post: "n_post" }))
-      .toEqual(["threads", "open", hosted, "--depth", "surface", "--post", "n_post"]);
-    expect(threadArgs({ action: "open", path: hosted, depth: "children", since: "2026-10-07" }))
-      .toEqual(["threads", "open", hosted, "--depth", "children", "--since", "2026-10-07"]);
-    expect(threadArgs({ action: "post", path: hosted, message: "Body", name: "Reply", summary: "Why" }))
-      .toEqual(["threads", "reply", hosted, "--message", "Body", "--name", "Reply", "--summary", "Why"]);
-    expect(() => threadArgs({ action: "post", path: hosted, message: "Body", name: "Reply", summary: "Why", author: "Other" })).toThrow(/logged-in/);
-    expect(() => threadArgs({ action: "post", path: hosted, message: "Body", name: "Reply", summary: "Why", reply_to: ["n_post"] })).toThrow(/cannot carry in_reply_to/);
-    expect(() => threadArgs({ action: "open", path: hosted, pin, position })).toThrow(/Hosted Threads cannot/);
+    expect(threadArgs({ action: "open", path: hosted })).toEqual(["threads", "open", hosted]);
+    expect(threadArgs({ action: "post", path: hosted, message: "Body", reply_to: ["msg_parent"] }))
+      .toEqual(["threads", "post", hosted, "--reply-to", "msg_parent", "--message", "Body"]);
+    expect(() => threadArgs({ action: "post", path: hosted, message: "Body", author: "Other" })).toThrow(/local-only/);
+    expect(() => threadArgs({ action: "post", path: hosted, message: "Body", reply_to: ["n_post"] })).toThrow(/msg_/);
+    expect(() => threadArgs({ action: "open", path: hosted, pin, position })).toThrow(/local-only/);
+    expect(() => threadArgs({ action: "list", path: hosted })).toThrow(/local-only/);
+    expect(() => threadArgs({ action: "close", path: hosted, message: "Done" })).toThrow(/Hosted close/);
     expect(() => threadArgs({ action: "open", path: "trial", pin })).toThrow(/HEAD/);
     expect(threadArgs({ action: "open", path: "trial", depth: "summary", pin, position }))
       .toEqual(["threads", "open", "trial", "--depth", "full", "--pin", pin, "--position", position]);
@@ -89,4 +86,34 @@ describe("local Thread CLI adapter", () => {
       expect(threadPost(join(root, "_threads/trial/README.md"), root)).toBeNull();
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
+});
+
+describe("hosted /threads argument contract", () => {
+  it.each([24, 32])("accepts %i hex Thread ids, never leaks local depth, and requires msg_ parents", length => {
+    const path = "x_" + "a".repeat(length);
+    expect(threadArgs({ action: "open", path, limit: 10, cursor: "page" })).toEqual(["threads", "open", path, "--limit", "10", "--cursor", "page"]);
+    expect(() => threadArgs({ action: "open", path, depth: "summary" })).toThrow(/local-only/);
+    expect(threadArgs({ action: "post", path, reply_to: ["msg_parent"], message: "Reply", post_id: "msg_stable", map: "context.map.md" })).toEqual(["threads", "post", path, "--reply-to", "msg_parent", "--message", "Reply", "--map", "context.map.md", "--post-id", "msg_stable"]);
+    expect(() => threadArgs({ action: "post", path, message: "No parent" })).toThrow(/reply_to/);
+    expect(() => threadArgs({ action: "post", path, reply_to: ["n_old"], message: "Old parent" })).toThrow(/not converted/);
+    // @ts-expect-error Agent ack is deliberately not in the tool contract.
+    expect(() => threadArgs({ action: "ack", path, seq: 3 })).toThrow(/person's Unread/);
+  });
+  it("lists web Unread and starts a recipient/Map Thread", () => {
+    expect(threadArgs({ action: "list", hosted: true, unread: true, cursor: "next" })).toEqual(["threads", "list", "--hosted", "--cursor", "next", "--unread"]);
+    expect(threadArgs({ action: "new", hosted: true, recipients: ["@ada"], name: "Question", summary: "Why", message: "Hello", map: "context.map.md" })).toEqual(["threads", "new", "--hosted", "--message", "Hello", "--name", "Question", "--summary", "Why", "--recipients", "@ada", "--map", "context.map.md"]);
+  });
+});
+
+it("requires an explicit threads-only CLI capability, not an old successful help response", () => {
+  expect(threadsOnlyCapability({ schema: "ideaspaces.threads.capabilities.v1", transport: "/threads", legacy_exchange_fallback: false })).toBe(true);
+  for (const value of [null, {}, { transport: "/exchanges" }, { schema: "ideaspaces.threads.capabilities.v1", transport: "/threads", legacy_exchange_fallback: true }]) expect(threadsOnlyCapability(value)).toBe(false);
+  expect(needsHostedThreads({ action: "list" })).toBe(true);
+  expect(needsHostedThreads({ action: "open", path: "x_" + "a".repeat(24) })).toBe(true);
+  expect(needsHostedThreads({ action: "list", path: "." })).toBe(false);
+});
+
+it("keeps explicit directory and x_-prefixed local paths local", () => {
+  expect(threadArgs({ action: "list", path: "." })).toEqual(["threads", "list", ".", "--depth", "summary"]);
+  expect(threadArgs({ action: "open", path: "x_notes" })).toEqual(["threads", "open", "x_notes", "--depth", "surface"]);
 });
