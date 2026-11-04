@@ -80,7 +80,7 @@ Pi's native `read`, `edit`, `write`, and `bash` cover exact full-document eviden
 | `is_pull` | Pull primitive: integrate remote changes into the local space; never pushes; refuses to integrate on staged/dirty tree. |
 | `is_push` | Push primitive: send committed captures to the remote; refuses on uncommitted captures, and when behind — pull first. |
 | `is_auth` | Log in / out for optional remote sync. |
-| `is_threads` | Explicitly list, open at `name`/`summary`/`full`, post to, or close a local Thread through the installed CLI; no ambient load or hosted `x_` id. |
+| `is_threads` | Explicit local Thread list/open/post/close, and hosted list/new/open/post through `/threads` (`hosted: true` or an `x_` path). No ambient load or agent acknowledgement. |
 
 `is_inspect` remains for this compatibility release because exact-heading section selection is not
 yet an `is_look` filter. `is_look` paths resolve from the selected home or mounted root;

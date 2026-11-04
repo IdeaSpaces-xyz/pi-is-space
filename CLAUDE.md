@@ -33,7 +33,7 @@ IdeaSpaces-aware primitives:
 - `is_pull` — pull primitive; integrates remote changes into the local space (never pushes)
 - `is_push` — push primitive; sends committed captures to the remote (refuses when behind — pull first)
 - `is_auth` — login/logout for optional sync
-- `is_threads` — explicitly list, open, post to, or close local Threads through the installed CLI; no ambient loading; hosted list/new/open/post (no person-cursor acknowledgement) use /threads
+- `is_threads` — explicitly list/open/post/close local Threads; hosted list/new/open/post use `/threads` with `hosted: true` or an `x_` path. Nothing loads ambiently; agent acknowledgement is held.
 
 Keep agent-facing language intent-first: orient, capture, push, pull, reflect. Do not make agents choose between equivalent backends at the top level.
 
