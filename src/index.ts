@@ -1789,7 +1789,14 @@ export default function (pi: ExtensionAPI) {
 
       const raw = pathArg.replace(/^@/, "");
       if (!raw) throw new Error("Provide a Content target path.");
-      const target = resolvePath(readRoot, raw);
+      // CLI post results use canonical paths. A Pi cwd may still use an OS
+      // alias (/var vs /private/var); compare both sides on the same ground.
+      // Resolving an existing target also keeps symlink escapes outside.
+      readRoot = await localEffectCapabilities.filesystem.realpath(readRoot);
+      const resolved = resolvePath(readRoot, raw);
+      const target = existsSync(resolved)
+        ? await localEffectCapabilities.filesystem.realpath(resolved)
+        : resolved;
       if (!isPathInside(target, readRoot)) {
         throw new Error(`Refusing to look outside the selected root (${readRoot}): ${target}`);
       }
