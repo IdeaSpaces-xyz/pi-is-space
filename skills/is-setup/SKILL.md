@@ -1,7 +1,7 @@
 ---
 name: is-setup
 description: >
-  Set up the place someone is describing — a space for their knowledge, or an
+  Set up the place someone is describing — a Repo for their knowledge, or an
   agent with a role. Use when someone names a thing they want to keep, track,
   or organize — a knowledge base, a vault for transcripts, a repository for
   the team's KPIs, notes on a topic, a small CRM — or a helper they want to
@@ -15,13 +15,13 @@ description: >
 allowed-tools: "is_write is_commit is_auth edit read write bash"
 ---
 
-# Setup an Ideaspace
+# Set Up a Repo or Agent
 
 Canonical protocols: read [purpose elicitation](../../reference/purpose-elicitation.md) and [repo context](../../reference/repo-context.md) when eliciting direction or judging how an existing repo should be scaffolded.
 
 **Goal:** look → talk → reflect back → `ideaspaces create` → write what was agreed into `_agent/agreement.md` → commit → offer publish.
 
-A space is one folder with one contract file, `_agent/agreement.md`, that says what the place is and how work goes here. The conversation is the work; the CLI is the scaffold writer. It lands the Agreement with every section as a **prompt**, and this skill's job is that no prompt is left standing.
+This setup creates a Repo or agent folder with a contract file, `_agent/agreement.md`, that says what the place is and how work goes here. It does not create a Space lens. A Space references content held in Repos; a Vault coordinates the wider work. The conversation is the work; the CLI is the scaffold writer. It lands the Agreement with every section as a **prompt**, and this skill's job is that no prompt is left standing.
 
 **Pi command available:** `/is-setup` runs the CLI's dry-run/apply with Pi-native preview and confirmation — the scaffold step only. The conversation before it and the writing after it are this skill.
 
@@ -48,7 +48,7 @@ Don't offer unprompted. Wait for a signal — "set up a space", "I want somewher
 
 Read the signal before proceeding:
 
-- **Create a space** — a place for knowledge: notes, decisions, research, a project's memory. Signals: "set up a space", "add ideaspaces here", "I want somewhere that keeps growing", a folder the user wants structured. → Follow [`create-a-space.md`](create-a-space.md).
+- **Create a Repo** — a place for knowledge: notes, decisions, research, a project's memory. Signals: "set up a space", "add ideaspaces here", "I want somewhere that keeps growing", a folder the user wants structured. → Follow [`create-a-space.md`](create-a-space.md).
 - **Create an agent** — a folder that *is* someone: "create an agent", "make me a research assistant", "something that does X for me". → Follow [`create-an-agent.md`](create-an-agent.md).
 
 Someone who says "assistant", "persona", or "personality" wants an agent; take the word they used, don't correct it.
@@ -61,11 +61,11 @@ Both procedures run the same shape. The details — what to listen for, the ques
 
    | Found | It means |
    |---|---|
-   | `_agent/agreement.md` | Already an ideaspace. The CLI refuses; offer to edit the Agreement instead. |
+   | `_agent/agreement.md` | Already has agent instructions. The CLI refuses; offer to edit the Agreement instead. |
    | `_agent/foundation.md` | The older shape. It still loads; offer [migrate-to-agreement](../../reference/migrate-to-agreement.md) rather than scaffolding beside it. |
    | `_agent/always.md` / `rules.md` / `soul.md` | Legacy. The CLI errors; the content moves into an Agreement by hand. |
    | Markdown files, no `_agent/` | Content already here. Read a few before asking — the story is partly in them. |
-   | `.github/`, `package.json`, `Cargo.toml`, … | A code repo. A space can sit beside code; the CLI keeps `_agent/` private (gitignored) unless `--shared`. An agent's folder is not a code repo — propose a sibling folder. |
+   | `.github/`, `package.json`, `Cargo.toml`, … | A code repo. Agent instructions can sit beside code; the CLI keeps `_agent/` private (gitignored) unless `--shared`. An agent's folder is not a code repo — propose a sibling folder. |
    | `CLAUDE.md`, `.gitignore` | The CLI won't overwrite either; it appends `.gitignore` defaults under a header. |
 
 2. **Draw out.** Open with a story or a task, not a form. Listen for what the Agreement needs; ask only for what is missing *and* needed before the first move. Cases, in their words.
@@ -79,7 +79,7 @@ Both procedures run the same shape. The details — what to listen for, the ques
    is_cli create [<name>] [--agent] [--shared] --yes
    ```
 
-   The CLI writes `_agent/agreement.md` — referencing the knowledge kind, or the agent kind with `--agent` — plus a short `CLAUDE.md` (or `CLAUDE.local.md` in a private code repo), `.gitattributes`, and `.gitignore` defaults, then `git init -b main` and an exact-path initial commit as a **best-effort finalize**. If Git is unavailable the space still exists, unversioned, and the CLI prints the recovery commands. **Relay the CLI's own stdout; don't assume a commit happened.**
+   The CLI writes `_agent/agreement.md` — referencing the knowledge kind, or the agent kind with `--agent` — plus a short `CLAUDE.md` (or `CLAUDE.local.md` in a private code repo), `.gitattributes`, and `.gitignore` defaults, then `git init -b main` and an exact-path initial commit as a **best-effort finalize**. If Git is unavailable the folder still exists, unversioned, and the CLI prints the recovery commands. **Relay the CLI's own stdout; don't assume a commit happened.**
 
 5. **Replace the prompts.** Use native `edit` on `_agent/agreement.md` — section by section, with what was agreed. Keep the frontmatter the CLI wrote; change only `name` and `summary` (two dense sentences). Show the file once more.
 
@@ -114,7 +114,7 @@ Summarize what landed:
 
 ## What comes next
 
-- **`/is-publish`** — host this space remotely (login + provision + push)
+- **`/is-publish`** — host this Repo remotely (login + provision + push)
 - **is-capture** — propose saving knowledge during work
 - **is-reflect** — propose updating direction when it drifts
 - **is-writing** — writing standard for Notes
