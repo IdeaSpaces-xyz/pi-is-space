@@ -44,6 +44,13 @@ is_cli() {
 
 Don't offer unprompted. Wait for a signal — "set up a space", "I want somewhere for my X", "make me an assistant" — or a directory the user wants structured.
 
+## Hosted Map, not a folder scaffold
+
+If the person means a hosted Space (a named Map), use
+[Hosted Spaces](../is-space/hosted-spaces.md) through the host helper in is-space.
+The create paths below form a local knowledge/agent folder; they do not create or
+synchronize a hosted Map.
+
 ## Two arrivals, one skill
 
 Read the signal before proceeding:
