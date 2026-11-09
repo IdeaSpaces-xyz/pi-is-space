@@ -9,6 +9,15 @@ allowed-tools: "is_threads is_look is_status is_commit read bash"
 
 A local Thread is a folder under `_threads/`; its posts are immutable files. Nothing there loads ambiently. `is_threads` lists local and hosted Threads and writes posts explicitly. Hosted operations use `/threads` alone. A cold local open defaults to `surface`: newest snapshot/reframe and bounded tail; `name` gives the frame, `summary` gives the parent post and newest snapshot summary, `children` gives branch roots with their newest tips and child Threads attached to posts. Hosted child discovery is not available. Use local `limit` and `order: newer|older` to page; `full` pages history, while `post` opens one immutable body in full plus its child Threads. A range may shorten a large body; use `post` for exact evidence. Reads never acknowledge a cursor; `new` can be empty when the cursor is current.
 
+## Place a hosted Thread in a Space
+
+For `--home map:<id>`, use the installed CLI workflow in
+[Hosted Spaces](../is-space/hosted-spaces.md), with the host helper from
+[is-space](../is-space/SKILL.md#hosted-spaces-named-maps). The native Thread tool
+has no new `home` parameter. Placement grants no access and adds no Map member;
+local Threads refuse it. Confirm the destination/opening and relay the actual
+Thread-or-knock result rather than assuming delivery.
+
 ## Hosted Threads
 
 Use `is_threads` with `action: list`, `hosted: true`, optional `unread: true`, `limit` and
