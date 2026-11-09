@@ -1,12 +1,11 @@
 ---
 name: is-space
 description: >
-  Reference for working in an ideaspace — the five-file `_agent/` contract,
-  Two Roles convention, and Pi tool surface. Use when the agent needs the
-  contract or tool-surface details mid-work, or works with hosted Spaces (named Maps). For explaining
-  IdeaSpaces to a
-  person, prefer is-guide; for active intents, prefer is-orient, is-capture,
-  is-share, is-threads, is-push, is-pull, is-reflect, and is-shape.
+  Reference for working in an ideaspace: its `_agent/` contract, Two Roles,
+  and Pi tools. Use when the agent needs contract or tool details
+  mid-work, or needs to list, open, create, edit or copy a hosted Space
+  (a named Map). For explaining IdeaSpaces to a person, prefer is-guide;
+  for access sharing, prefer is-share; for ordinary Note capture, use is-capture.
 allowed-tools: "is_threads is_look is_write is_status is_commit is_push is_pull is_auth read edit write bash"
 ---
 
@@ -51,7 +50,8 @@ is_cli() {
       *) "$IS_CLI_PATH" "$@" ;;
     esac
   else
-    ideaspaces "$@"
+    printf '%s\n' 'The pinned IdeaSpaces CLI is unavailable. Update this Pi package before using hosted Spaces.' >&2
+    return 1
   fi
 }
 ```
