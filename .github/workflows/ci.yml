@@ -1,6 +1,8 @@
 name: CI
 
 on:
+  merge_group:
+    types: [checks_requested]
   pull_request:
     branches: [main]
   push:
@@ -31,6 +33,9 @@ jobs:
       # `prepare` — the conformance e2e executes that bundle.
       - name: Install
         run: npm ci --no-audit --no-fund
+
+      - name: Test merge queue verdict gate
+        run: node --test .github/scripts/slc-queue-gate.node.mjs
 
       - name: Typecheck
         run: npm run typecheck
