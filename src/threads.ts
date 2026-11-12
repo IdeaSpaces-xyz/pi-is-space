@@ -1,4 +1,5 @@
-import { cliOption } from "./catalog-adapter.js";import { relative, resolve, sep } from "node:path";
+import { cliOption } from "./catalog-adapter.js";
+import { relative, resolve, sep } from "node:path";
 import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import {
   THREAD_KINDS,
