@@ -6,3 +6,5 @@ export function buildContracts(catalog: unknown, exposure: unknown, hosts: unkno
   divergences: unknown[];
   entries: unknown[];
 };
+
+export function checkCliOptionLiterals(sources: Array<{path: string; text: string}>, entries: readonly unknown[]): number;

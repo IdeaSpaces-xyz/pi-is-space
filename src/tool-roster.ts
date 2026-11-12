@@ -8,16 +8,10 @@
  * Tool closure never removes; release applies to content, not the roster.
  */
 
-import type {
-  ExtensionAPI,
-  ToolDefinition,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { TSchema } from "typebox";
 
-type SchemaRecord = Record<string, unknown> & {
-  properties?: Record<string, unknown>;
-  required?: string[];
-};
+type SchemaRecord = Record<string, unknown> & { properties?: Record<string, unknown>; required?: string[] };
 
 /**
  * One deterministic serialization of a parameter schema: object properties
@@ -26,15 +20,13 @@ type SchemaRecord = Record<string, unknown> & {
  */
 export function frozenParameters<T extends TSchema>(schema: T): T {
   const record = schema as unknown as SchemaRecord;
-  if (!record || typeof record !== "object" || !record.properties)
-    return schema;
+  if (!record || typeof record !== "object" || !record.properties) return schema;
   const properties: Record<string, unknown> = {};
   for (const key of Object.keys(record.properties).sort()) {
     properties[key] = frozenParameters(record.properties[key] as TSchema);
   }
   const sorted: SchemaRecord = { ...record, properties };
-  if (Array.isArray(record.required))
-    sorted.required = [...record.required].sort();
+  if (Array.isArray(record.required)) sorted.required = [...record.required].sort();
   return sorted as unknown as T;
 }
 
@@ -47,25 +39,17 @@ export interface FrozenRoster {
   names(): readonly string[];
 }
 
-export function frozenRoster(
-  pi: Pick<ExtensionAPI, "registerTool">,
-  beforeTool?: (name: string) => void,
-): FrozenRoster {
+export function frozenRoster(pi: Pick<ExtensionAPI, "registerTool">, beforeTool?: (name: string) => void): FrozenRoster {
   const names: string[] = [];
   let sealed = false;
   return {
-    register<TParams extends TSchema, TDetails, TState>(
-      tool: ToolDefinition<TParams, TDetails, TState>,
-    ) {
+    register<TParams extends TSchema, TDetails, TState>(tool: ToolDefinition<TParams, TDetails, TState>) {
       if (sealed) {
-        throw new Error(
-          `The tool roster is fixed at session start; ${tool.name} cannot be added later.`,
-        );
+        throw new Error(`The tool roster is fixed at session start; ${tool.name} cannot be added later.`);
       }
       names.push(tool.name);
       pi.registerTool({
-        ...tool,
-        parameters: frozenParameters(tool.parameters),
+        ...tool, parameters: frozenParameters(tool.parameters),
         execute(...args) {
           beforeTool?.(tool.name);
           return tool.execute(...args);

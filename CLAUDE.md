@@ -78,6 +78,8 @@ Shared protocol content lives in `reference/`, generated directly from the proto
 
 Capture flow: user intent → `is-capture` → maybe `is_write` for Notes or native edits for docs/specs → user confirms → `is_commit` → optional `is-push` (or `is-pull` first). Reflect and shape use the same capture boundary when they change shared agreement. Cleanup is local conversation hygiene, not Space connector behavior; use `context_cleanup` from `pi-local-context` when that package is installed.
 
+**Catalog-derived options:** `is_look` includes agreement, limit/order/since/post; `is_threads` local posts include kind/mark/supersedes. The generated schemas carry their field details and named host differences.
+
 ## Development
 
 ```bash

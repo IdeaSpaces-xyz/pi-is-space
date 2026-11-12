@@ -1,6 +1,7 @@
 import { AGENT_TOOLS } from "./generated/agent-tools.js";
 export type CatalogRuntime = {
   available: boolean;
+  comparisonComplete: boolean;
   version?: string;
   digest?: string;
   changed: string[];
@@ -17,11 +18,19 @@ export async function inspectCatalog(
   { deadlineMs = 1200 } = {},
 ): Promise<CatalogRuntime> {
   const controller = new AbortController();
+  const deadlineAt = performance.now() + deadlineMs;
   let observed: CatalogRuntime = {
     available: false,
+    comparisonComplete: false,
     changed: [],
     note: "Installed CLI version and digest are unknown.",
   };
+  const finishedInTime = () => !controller.signal.aborted && performance.now() < deadlineAt;
+  const incomplete = (): CatalogRuntime => ({
+    ...observed,
+    comparisonComplete: false,
+    note: `Catalog metadata deadline (${deadlineMs}ms); entry comparison incomplete. Generated entries: ${AGENT_TOOLS.entries.map(e => e.id).join(", ")}. Tools keep running; missing observations are unknown.`,
+  });
   let timer: ReturnType<typeof setTimeout> | undefined;
   const work = (async () => {
     try {
@@ -35,25 +44,27 @@ export async function inspectCatalog(
         throw new Error("CLI does not report build metadata");
       observed = {
         available: true,
+        comparisonComplete: false,
         version: data.cli.version,
         digest: data.digest,
         changed: [],
         note: "Installed CLI catalog matches generated contracts.",
       };
-      if (data.digest === AGENT_TOOLS.metadata.digest) return observed;
+      if (data.digest === AGENT_TOOLS.metadata.digest) return { ...observed, comparisonComplete: finishedInTime() };
       const pending = [...AGENT_TOOLS.entries];
       const changed: string[] = [];
       // At most three probes, under the same deadline. Completion order never
       // affects the report's order or prompt-cache bytes.
       await Promise.all(
         Array.from({ length: Math.min(3, pending.length) }, async () => {
-          while (pending.length && !controller.signal.aborted) {
+          while (pending.length && finishedInTime()) {
             const entry = pending.shift()!;
             try {
               const response = await run(
                 ["capabilities", entry.id, "--json"],
                 controller.signal,
               );
+              if (response.code !== 0) throw new Error("Entry comparison unavailable");
               if (
                 JSON.stringify(JSON.parse(response.out).entry) !==
                 JSON.stringify(entry)
@@ -65,10 +76,11 @@ export async function inspectCatalog(
           }
         }),
       );
-      if (controller.signal.aborted) return observed;
+      if (!finishedInTime()) return incomplete();
       changed.sort();
       observed = {
         ...observed,
+        comparisonComplete: !changed.some(id => id.endsWith(" (unverified)")),
         changed,
         note: `Catalog drift; changed or unverified exposed entries: ${changed.join(", ") || "none (other entries changed)"}. Tools keep running.`,
       };
@@ -83,10 +95,7 @@ export async function inspectCatalog(
   const deadline = new Promise<CatalogRuntime>((resolve) => {
     timer = setTimeout(() => {
       controller.abort();
-      resolve({
-        ...observed,
-        note: `Catalog metadata deadline (${deadlineMs}ms); entry comparison incomplete. Generated entries: ${AGENT_TOOLS.entries.map((e) => e.id).join(", ")}. Tools keep running; missing observations are unknown.`,
-      });
+      resolve(incomplete());
     }, deadlineMs);
   });
   try {
@@ -100,6 +109,8 @@ export function belowRequired(
   version: string | undefined,
   requirements: readonly string[],
 ): boolean {
+  // Intentionally fail open on unparseable versions; only known-below refuses.
+  // Prerelease/build suffixes use their numeric base, not semver prerelease ordering.
   const v = version?.match(/^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/);
   if (!v) return false;
   return requirements.some((r) => {

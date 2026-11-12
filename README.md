@@ -170,7 +170,7 @@ See [`MIGRATION.md`](MIGRATION.md) for mapping from legacy `pi-sw-space`.
 
 ## Development
 
-Tool schemas and descriptions derive from the pinned CLI catalog plus the explicit host exposure files. After changing those inputs, run `npm run generate:tools`, then `npm run check:tools`, `npm run typecheck` and `npm test`. CI refuses generated drift. Regenerate shared references with `npm run build:reference`; keep entrypoint skills surface-specific.
+Tool schemas and descriptions derive from the pinned CLI catalog plus the explicit host exposure files. After changing those inputs, run `npm run generate:tools`, then `npm run check:tools`, `npm run typecheck` and `npm test`. CI refuses generated drift. Ajv validates the catalog/host envelope and generated tool schemas; TypeScript parses literal `cliOption` calls for the flag guard. Both are development dependencies used only in source-checkout tooling/tests. The published package contains runtime TypeScript, skills and references, not the generator or exposure inputs. Regenerate shared references with `npm run build:reference`; keep entrypoint skills surface-specific.
 
 ## Status
 

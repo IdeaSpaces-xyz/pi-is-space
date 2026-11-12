@@ -77,9 +77,7 @@ function floorHint(
   return catalog ? BARE_WORKSPACE_HINT : EMPTY_WORKSPACE_HINT;
 }
 
-export async function readCaptureStatus(
-  cwd: string,
-): Promise<CaptureStatus | null> {
+export async function readCaptureStatus(cwd: string): Promise<CaptureStatus | null> {
   const state = await readContentState(cwd);
   return state ? captureStatus(state.git, state.captures) : null;
 }
@@ -109,12 +107,7 @@ export async function buildLocalAwareness(opts: {
     }),
     settle(assemblePreferredContentAwareness(position)),
     focusedRepoRootPromise,
-    formatCatalogSection(
-      workspace,
-      focusedRepoRootPromise,
-      mounts,
-      pullable,
-    ).catch(
+    formatCatalogSection(workspace, focusedRepoRootPromise, mounts, pullable).catch(
       (error) => `⚠ workspace catalog read failed: ${errorMessage(error)}`,
     ),
   ]);
@@ -123,15 +116,8 @@ export async function buildLocalAwareness(opts: {
     // Preserve the old failure boundary: if orientation itself unexpectedly
     // fails, keep any independently-read operating state instead of blanking
     // the whole awareness block. State is volatile; nothing stable resolves.
-    console.warn(
-      `IdeaSpaces: Content awareness read failed: ${errorMessage(manifestRead.error)}`,
-    );
-    return {
-      root: null,
-      repoRoot: null,
-      stable: null,
-      volatile: renderContentTail(null, { state }) || null,
-    };
+    console.warn(`IdeaSpaces: Content awareness read failed: ${errorMessage(manifestRead.error)}`);
+    return { root: null, repoRoot: null, stable: null, volatile: renderContentTail(null, { state }) || null };
   }
 
   const manifest = manifestRead.value;
@@ -139,8 +125,7 @@ export async function buildLocalAwareness(opts: {
     const hint = floorHint(focusedRepoRoot, catalog);
     // No contract resolves: everything is workspace/session state — volatile
     // by nature, and keeping the system prompt untouched is cache-optimal.
-    const volatile =
-      renderContentTail(null, { state, handles: [catalog, hint] }) || null;
+    const volatile = renderContentTail(null, { state, handles: [catalog, hint] }) || null;
     return { root: null, repoRoot: null, stable: null, volatile };
   }
 
@@ -159,8 +144,7 @@ export async function buildLocalAwareness(opts: {
     // The protocol owns the tail composition: State supersedes the compact Git
     // line, forest handles keep producer order, the manifest tail is last. The
     // same call renders the CLI's `status`, so the two cannot drift.
-    volatile:
-      renderContentTail(manifest, { state, handles: [catalog, hint] }) || null,
+    volatile: renderContentTail(manifest, { state, handles: [catalog, hint] }) || null,
   };
 }
 
@@ -170,10 +154,7 @@ export async function buildLocalAwareness(opts: {
  * local join, so the request payload matches `renderContentTail` with the
  * same Change input.
  */
-export function withOpenChange(
-  volatile: string | null,
-  change: string | undefined,
-): string {
+export function withOpenChange(volatile: string | null, change: string | undefined): string {
   return renderContentTail(null, { handles: [volatile], change });
 }
 
@@ -185,8 +166,7 @@ export function withOpenChange(
  * the system instruction or prior messages. Returns false for unknown shapes.
  */
 export function appendVolatileTail(payload: unknown, text: string): boolean {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload))
-    return false;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false;
   const body = payload as Record<string, unknown>;
   const shapes = ["messages", "input", "contents"].filter((key) => key in body);
   if (shapes.length !== 1) return false;
@@ -198,27 +178,12 @@ export function appendVolatileTail(payload: unknown, text: string): boolean {
 
   if (key === "input") {
     // Responses providers other than Codex keep the request-time user turn.
-    if (
-      last.type === "function_call_output" ||
-      last.type === "custom_tool_call_output"
-    ) {
-      if (
-        typeof last.call_id !== "string" ||
-        !(typeof last.output === "string" || Array.isArray(last.output))
-      )
-        return false;
-    } else if (
-      last.role !== "user" ||
-      !Array.isArray(last.content) ||
-      !last.content.every(
-        (block: unknown) =>
-          block &&
-          typeof block === "object" &&
-          ["input_text", "input_image"].includes(
-            (block as { type?: string }).type ?? "",
-          ),
-      )
-    ) {
+    if (last.type === "function_call_output" || last.type === "custom_tool_call_output") {
+      if (typeof last.call_id !== "string" ||
+        !(typeof last.output === "string" || Array.isArray(last.output))) return false;
+    } else if (last.role !== "user" || !Array.isArray(last.content) ||
+      !last.content.every((block: unknown) => block && typeof block === "object" &&
+        ["input_text", "input_image"].includes((block as { type?: string }).type ?? ""))) {
       return false;
     }
     entries.push({ role: "user", content: [{ type: "input_text", text }] });
@@ -230,27 +195,13 @@ export function appendVolatileTail(payload: unknown, text: string): boolean {
   // before that result breaks ordering.
   if (last.role !== "user") return false;
   if (key === "messages") {
-    if (
-      !Array.isArray(last.content) ||
-      !last.content.every(
-        (block: unknown) =>
-          block &&
-          typeof block === "object" &&
-          typeof (block as { type?: unknown }).type === "string",
-      )
-    )
-      return false;
+    if (!Array.isArray(last.content) || !last.content.every((block: unknown) =>
+      block && typeof block === "object" && typeof (block as { type?: unknown }).type === "string")) return false;
     last.content.push({ type: "text", text });
     return true;
   }
-  if (
-    !Array.isArray(last.parts) ||
-    !last.parts.every(
-      (part: unknown) =>
-        part && typeof part === "object" && !Array.isArray(part),
-    )
-  )
-    return false;
+  if (!Array.isArray(last.parts) || !last.parts.every((part: unknown) =>
+    part && typeof part === "object" && !Array.isArray(part))) return false;
   // Gemini requires the functionResponse turn immediately after a model
   // functionCall. Preserve it and append State as the next user turn.
   entries.push({ role: "user", parts: [{ text }] });
@@ -273,12 +224,7 @@ export async function lookPreferringAgreement(
     postId?: string;
   } = {},
 ): Promise<Awaited<ReturnType<typeof assembleContentLook>>> {
-  const request = {
-    position,
-    depth,
-    ...options,
-    ...(contractSource ? { contractSource } : {}),
-  };
+  const request = { position, depth, ...options, ...(contractSource ? { contractSource } : {}) };
   const looked = await assembleContentLook(request);
   if (looked?.status === "contract_choice_required" && !contractSource) {
     return assembleContentLook({ ...request, contractSource: "agreement" });
@@ -303,12 +249,7 @@ export async function readLookAwareness(
   text: string | null;
   contractSource: ContractSource | null;
 }> {
-  const looked = await lookPreferringAgreement(
-    resolve(position),
-    depth,
-    contractSource,
-    options,
-  );
+  const looked = await lookPreferringAgreement(resolve(position), depth, contractSource, options);
   if (!looked) return { root: null, text: null, contractSource: null };
   const rendered = renderContentLook(looked);
   if (looked.status !== "ok") throw new Error(rendered);
@@ -339,8 +280,9 @@ export async function readFocusedAwareness(
   // An interactive focus surfaces diagnostics as tool errors; ambient assembly
   // separately catches its throw so session start can preserve volatile state.
   if (focus.status !== "ok") throw new Error(rendered);
-  const probe =
-    treeDepth && treeDepth > 1 ? await probeTree(position, treeDepth) : null;
+  const probe = treeDepth && treeDepth > 1
+    ? await probeTree(position, treeDepth)
+    : null;
   return {
     root: focus.spaceRoot,
     text: joinSections([
@@ -378,10 +320,7 @@ export async function discoverSpaceSkillPaths(cwd: string): Promise<string[]> {
  * rendered as tool output. Never touches the persistent awareness block —
  * ambient orientation stays at depth 1; probing is deliberate and ephemeral.
  */
-export async function probeTree(
-  position: string,
-  treeDepth: number,
-): Promise<string | null> {
+export async function probeTree(position: string, treeDepth: number): Promise<string | null> {
   const manifest = await assemblePreferredContentAwareness(position, treeDepth);
   if (!manifest) return null;
   return renderContentAwareness(manifest, { sections: ["tree"] }) || null;
@@ -446,25 +385,21 @@ async function formatWorkingSetSection(
       presentation: {
         label: "home",
         display: basename(homeRoot) || homeRoot,
-        details:
-          home.directoryCount == null ? [] : [`${home.directoryCount} dirs`],
+        details: home.directoryCount == null ? [] : [`${home.directoryCount} dirs`],
       },
     },
-    ...mounts.map(
-      (mount, index): RootMapMemberInput => ({
-        root: index + 1,
-        name: basename(mount) || mount,
-        summary: mounted[index]?.summary,
-        presentation: {
-          label: "mount",
-          display: mount,
-          details:
-            mounted[index]?.directoryCount == null
-              ? []
-              : [`${mounted[index]?.directoryCount} dirs`],
-        },
-      }),
-    ),
+    ...mounts.map((mount, index): RootMapMemberInput => ({
+      root: index + 1,
+      name: basename(mount) || mount,
+      summary: mounted[index]?.summary,
+      presentation: {
+        label: "mount",
+        display: mount,
+        details: mounted[index]?.directoryCount == null
+          ? []
+          : [`${mounted[index]?.directoryCount} dirs`],
+      },
+    })),
   ];
   return renderRootMapMembers(projectRootMapMembers(inputs), {
     heading: "Working set:",
@@ -496,12 +431,7 @@ async function formatCatalogSection(
   const isPriority = (repository: WorkspaceRepository): boolean => {
     const root = resolve(repository.root);
     const identity = resolve(repository.git.repoRoot);
-    return (
-      root === pov ||
-      identity === pov ||
-      mountSet.has(root) ||
-      mountSet.has(identity)
-    );
+    return root === pov || identity === pov || mountSet.has(root) || mountSet.has(identity);
   };
   const priority = repositories.filter(isPriority);
   const ordered = [
@@ -537,12 +467,10 @@ async function formatCatalogSection(
 
   const remote = renderRootMapMembers(
     projectRootMapMembers(
-      pullable.map(
-        (entry): RootMapMemberInput => ({
-          name: entry.slug,
-          presentation: { details: [entry.namespace] },
-        }),
-      ),
+      pullable.map((entry): RootMapMemberInput => ({
+        name: entry.slug,
+        presentation: { details: [entry.namespace] },
+      })),
     ),
     { heading: "Pullable (remote — not yet local):" },
   );
@@ -579,11 +507,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function joinSections(
-  sections: Array<string | null | undefined>,
-): string | null {
-  const present = sections.filter((section): section is string =>
-    Boolean(section?.trim()),
-  );
+function joinSections(sections: Array<string | null | undefined>): string | null {
+  const present = sections.filter((section): section is string => Boolean(section?.trim()));
   return present.length ? present.join("\n\n") : null;
 }

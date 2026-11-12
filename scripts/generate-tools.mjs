@@ -1,7 +1,8 @@
 // The catalog owns CLI contracts; this host owns exposure, aliases and authority.
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
+import ts from "typescript";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -195,6 +196,35 @@ function tsType(s) {
       .join("; ")} }`;
   return "unknown";
 }
+/** Development-only guard: every literal builder option must work at runtime. */
+export function checkCliOptionLiterals(sources, entries) {
+  const flags = new Set(entries.flatMap(entry => entry.cli ? Object.values(entry.cli.flags).flatMap(flag => flag.boolean ? [] : [flag.flag, ...(flag.aliases ?? [])]) : []));
+  let count = 0;
+  for (const source of sources) {
+    const tree = ts.createSourceFile(source.path, source.text, ts.ScriptTarget.Latest, true);
+    const visit = node => {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "cliOption") {
+        const arg = node.arguments[0];
+        if (arg && (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg))) {
+          count++;
+          if (!flags.has(arg.text)) {
+            const { line } = tree.getLineAndCharacterOfPosition(arg.getStart(tree));
+            throw new Error(`${source.path}:${line + 1}: cliOption literal ${arg.text} is not in the generated CLI contract`);
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(tree);
+  }
+  return count;
+}
+function productionSources(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+    const path = `${dir}/${entry.name}`;
+    return entry.isDirectory() ? productionSources(path) : path.endsWith(".ts") && !/\.(?:test|d)\.ts$/.test(path) ? [{ path, text: readFileSync(path, "utf8") }] : [];
+  });
+}
 export function main(args = process.argv.slice(2)) {
   const catalogPath = args.includes("--catalog")
     ? args[args.indexOf("--catalog") + 1]
@@ -224,6 +254,8 @@ export function main(args = process.argv.slice(2)) {
   );
   const dest = "src/generated/agent-tools.ts";
   if (args.includes("--check")) {
+    const contracts = buildContracts(catalog, read("agent-tools.exposure.json"), read("agent-tools.host.json"), read("package.json"));
+    console.error(`Checked ${checkCliOptionLiterals(productionSources("src"), contracts.entries)} cliOption literals`);
     if (readFileSync(dest, "utf8") !== output)
       throw new Error(
         "Catalog drift: run npm run generate:tools and commit the generated contracts",
