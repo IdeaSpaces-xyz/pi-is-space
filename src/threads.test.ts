@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { authoredMember, pinnedView, threadArgs, threadsOnlyCapability, needsHostedThreads, threadPost } from "./threads.js";
+import { authoredMember, pinnedView, threadArgs as rawThreadArgs, threadsOnlyCapability, needsHostedThreads, threadPost } from "./threads.js";
+const threadArgs = (...args: Parameters<typeof rawThreadArgs>) => rawThreadArgs(...args).flatMap(a => a.startsWith("--") && a.includes("=") ? [a.slice(0,a.indexOf("=")),a.slice(a.indexOf("=")+1)] : [a]);
 
 const pin = "a".repeat(40);
 const position = "_threads/trial/post.md";

@@ -1,16 +1,23 @@
-import { AGENT_TOOLS } from './generated/agent-tools.js';
+import { AGENT_TOOLS } from "./generated/agent-tools.js";
 
-/** Values are whole argv elements, even when a message starts with --. */
-export function catalogArguments(args: string[]): string[] {
-  const start = args[0] === '--json' ? 1 : 0;
-  const entry = AGENT_TOOLS.entries.find(e => 'cli' in e && e.cli.argv.every((word,i) => args[start+i] === word));
-  if (!entry || !('cli' in entry)) return args;
-  const flags = Object.values(entry.cli.flags) as Array<{flag:string;boolean?:string;aliases?:readonly string[]}>;
-  const valued = new Set(flags.filter(f=>!f.boolean).flatMap(f=>[f.flag,...(f.aliases??[])]));
-  const out: string[] = [];
-  for(let i=0;i<args.length;i++) {
-    if(valued.has(args[i]) && i+1<args.length) out.push(`${args[i]}=${args[++i]}`);
-    else out.push(args[i]);
-  }
-  return out;
+const valuedFlags = new Set(
+  AGENT_TOOLS.entries.flatMap((entry) =>
+    "cli" in entry
+      ? Object.values(entry.cli.flags).flatMap((raw) => {
+          const flag = raw as {
+            flag: string;
+            boolean?: string;
+            aliases?: readonly string[];
+          };
+          return flag.boolean ? [] : [flag.flag, ...(flag.aliases ?? [])];
+        })
+      : [],
+  ),
+);
+
+/** Encode at the builder's exact option position, never scan positional values. */
+export function cliOption(flag: string, value: string | number): string {
+  if (!valuedFlags.has(flag))
+    throw new Error(`Option is not in the generated CLI contract: ${flag}`);
+  return `${flag}=${value}`;
 }

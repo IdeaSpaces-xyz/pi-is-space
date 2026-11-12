@@ -39,14 +39,14 @@
     "aliases": {},
     "required": [],
     "omit": {
-      "focus": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged.",
-      "agreement": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged.",
-      "contract": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged.",
-      "mark_seen": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged.",
-      "workspace": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged.",
-      "mount": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged.",
-      "pullable": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged.",
-      "no_git": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "focus": "The host supplies a bounded reference orientation, not CLI workspace/mount state or reader acknowledgement.",
+      "agreement": "The host supplies a bounded reference orientation, not CLI workspace/mount state or reader acknowledgement.",
+      "contract": "The host supplies a bounded reference orientation, not CLI workspace/mount state or reader acknowledgement.",
+      "mark_seen": "The host supplies a bounded reference orientation, not CLI workspace/mount state or reader acknowledgement.",
+      "workspace": "The host supplies a bounded reference orientation, not CLI workspace/mount state or reader acknowledgement.",
+      "mount": "The host supplies a bounded reference orientation, not CLI workspace/mount state or reader acknowledgement.",
+      "pullable": "The host supplies a bounded reference orientation, not CLI workspace/mount state or reader acknowledgement.",
+      "no_git": "The host supplies a bounded reference orientation, not CLI workspace/mount state or reader acknowledgement."
     },
     "add": {
       "address": {
@@ -182,16 +182,16 @@
       "action"
     ],
     "omit": {
-      "space": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged.",
-      "open": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged.",
+      "space": "This composite tool retains its existing action-specific inputs; unsupported discovery filters or close confirmations stay in the CLI.",
+      "open": "This composite tool retains its existing action-specific inputs; unsupported discovery filters or close confirmations stay in the CLI.",
       "reader": "Reader identity comes from the host environment.",
       "ack": "Reader acknowledgement remains host-owned and unexposed; never move the person's Unread.",
-      "agreement": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged.",
-      "about": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged.",
-      "attached_to": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged.",
-      "home": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged.",
+      "agreement": "This composite tool retains its existing action-specific inputs; unsupported discovery filters or close confirmations stay in the CLI.",
+      "about": "This composite tool retains its existing action-specific inputs; unsupported discovery filters or close confirmations stay in the CLI.",
+      "attached_to": "This composite tool retains its existing action-specific inputs; unsupported discovery filters or close confirmations stay in the CLI.",
+      "home": "This composite tool retains its existing action-specific inputs; unsupported discovery filters or close confirmations stay in the CLI.",
       "no_check_links": "This host always validates links; bypass stays unexposed.",
-      "yes": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "yes": "This composite tool retains its existing action-specific inputs; unsupported discovery filters or close confirmations stay in the CLI."
     },
     "add": {
       "action": {
@@ -248,7 +248,7 @@
     ],
     "omit": {
       "map": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged.",
-      "stage": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "stage": "Capture always stages its exact path and records host revision ownership; unstaged writes are not this tool."
     },
     "add": {
       "cwd": {
@@ -290,11 +290,11 @@
       "message"
     ],
     "omit": {
-      "author_name": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged.",
-      "author_email": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged.",
-      "change_id": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged.",
-      "conversation": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged.",
-      "co_author": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "author_name": "Commit identity, Conversation and Change provenance derive from host session state; the model cannot override them.",
+      "author_email": "Commit identity, Conversation and Change provenance derive from host session state; the model cannot override them.",
+      "change_id": "Commit identity, Conversation and Change provenance derive from host session state; the model cannot override them.",
+      "conversation": "Commit identity, Conversation and Change provenance derive from host session state; the model cannot override them.",
+      "co_author": "Commit identity, Conversation and Change provenance derive from host session state; the model cannot override them."
     },
     "add": {
       "cwd": {

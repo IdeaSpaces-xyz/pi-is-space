@@ -744,49 +744,49 @@ export const AGENT_TOOLS = {
       "tool": "is_navigate",
       "parameter": "focus",
       "kind": "host-owned omission",
-      "reason": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "reason": "The host supplies a bounded reference orientation, not CLI workspace/mount state or reader acknowledgement."
     },
     {
       "tool": "is_navigate",
       "parameter": "agreement",
       "kind": "host-owned omission",
-      "reason": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "reason": "The host supplies a bounded reference orientation, not CLI workspace/mount state or reader acknowledgement."
     },
     {
       "tool": "is_navigate",
       "parameter": "contract",
       "kind": "host-owned omission",
-      "reason": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "reason": "The host supplies a bounded reference orientation, not CLI workspace/mount state or reader acknowledgement."
     },
     {
       "tool": "is_navigate",
       "parameter": "mark_seen",
       "kind": "host-owned omission",
-      "reason": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "reason": "The host supplies a bounded reference orientation, not CLI workspace/mount state or reader acknowledgement."
     },
     {
       "tool": "is_navigate",
       "parameter": "workspace",
       "kind": "host-owned omission",
-      "reason": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "reason": "The host supplies a bounded reference orientation, not CLI workspace/mount state or reader acknowledgement."
     },
     {
       "tool": "is_navigate",
       "parameter": "mount",
       "kind": "host-owned omission",
-      "reason": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "reason": "The host supplies a bounded reference orientation, not CLI workspace/mount state or reader acknowledgement."
     },
     {
       "tool": "is_navigate",
       "parameter": "pullable",
       "kind": "host-owned omission",
-      "reason": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "reason": "The host supplies a bounded reference orientation, not CLI workspace/mount state or reader acknowledgement."
     },
     {
       "tool": "is_navigate",
       "parameter": "no_git",
       "kind": "host-owned omission",
-      "reason": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "reason": "The host supplies a bounded reference orientation, not CLI workspace/mount state or reader acknowledgement."
     },
     {
       "tool": "is_navigate",
@@ -828,13 +828,13 @@ export const AGENT_TOOLS = {
       "tool": "is_threads",
       "parameter": "space",
       "kind": "host-owned omission",
-      "reason": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "reason": "This composite tool retains its existing action-specific inputs; unsupported discovery filters or close confirmations stay in the CLI."
     },
     {
       "tool": "is_threads",
       "parameter": "open",
       "kind": "host-owned omission",
-      "reason": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "reason": "This composite tool retains its existing action-specific inputs; unsupported discovery filters or close confirmations stay in the CLI."
     },
     {
       "tool": "is_threads",
@@ -858,7 +858,7 @@ export const AGENT_TOOLS = {
       "tool": "is_threads",
       "parameter": "agreement",
       "kind": "host-owned omission",
-      "reason": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "reason": "This composite tool retains its existing action-specific inputs; unsupported discovery filters or close confirmations stay in the CLI."
     },
     {
       "tool": "is_threads",
@@ -876,19 +876,19 @@ export const AGENT_TOOLS = {
       "tool": "is_threads",
       "parameter": "about",
       "kind": "host-owned omission",
-      "reason": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "reason": "This composite tool retains its existing action-specific inputs; unsupported discovery filters or close confirmations stay in the CLI."
     },
     {
       "tool": "is_threads",
       "parameter": "attached_to",
       "kind": "host-owned omission",
-      "reason": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "reason": "This composite tool retains its existing action-specific inputs; unsupported discovery filters or close confirmations stay in the CLI."
     },
     {
       "tool": "is_threads",
       "parameter": "home",
       "kind": "host-owned omission",
-      "reason": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "reason": "This composite tool retains its existing action-specific inputs; unsupported discovery filters or close confirmations stay in the CLI."
     },
     {
       "tool": "is_threads",
@@ -912,7 +912,7 @@ export const AGENT_TOOLS = {
       "tool": "is_threads",
       "parameter": "yes",
       "kind": "host-owned omission",
-      "reason": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "reason": "This composite tool retains its existing action-specific inputs; unsupported discovery filters or close confirmations stay in the CLI."
     },
     {
       "tool": "is_threads",
@@ -936,7 +936,7 @@ export const AGENT_TOOLS = {
       "tool": "is_write",
       "parameter": "stage",
       "kind": "host-owned omission",
-      "reason": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "reason": "Capture always stages its exact path and records host revision ownership; unstaged writes are not this tool."
     },
     {
       "tool": "is_write",
@@ -954,31 +954,31 @@ export const AGENT_TOOLS = {
       "tool": "is_commit",
       "parameter": "author_name",
       "kind": "host-owned omission",
-      "reason": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "reason": "Commit identity, Conversation and Change provenance derive from host session state; the model cannot override them."
     },
     {
       "tool": "is_commit",
       "parameter": "author_email",
       "kind": "host-owned omission",
-      "reason": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "reason": "Commit identity, Conversation and Change provenance derive from host session state; the model cannot override them."
     },
     {
       "tool": "is_commit",
       "parameter": "change_id",
       "kind": "host-owned omission",
-      "reason": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "reason": "Commit identity, Conversation and Change provenance derive from host session state; the model cannot override them."
     },
     {
       "tool": "is_commit",
       "parameter": "conversation",
       "kind": "host-owned omission",
-      "reason": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "reason": "Commit identity, Conversation and Change provenance derive from host session state; the model cannot override them."
     },
     {
       "tool": "is_commit",
       "parameter": "co_author",
       "kind": "host-owned omission",
-      "reason": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+      "reason": "Commit identity, Conversation and Change provenance derive from host session state; the model cannot override them."
     },
     {
       "tool": "is_commit",

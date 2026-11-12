@@ -1,19 +1,132 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import {readFileSync,mkdtempSync,mkdirSync,writeFileSync,rmSync,realpathSync} from 'node:fs';
-import {join} from 'node:path';import {tmpdir} from 'node:os';import {execFileSync} from 'node:child_process';import {createHash} from 'node:crypto';
-import register from './index.js';import {AGENT_TOOLS} from './generated/agent-tools.js';import {catalogArguments} from './catalog-adapter.js';import {belowRequired,inspectCatalog} from './catalog-runtime.js';
-const read=(p:string)=>JSON.parse(readFileSync(p,'utf8'));const roots:string[]=[];
-afterEach(()=>{for(const p of roots.splice(0))rmSync(p,{recursive:true,force:true});});
-function tools(){const out=new Map<string,any>();register({on(){},registerCommand(){},registerTool(t:any){out.set(t.name,t)}} as any);return out;}
-describe('catalog-generated Pi contracts',()=>{
- it('regenerates deterministically and a future read flag cannot silently drift',async()=>{
-  // @ts-expect-error CI build script intentionally remains JavaScript.
-  const {generate,canonical}=await import('../scripts/generate-tools.mjs');const c=read('node_modules/@ideaspaces/cli/bundle/agent-tools.json'),e=read('agent-tools.exposure.json'),h=read('agent-tools.host.json'),p=read('package.json');const original=readFileSync('src/generated/agent-tools.ts','utf8');expect(generate(c,e,h,p)).toBe(original);c.entries.find((e:any)=>e.id==='look').parameters.properties.future_page={type:'integer'};c.digest=`sha256:${createHash('sha256').update(canonical(c.entries)).digest('hex')}`;expect(generate(c,e,h,p)).not.toBe(original);
- });
- it('offers all catalogued look paging and post-kind fields through the actual roster',()=>{const t=tools();for(const k of ['agreement','limit','order','post','since'])expect(t.get('is_look').parameters.properties).toHaveProperty(k);for(const k of ['kind','mark','supersedes'])expect(t.get('is_threads').parameters.properties).toHaveProperty(k);expect(t.get('is_look').description).toBe(AGENT_TOOLS.tools.is_look.description);});
- it('pages and opens a post, and writes a mark through the actual CLI with generated fields',async()=>{
-  const root=realpathSync(mkdtempSync(join(tmpdir(),'pi-catalog-proof-')));roots.push(root);const git=(...args:string[])=>execFileSync('git',args,{cwd:root,encoding:'utf8'}).trim();git('init','-q');git('config','user.name','Reader');git('config','user.email','reader@example.test');mkdirSync(join(root,'_agent'));writeFileSync(join(root,'_agent/agreement.md'),'---\nname: Agreement — Reader\nroot_node_id: n_0123456789abcdef01234567\n---\n# Reader\n');const thread=join(root,'_threads','work');mkdirSync(thread,{recursive:true});writeFileSync(join(thread,'README.md'),'---\nname: Work\n---\n# Work\n');for(let i=0;i<3;i++)writeFileSync(join(thread,`${i}.md`),`---\nid: msg_${String(i+1).padStart(8,'0')}-fixture\ndate: 2026-11-01T00:00:0${i}.000Z\nkind: post\nname: Item ${i}\n---\nBody ${i}\n`);git('add','.');git('commit','-qm','fixtures');
-  const t=tools(),ctx={cwd:root};const invoke=(n:string,p:object)=>t.get(n).execute('proof',p,undefined,undefined,ctx);const first=await invoke('is_look',{path:'_threads/work',limit:1,agreement:'full'});expect(first.content[0].text).toContain('0.md');expect(first.content[0].text).not.toContain('Item 2');const next=await invoke('is_look',{path:'_threads/work',limit:1,since:'0.md',order:'older'});expect(next.content[0].text).toContain('1.md');const post=await invoke('is_look',{path:'_threads/work',post:'msg_00000002-fixture'});expect(post.content[0].text).toContain('Body 1');const written=await invoke('is_threads',{action:'post',path:thread,kind:'mark',mark:'claimed',reply_to:['msg_00000002-fixture'],message:'--literal body',author:'Reader'});const data=JSON.parse(written.content[0].text);expect(readFileSync(data.path,'utf8')).toContain('kind: mark');expect(readFileSync(data.path,'utf8')).toContain('--literal body');
- },30_000);
- it('uses generated flag mappings and reports unknown runtime metadata honestly',async()=>{expect(catalogArguments(['look','.','--since','--child'])).toEqual(['look','.','--since=--child']);expect(belowRequired('0.8.0',['>=0.9.0'])).toBe(true);expect((await inspectCatalog(async()=>({code:1,err:'missing',out:''}))).available).toBe(false);});
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  readFileSync,
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  rmSync,
+  realpathSync,
+} from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import register from "./index.js";
+import { AGENT_TOOLS } from "./generated/agent-tools.js";
+import { cliOption } from "./catalog-adapter.js";
+import { belowRequired, inspectCatalog } from "./catalog-runtime.js";
+const read = (p: string) => JSON.parse(readFileSync(p, "utf8"));
+const roots: string[] = [];
+afterEach(() => {
+  for (const p of roots.splice(0)) rmSync(p, { recursive: true, force: true });
+});
+function tools() {
+  const out = new Map<string, any>();
+  register({
+    on() {},
+    registerCommand() {},
+    registerTool(t: any) {
+      out.set(t.name, t);
+    },
+  } as any);
+  return out;
+}
+describe("catalog-generated Pi contracts", () => {
+  it("regenerates deterministically and a future read flag cannot silently drift", async () => {
+    const { generate, canonical } = await import(
+      "../scripts/generate-tools.mjs"
+    );
+    const c = read("node_modules/@ideaspaces/cli/bundle/agent-tools.json"),
+      e = read("agent-tools.exposure.json"),
+      h = read("agent-tools.host.json"),
+      p = read("package.json");
+    const original = readFileSync("src/generated/agent-tools.ts", "utf8");
+    expect(generate(c, e, h, p)).toBe(original);
+    c.entries.find(
+      (e: any) => e.id === "look",
+    ).parameters.properties.future_page = { type: "integer" };
+    c.digest = `sha256:${createHash("sha256").update(canonical(c.entries)).digest("hex")}`;
+    expect(generate(c, e, h, p)).not.toBe(original);
+  });
+  it("offers all catalogued look paging and post-kind fields through the actual roster", () => {
+    const t = tools();
+    for (const k of ["agreement", "limit", "order", "post", "since"])
+      expect(t.get("is_look").parameters.properties).toHaveProperty(k);
+    for (const k of ["kind", "mark", "supersedes"])
+      expect(t.get("is_threads").parameters.properties).toHaveProperty(k);
+    expect(t.get("is_look").description).toBe(
+      AGENT_TOOLS.tools.is_look.description,
+    );
+  });
+  it("pages and opens a post, and writes a mark through the actual CLI with generated fields", async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "pi-catalog-proof-")));
+    roots.push(root);
+    const git = (...args: string[]) =>
+      execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+    git("init", "-q");
+    git("config", "user.name", "Reader");
+    git("config", "user.email", "reader@example.test");
+    mkdirSync(join(root, "_agent"));
+    writeFileSync(
+      join(root, "_agent/agreement.md"),
+      "---\nname: Agreement — Reader\nroot_node_id: n_0123456789abcdef01234567\n---\n# Reader\n",
+    );
+    const thread = join(root, "_threads", "work");
+    mkdirSync(thread, { recursive: true });
+    writeFileSync(join(thread, "README.md"), "---\nname: Work\n---\n# Work\n");
+    for (let i = 0; i < 3; i++)
+      writeFileSync(
+        join(thread, `${i}.md`),
+        `---\nid: msg_${String(i + 1).padStart(8, "0")}-fixture\ndate: 2026-11-01T00:00:0${i}.000Z\nkind: post\nname: Item ${i}\n---\nBody ${i}\n`,
+      );
+    git("add", ".");
+    git("commit", "-qm", "fixtures");
+    const t = tools(),
+      ctx = { cwd: root };
+    const invoke = (n: string, p: object) =>
+      t.get(n).execute("proof", p, undefined, undefined, ctx);
+    const first = await invoke("is_look", {
+      path: "_threads/work",
+      limit: 1,
+      agreement: "full",
+    });
+    expect(first.content[0].text).toContain("0.md");
+    expect(first.content[0].text).not.toContain("Item 2");
+    const next = await invoke("is_look", {
+      path: "_threads/work",
+      limit: 1,
+      since: "0.md",
+      order: "older",
+    });
+    expect(next.content[0].text).toContain("1.md");
+    const post = await invoke("is_look", {
+      path: "_threads/work",
+      post: "msg_00000002-fixture",
+    });
+    expect(post.content[0].text).toContain("Body 1");
+    const written = await invoke("is_threads", {
+      action: "post",
+      path: thread,
+      kind: "mark",
+      mark: "claimed",
+      reply_to: ["msg_00000002-fixture"],
+      message: "--literal body",
+      author: "Reader",
+    });
+    const data = JSON.parse(written.content[0].text);
+    expect(readFileSync(data.path, "utf8")).toContain("kind: mark");
+    expect(readFileSync(data.path, "utf8")).toContain("--literal body");
+  }, 30_000);
+  it("uses generated flag mappings and reports unknown runtime metadata honestly", async () => {
+    expect(["look", "--since", cliOption("--since", "--child")]).toEqual([
+      "look",
+      "--since",
+      "--since=--child",
+    ]);
+    expect(belowRequired("0.8.0", [">=0.9.0"])).toBe(true);
+    expect(
+      (await inspectCatalog(async () => ({ code: 1, err: "missing", out: "" })))
+        .available,
+    ).toBe(false);
+  });
 });

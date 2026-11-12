@@ -26,7 +26,7 @@ describe("packaging", () => {
   it("pins the Content-tail composition in the protocol and CLI", () => {
     expect(pkg.version).toBe(PACKAGE_VERSION);
     expect(pkg.dependencies?.["@ideaspaces/protocol"]).toBe(
-      "github:IdeaSpaces-xyz/ideaspace-protocol#3e0364ce174b154befe389f50afff6c1c4b980be",
+      "github:IdeaSpaces-xyz/ideaspace-protocol#916ae9ffb2733295b04b192abc29cf3fe1b736c6",
     );
     expect(pkg.dependencies?.["@ideaspaces/cli"]).toBe(
       `github:IdeaSpaces-xyz/cli#${CLI_COMMIT}`,
