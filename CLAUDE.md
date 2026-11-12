@@ -81,6 +81,8 @@ Capture flow: user intent → `is-capture` → maybe `is_write` for Notes or nat
 ## Development
 
 ```bash
+npm run generate:tools  # regenerate schemas/descriptions from the pinned CLI catalog
+npm run check:tools     # CI refuses unregenerated catalog drift
 npm run typecheck
 npm test      # Pi-owned roster, behavior, and cross-surface conformance
 npm run lint:skills

@@ -1,3 +1,4 @@
+import { renderAgentSurfaceLine } from "./agent-surface-line.js";
 import { AGENT_TOOLS, type ToolInputs } from "./generated/agent-tools.js";
 import { cliOption } from "./catalog-adapter.js";
 import {
@@ -1244,10 +1245,11 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event, ctx) => {
     lastPersistedState = null;
-    catalogRuntime = await inspectCatalog((args, signal) =>
-      cli(args, undefined, ctx.cwd, signal),
-    );
-    await refreshAwareness(ctx.cwd);
+    const [runtime] = await Promise.all([
+      inspectCatalog((args, signal) => cli(args, undefined, ctx.cwd, signal)),
+      refreshAwareness(ctx.cwd),
+    ]);
+    catalogRuntime = runtime;
     await refreshSpaceUi(ctx);
 
     // A cross-session (or cross-surface) open Change deserves more than buried
@@ -1425,7 +1427,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("before_agent_start", async (event, ctx) => {
     await refreshAwareness(ctx.cwd);
     const systemPrompt = cachedStable
-      ? `${event.systemPrompt}\n\n[IdeaSpaces Awareness]\n${cachedStable}\n\nAgent tools: Pi ${AGENT_TOOLS.metadata.wrapper.version}; generated ${AGENT_TOOLS.metadata.digest}; CLI ${catalogRuntime?.version ?? "unknown"}, ${catalogRuntime?.digest ?? "unknown"}; protocol ${AGENT_TOOLS.metadata.protocol.commit}. ${catalogRuntime?.note ?? "Installed CLI metadata not observed."}`
+      ? `${event.systemPrompt}\n\n[IdeaSpaces Awareness]\n${cachedStable}\n\n${renderAgentSurfaceLine(catalogRuntime)}`
       : undefined;
 
     if (!isCodex(ctx)) return systemPrompt ? { systemPrompt } : undefined;

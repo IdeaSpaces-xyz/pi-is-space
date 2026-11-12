@@ -168,6 +168,10 @@ Capture flow: user intent → `is-capture` skill → maybe `is_write` for Notes 
 
 See [`MIGRATION.md`](MIGRATION.md) for mapping from legacy `pi-sw-space`.
 
+## Development
+
+Tool schemas and descriptions derive from the pinned CLI catalog plus the explicit host exposure files. After changing those inputs, run `npm run generate:tools`, then `npm run check:tools`, `npm run typecheck` and `npm test`. CI refuses generated drift. Regenerate shared references with `npm run build:reference`; keep entrypoint skills surface-specific.
+
 ## Status
 
 Public preview. The local orientation and capture loop is in active use; the protocol and Pi package may still change before 1.0, and remote hosting is optional.

@@ -14,6 +14,7 @@ import { createHash } from "node:crypto";
 import register from "./index.js";
 import { AGENT_TOOLS } from "./generated/agent-tools.js";
 import { cliOption } from "./catalog-adapter.js";
+import { renderAgentSurfaceLine } from "./agent-surface-line.js";
 import { belowRequired, inspectCatalog } from "./catalog-runtime.js";
 const read = (p: string) => JSON.parse(readFileSync(p, "utf8"));
 const roots: string[] = [];
@@ -47,6 +48,14 @@ describe("catalog-generated Pi contracts", () => {
     ).parameters.properties.future_page = { type: "integer" };
     c.digest = `sha256:${createHash("sha256").update(canonical(c.entries)).digest("hex")}`;
     expect(generate(c, e, h, p)).not.toBe(original);
+  });
+  it("uses the shared short wording without protocol or full digest bytes", () => {
+    const runtime = { available: true, version: "0.10.1", digest: AGENT_TOOLS.metadata.digest, changed: [], note: "matching" };
+    expect(renderAgentSurfaceLine(runtime)).toBe("Agent tools: Pi extension 0.1.51 · CLI 0.10.1 · catalog 00eb3df2.");
+    expect(renderAgentSurfaceLine()).toBe("Agent tools: Pi extension 0.1.51 · CLI unknown (no answer in 1.2 s) · catalog 00eb3df2.");
+    const drift = { ...runtime, version: "0.11.0", digest: "sha256:7a1b2c3d" + "a".repeat(56) };
+    expect(renderAgentSurfaceLine(drift)).toBe("Agent tools: Pi extension 0.1.51 · CLI 0.11.0 · catalog differs (built 00eb3df2, running 7a1b2c3d); tools keep working. Update the plugin to match.");
+    expect(renderAgentSurfaceLine({ ...drift, changed: ["look", "threads.post", "commit", "status (unverified)"] })).toContain("3 tools changed; tools keep working.");
   });
   it("offers all catalogued look paging and post-kind fields through the actual roster", () => {
     const t = tools();
