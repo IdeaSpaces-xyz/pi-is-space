@@ -39,7 +39,7 @@ export interface FrozenRoster {
   names(): readonly string[];
 }
 
-export function frozenRoster(pi: Pick<ExtensionAPI, "registerTool">): FrozenRoster {
+export function frozenRoster(pi: Pick<ExtensionAPI, "registerTool">, beforeTool?: (name: string) => void): FrozenRoster {
   const names: string[] = [];
   let sealed = false;
   return {
@@ -48,7 +48,13 @@ export function frozenRoster(pi: Pick<ExtensionAPI, "registerTool">): FrozenRost
         throw new Error(`The tool roster is fixed at session start; ${tool.name} cannot be added later.`);
       }
       names.push(tool.name);
-      pi.registerTool({ ...tool, parameters: frozenParameters(tool.parameters) });
+      pi.registerTool({
+        ...tool, parameters: frozenParameters(tool.parameters),
+        execute(...args) {
+          beforeTool?.(tool.name);
+          return tool.execute(...args);
+        },
+      });
     },
     seal() {
       sealed = true;

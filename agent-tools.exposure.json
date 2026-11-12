@@ -1,0 +1,399 @@
+{
+  "is_look": {
+    "entries": [
+      "look"
+    ],
+    "aliases": {},
+    "required": [],
+    "omit": {},
+    "add": {
+      "address": {
+        "schema": {
+          "type": "string",
+          "description": "A Map member by address instead of a path: @<root name>//<position>, @<root_node_id>//<position>, or //<position> for your own root. Read against `map`, else the session's launch Map."
+        },
+        "reason": "Host session/root selection; does not grant authority or extra filesystem reach."
+      },
+      "position": {
+        "schema": {
+          "type": "string",
+          "description": "Authored repository-relative position paired with pin; must name the same target as path"
+        },
+        "reason": "Host session/root selection; does not grant authority or extra filesystem reach."
+      },
+      "root": {
+        "schema": {
+          "type": "string",
+          "description": "Omit or use home for the authority root. Pass a mounted root (absolute path or basename) to read inside that mount; it remains reference-only."
+        },
+        "reason": "Host session/root selection; does not grant authority or extra filesystem reach."
+      }
+    },
+    "narrow": {},
+    "host_parameters": {}
+  },
+  "is_navigate": {
+    "entries": [
+      "navigate"
+    ],
+    "aliases": {},
+    "required": [],
+    "omit": {
+      "focus": "The host supplies a bounded reference orientation, not CLI workspace/mount state or reader acknowledgement.",
+      "agreement": "The host supplies a bounded reference orientation, not CLI workspace/mount state or reader acknowledgement.",
+      "contract": "The host supplies a bounded reference orientation, not CLI workspace/mount state or reader acknowledgement.",
+      "mark_seen": "The host supplies a bounded reference orientation, not CLI workspace/mount state or reader acknowledgement.",
+      "workspace": "The host supplies a bounded reference orientation, not CLI workspace/mount state or reader acknowledgement.",
+      "mount": "The host supplies a bounded reference orientation, not CLI workspace/mount state or reader acknowledgement.",
+      "pullable": "The host supplies a bounded reference orientation, not CLI workspace/mount state or reader acknowledgement.",
+      "no_git": "The host supplies a bounded reference orientation, not CLI workspace/mount state or reader acknowledgement."
+    },
+    "add": {
+      "address": {
+        "schema": {
+          "type": "string",
+          "description": "A Map member directory by address instead of a path: @<root name>//<position>, @<root_node_id>//<position>, or //<position>. Read against `map`, else the session's launch Map."
+        },
+        "reason": "Host session/root selection; does not grant authority or extra filesystem reach."
+      },
+      "root": {
+        "schema": {
+          "type": "string",
+          "description": "Omit or \"home\" to focus inside the home root. Pass a mounted root (absolute path or basename) to focus inside that mount. Neither changes authority."
+        },
+        "reason": "Host session/root selection; does not grant authority or extra filesystem reach."
+      }
+    },
+    "narrow": {
+      "at": {
+        "enum": [
+          "pin",
+          "head"
+        ]
+      }
+    },
+    "host_parameters": {
+      "depth": {
+        "schema": {
+          "type": "number",
+          "description": "One-shot map probe: render the tree this many levels deep (soft-capped 1..4) in THIS result only \u2014 a name-rung outline below level 1, more map never content. The persistent awareness block stays at depth 1."
+        },
+        "reason": "Host-owned runtime form: preserve the existing local implementation and interpretation."
+      }
+    }
+  },
+  "is_inspect": {
+    "entries": [
+      "inspect"
+    ],
+    "aliases": {},
+    "required": [
+      "path"
+    ],
+    "omit": {
+      "max_bytes": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged."
+    },
+    "add": {
+      "cwd": {
+        "schema": {
+          "type": "string",
+          "description": "Absolute working directory for relative path resolution. Pass this when the intended cwd differs from the session start directory."
+        },
+        "reason": "Host session/root selection; does not grant authority or extra filesystem reach."
+      }
+    },
+    "narrow": {},
+    "host_parameters": {}
+  },
+  "is_mount": {
+    "entries": [
+      "pi.mount"
+    ],
+    "aliases": {},
+    "required": [
+      "path"
+    ],
+    "omit": {},
+    "add": {},
+    "narrow": {},
+    "host_parameters": {}
+  },
+  "is_unmount": {
+    "entries": [
+      "pi.unmount"
+    ],
+    "aliases": {},
+    "required": [
+      "path"
+    ],
+    "omit": {},
+    "add": {},
+    "narrow": {},
+    "host_parameters": {}
+  },
+  "is_release": {
+    "entries": [
+      "pi.release"
+    ],
+    "aliases": {},
+    "required": [
+      "path"
+    ],
+    "omit": {},
+    "add": {},
+    "narrow": {},
+    "host_parameters": {}
+  },
+  "is_auth": {
+    "entries": [
+      "login",
+      "logout"
+    ],
+    "aliases": {},
+    "required": [],
+    "omit": {},
+    "add": {
+      "action": {
+        "schema": {
+          "type": "string",
+          "enum": [
+            "login",
+            "logout"
+          ]
+        },
+        "reason": "Host session/root selection; does not grant authority or extra filesystem reach."
+      }
+    },
+    "narrow": {},
+    "host_parameters": {}
+  },
+  "is_threads": {
+    "entries": [
+      "threads.list",
+      "threads.open",
+      "threads.new",
+      "threads.post",
+      "threads.close"
+    ],
+    "aliases": {
+      "thread": "path"
+    },
+    "required": [
+      "action"
+    ],
+    "omit": {
+      "space": "This composite tool retains its existing action-specific inputs; unsupported discovery filters or close confirmations stay in the CLI.",
+      "open": "This composite tool retains its existing action-specific inputs; unsupported discovery filters or close confirmations stay in the CLI.",
+      "reader": "Reader identity comes from the host environment.",
+      "ack": "Reader acknowledgement remains host-owned and unexposed; never move the person's Unread.",
+      "agreement": "This composite tool retains its existing action-specific inputs; unsupported discovery filters or close confirmations stay in the CLI.",
+      "about": "This composite tool retains its existing action-specific inputs; unsupported discovery filters or close confirmations stay in the CLI.",
+      "attached_to": "This composite tool retains its existing action-specific inputs; unsupported discovery filters or close confirmations stay in the CLI.",
+      "home": "This composite tool retains its existing action-specific inputs; unsupported discovery filters or close confirmations stay in the CLI.",
+      "no_check_links": "This host always validates links; bypass stays unexposed.",
+      "yes": "This composite tool retains its existing action-specific inputs; unsupported discovery filters or close confirmations stay in the CLI."
+    },
+    "add": {
+      "action": {
+        "schema": {
+          "type": "string",
+          "enum": [
+            "list",
+            "open",
+            "new",
+            "post",
+            "close"
+          ]
+        },
+        "reason": "Host session/root selection; does not grant authority or extra filesystem reach."
+      },
+      "cwd": {
+        "schema": {
+          "type": "string",
+          "description": "Working directory when different from session cwd"
+        },
+        "reason": "Host session/root selection; does not grant authority or extra filesystem reach."
+      }
+    },
+    "narrow": {
+      "depth": {
+        "enum": [
+          "name",
+          "summary",
+          "children",
+          "surface",
+          "full"
+        ]
+      },
+      "order": {
+        "enum": [
+          "newer",
+          "older"
+        ]
+      },
+      "recipients": {
+        "maxItems": 16
+      }
+    },
+    "host_parameters": {}
+  },
+  "is_write": {
+    "entries": [
+      "write"
+    ],
+    "aliases": {},
+    "required": [
+      "content",
+      "path"
+    ],
+    "omit": {
+      "map": "Optional CLI parameter not exposed by this host; existing runtime policy remains unchanged.",
+      "stage": "Capture always stages its exact path and records host revision ownership; unstaged writes are not this tool."
+    },
+    "add": {
+      "cwd": {
+        "schema": {
+          "type": "string",
+          "description": "Absolute working directory for path resolution. Pass this if the intended cwd differs from the session start directory."
+        },
+        "reason": "Host session/root selection; does not grant authority or extra filesystem reach."
+      }
+    },
+    "narrow": {},
+    "host_parameters": {}
+  },
+  "is_status": {
+    "entries": [
+      "session.status"
+    ],
+    "aliases": {},
+    "required": [],
+    "omit": {},
+    "add": {
+      "cwd": {
+        "schema": {
+          "type": "string",
+          "description": "Absolute working directory for path resolution. Pass this if the intended cwd differs from the session start directory."
+        },
+        "reason": "Host session/root selection; does not grant authority or extra filesystem reach."
+      }
+    },
+    "narrow": {},
+    "host_parameters": {}
+  },
+  "is_commit": {
+    "entries": [
+      "commit"
+    ],
+    "aliases": {},
+    "required": [
+      "message"
+    ],
+    "omit": {
+      "author_name": "Commit identity, Conversation and Change provenance derive from host session state; the model cannot override them.",
+      "author_email": "Commit identity, Conversation and Change provenance derive from host session state; the model cannot override them.",
+      "change_id": "Commit identity, Conversation and Change provenance derive from host session state; the model cannot override them.",
+      "conversation": "Commit identity, Conversation and Change provenance derive from host session state; the model cannot override them.",
+      "co_author": "Commit identity, Conversation and Change provenance derive from host session state; the model cannot override them."
+    },
+    "add": {
+      "cwd": {
+        "schema": {
+          "type": "string",
+          "description": "Absolute working directory for path resolution. Pass this if the intended cwd differs from the session start directory."
+        },
+        "reason": "Host session/root selection; does not grant authority or extra filesystem reach."
+      }
+    },
+    "narrow": {
+      "op": {
+        "enum": [
+          "create",
+          "update",
+          "move",
+          "delete",
+          "restructure",
+          "capture"
+        ]
+      }
+    },
+    "host_parameters": {
+      "all": {
+        "schema": {
+          "type": "boolean",
+          "description": "Commit all paths captured by this Pi extension session instead of explicit paths"
+        },
+        "reason": "Host-owned capture ledger: only this session captures, never every staged file."
+      }
+    },
+    "host_text": {
+      "reason": "Session capture ownership is stricter than CLI commit.",
+      "text": {
+        "does": "Commit the exact named staged paths, or this MCP process's captured paths with all.",
+        "use_when": "Save agreed captures explicitly; never adopt unrelated staged knowledge.",
+        "check": "The session ledger, revisions, assisting agent, Conversation and open Change stay host-owned. Check the returned commit SHA.",
+        "bound": "One commit; explicit paths or session-owned all, never both."
+      }
+    }
+  },
+  "is_change_open": {
+    "entries": [
+      "change.open"
+    ],
+    "aliases": {},
+    "required": [],
+    "omit": {},
+    "add": {},
+    "narrow": {},
+    "host_parameters": {}
+  },
+  "is_change_close": {
+    "entries": [
+      "change.close"
+    ],
+    "aliases": {},
+    "required": [],
+    "omit": {},
+    "add": {},
+    "narrow": {},
+    "host_parameters": {}
+  },
+  "is_pull": {
+    "entries": [
+      "pull"
+    ],
+    "aliases": {},
+    "required": [],
+    "omit": {},
+    "add": {
+      "cwd": {
+        "schema": {
+          "type": "string",
+          "description": "Absolute working directory for path resolution. Pass this if the intended cwd differs from the session start directory."
+        },
+        "reason": "Host session/root selection; does not grant authority or extra filesystem reach."
+      }
+    },
+    "narrow": {},
+    "host_parameters": {}
+  },
+  "is_push": {
+    "entries": [
+      "push"
+    ],
+    "aliases": {},
+    "required": [],
+    "omit": {},
+    "add": {
+      "cwd": {
+        "schema": {
+          "type": "string",
+          "description": "Absolute working directory for path resolution. Pass this if the intended cwd differs from the session start directory."
+        },
+        "reason": "Host session/root selection; does not grant authority or extra filesystem reach."
+      }
+    },
+    "narrow": {},
+    "host_parameters": {}
+  }
+}

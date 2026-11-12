@@ -216,8 +216,15 @@ export async function lookPreferringAgreement(
   position: string,
   depth: MapDepth,
   contractSource?: ContractSource,
+  options: {
+    agreement?: "summary" | "full";
+    limit?: number;
+    since?: string;
+    order?: "older" | "newer";
+    postId?: string;
+  } = {},
 ): Promise<Awaited<ReturnType<typeof assembleContentLook>>> {
-  const request = { position, depth, ...(contractSource ? { contractSource } : {}) };
+  const request = { position, depth, ...options, ...(contractSource ? { contractSource } : {}) };
   const looked = await assembleContentLook(request);
   if (looked?.status === "contract_choice_required" && !contractSource) {
     return assembleContentLook({ ...request, contractSource: "agreement" });
@@ -230,12 +237,19 @@ export async function readLookAwareness(
   position: string,
   depth: MapDepth = "summary",
   contractSource?: ContractSource,
+  options: {
+    agreement?: "summary" | "full";
+    limit?: number;
+    since?: string;
+    order?: "older" | "newer";
+    postId?: string;
+  } = {},
 ): Promise<{
   root: string | null;
   text: string | null;
   contractSource: ContractSource | null;
 }> {
-  const looked = await lookPreferringAgreement(resolve(position), depth, contractSource);
+  const looked = await lookPreferringAgreement(resolve(position), depth, contractSource, options);
   if (!looked) return { root: null, text: null, contractSource: null };
   const rendered = renderContentLook(looked);
   if (looked.status !== "ok") throw new Error(rendered);

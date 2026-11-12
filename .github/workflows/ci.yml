@@ -37,6 +37,9 @@ jobs:
       - name: Test merge queue verdict gate
         run: node --test .github/scripts/slc-queue-gate.node.mjs
 
+      - name: Verify generated tool contracts
+        run: npm run check:tools
+
       - name: Typecheck
         run: npm run typecheck
 

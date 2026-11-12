@@ -525,6 +525,6 @@ describe("Pi in-process local awareness", () => {
   it("pins the protocol version that supplies the Content-tail composition", () => {
     expect(
       readFileSync(join(ROOT, "node_modules/@ideaspaces/protocol/VERSION"), "utf-8").trim(),
-    ).toBe("0.22.1");
+    ).toBe("0.32.0");
   });
 });

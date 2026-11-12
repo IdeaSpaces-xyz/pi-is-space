@@ -1,0 +1,130 @@
+[
+  {
+    "id": "pi.mount",
+    "owner": "host",
+    "implemented_by": [
+      "pi"
+    ],
+    "status": "active",
+    "job": "J11",
+    "effect": "read",
+    "reach": "local",
+    "confirm": "none",
+    "requires": {
+      "cli": ">=0.9.0"
+    },
+    "bound": "n/a",
+    "calls": [],
+    "text": {
+      "does": "Add a read-only content mount to this conversation; home remains authority.",
+      "use_when": "Manage the current Pi session, not another runtime or user state.",
+      "check": "Session state and authority stay with this host; mounts are reference only.",
+      "bound": "One current Pi session; no permission or filesystem ownership grant."
+    },
+    "parameters": {
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Repo to mount: relative to the home repo root, or absolute."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "id": "pi.unmount",
+    "owner": "host",
+    "implemented_by": [
+      "pi"
+    ],
+    "status": "active",
+    "job": "J11",
+    "effect": "read",
+    "reach": "local",
+    "confirm": "none",
+    "requires": {
+      "cli": ">=0.9.0"
+    },
+    "bound": "n/a",
+    "calls": [],
+    "text": {
+      "does": "Remove a content mount from this conversation; no files are deleted.",
+      "use_when": "Manage the current Pi session, not another runtime or user state.",
+      "check": "Session state and authority stay with this host; mounts are reference only.",
+      "bound": "One current Pi session; no permission or filesystem ownership grant."
+    },
+    "parameters": {
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Mounted root to remove: absolute path or basename, as shown in the working set."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "id": "pi.release",
+    "owner": "host",
+    "implemented_by": [
+      "pi"
+    ],
+    "status": "active",
+    "job": "J11",
+    "effect": "status",
+    "reach": "local",
+    "confirm": "none",
+    "requires": {
+      "cli": ">=0.9.0"
+    },
+    "bound": "n/a",
+    "calls": [],
+    "text": {
+      "does": "Release selected passive context at the next turn boundary.",
+      "use_when": "Manage the current Pi session, not another runtime or user state.",
+      "check": "Session state and authority stay with this host; mounts are reference only.",
+      "bound": "One current Pi session; no permission or filesystem ownership grant."
+    },
+    "parameters": {
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "contract": {
+          "type": "string",
+          "enum": [
+            "foundation",
+            "agreement"
+          ],
+          "description": "Reference frame when both resolve at the address"
+        },
+        "cwd": {
+          "type": "string",
+          "description": "Absolute working directory for path resolution. Pass this if the intended cwd differs from the session start directory."
+        },
+        "path": {
+          "type": "string",
+          "description": "Repository path of the Markdown Note to release"
+        },
+        "to": {
+          "type": "string",
+          "enum": [
+            "name",
+            "summary"
+          ],
+          "description": "The rung the item closes to at compaction (default summary)"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+]
