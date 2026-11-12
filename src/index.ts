@@ -1,3 +1,6 @@
+import { AGENT_TOOLS, type ToolInputs } from './generated/agent-tools.js';
+import { catalogArguments } from './catalog-adapter.js';
+import { inspectCatalog, belowRequired, type CatalogRuntime } from './catalog-runtime.js';
 import {
   compact,
   DEFAULT_MAX_BYTES,
@@ -8,7 +11,6 @@ import {
   type ExtensionContext,
   type TruncationResult,
 } from "@earendil-works/pi-coding-agent";
-import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -49,7 +51,7 @@ import {
   type LocalToolResult,
 } from "./local-tools.js";
 import { parseMountEnv } from "./mounts.js";
-import { authoredMember, pinnedView, postView, threadArgs, needsHostedThreads, threadsOnlyCapability, threadPost } from "./threads.js";
+import { lookReaderArgs, authoredMember, pinnedView, threadArgs, needsHostedThreads, threadsOnlyCapability, threadPost } from "./threads.js";
 import {
   CHANGE_ID_SHAPE,
   armingDecision,
@@ -428,6 +430,7 @@ function resolveCli(): string {
 }
 
 const CLI = resolveCli();
+let catalogRuntime: CatalogRuntime | undefined;
 
 // Make the resolved CLI discoverable to skills that invoke Bash. If CLI is a
 // PATH command this is harmless; skills exec it directly (or via `node` for a
@@ -454,20 +457,22 @@ function setSeenMarker(cwd: string, sha: string): void {
   spawnSync("git", ["-C", cwd, "update-ref", SEEN_REF, sha], { encoding: "utf-8" });
 }
 
-function cli(args: string[], stdin?: string, cwd?: string): Promise<CliResult> {
+function cli(rawArgs: string[], stdin?: string, cwd?: string, timeoutMs?:number): Promise<CliResult> {
+  const args = catalogArguments(rawArgs);
   return new Promise((resolve) => {
     const proc = spawn(cliNeedsNode() ? "node" : CLI, cliNeedsNode() ? [CLI, ...args] : args, {
       stdio: ["pipe", "pipe", "pipe"],
       cwd: cwd || undefined,
     });
 
+    const timer = timeoutMs ? setTimeout(() => proc.kill("SIGKILL"),timeoutMs) : undefined;
     let out = "";
     let err = "";
 
     proc.stdout.on("data", (d: Buffer) => (out += d.toString()));
     proc.stderr.on("data", (d: Buffer) => (err += d.toString()));
-    proc.on("close", (code) => resolve({ out, err, code: code ?? 1 }));
-    proc.on("error", (e) => resolve({ out: "", err: e.message, code: 1 }));
+    proc.on("close", (code) => { if(timer)clearTimeout(timer);resolve({ out, err, code: code ?? 1 }); });
+    proc.on("error", (e) => { if(timer)clearTimeout(timer);resolve({ out: "", err: e.message, code: 1 }); });
 
     if (stdin != null) proc.stdin.write(stdin);
     proc.stdin.end();
@@ -512,19 +517,6 @@ function isMapAddress(value: string | undefined): value is string {
 function addressArgs(verb: "look" | "navigate", address: string, map?: string, at?: string): string[] {
   return [verb, address, ...(map ? ["--map", map] : []), ...(at ? ["--at", at] : [])];
 }
-
-const MAP_PARAMETER = Type.Optional(
-  Type.String({
-    description:
-      "Map note an address is read against; relative to the session's working directory or absolute. Defaults to the session's launch Map (IDEASPACES_MAP).",
-  }),
-);
-const AT_PARAMETER = Type.Optional(
-  StringEnum(["pin", "head"] as const, {
-    description:
-      "Read an address at its root's pin or its checkout's HEAD. Defaults by the Map's kind: a Space's Map reads HEAD and shows drift, a Thread's Map reads the pin.",
-  }),
-);
 
 function localToolResult(result: LocalToolResult): ToolResult {
   if (!result.ok) throw new Error(result.text);
@@ -711,7 +703,10 @@ async function shouldNudgeKnowledgeWrite(
 export default function (pi: ExtensionAPI) {
   // Every tool joins here, at load, with a sorted schema; the roster is sealed
   // at the end of registration and nothing joins or leaves afterwards.
-  const roster = frozenRoster(pi);
+  const roster = frozenRoster(pi, name => {
+    const contract = AGENT_TOOLS.tools[name as keyof typeof AGENT_TOOLS.tools];
+    if(contract && belowRequired(catalogRuntime?.version,contract.requires)) throw new Error(`${name} requires CLI ${contract.requires.join(", ")}; installed ${catalogRuntime?.version}. Update the Pi extension (or npm install -g @ideaspaces/cli for an override).`);
+  });
   let cachedStable: string | null = null;
   let cachedVolatile: string | null = null;
   let cachedRoot: string | null = null;
@@ -1037,6 +1032,7 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event, ctx) => {
     lastPersistedState = null;
+    catalogRuntime = await inspectCatalog(args => cli(args,undefined,ctx.cwd,3000));
     await refreshAwareness(ctx.cwd);
     await refreshSpaceUi(ctx);
 
@@ -1179,7 +1175,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("before_agent_start", async (event, ctx) => {
     await refreshAwareness(ctx.cwd);
     const systemPrompt = cachedStable
-      ? `${event.systemPrompt}\n\n[IdeaSpaces Awareness]\n${cachedStable}`
+      ? `${event.systemPrompt}\n\n[IdeaSpaces Awareness]\n${cachedStable}\n\nAgent tools: Pi ${AGENT_TOOLS.metadata.wrapper.version}; generated ${AGENT_TOOLS.metadata.digest}; CLI ${catalogRuntime?.version ?? "unknown"}, ${catalogRuntime?.digest ?? "unknown"}; protocol ${AGENT_TOOLS.metadata.protocol.commit}. ${catalogRuntime?.note ?? "Installed CLI metadata not observed."}`
       : undefined;
 
     if (!isCodex(ctx)) return systemPrompt ? { systemPrompt } : undefined;
@@ -1714,48 +1710,20 @@ export default function (pi: ExtensionAPI) {
     name: "is_look",
     label: "IS Look",
     description:
-      `Read one local Markdown Note, Content directory or Thread folder at a canonical rung, or a Map member by \`address\` (@<root>//<position>) at a commit with no filesystem path, against \`map\` or the session's launch Map. An authored pin and position read this checkout at that commit, resolved via CLI without substituting HEAD. Use full for body evidence; is_status returns revisions, not content, while native read remains the exact-file fallback beyond this tool's bound. Read-only: never changes caller authority or working directory. Output is capped at ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}.`,
+      AGENT_TOOLS.tools.is_look.description,
     promptSnippet: "Read one local Content target at a canonical rung as reference context",
     promptGuidelines: [
       "Use is_look to deepen one target already identified by awareness, navigation, a Map, or search. Start at summary or children; request surface/full only when the task needs body evidence.",
       "A target Agreement is reference context only. Never treat an is_look result as caller authority or a working-directory change.",
     ],
-    parameters: Type.Object({
-      path: Type.Optional(Type.String({
-        description:
-          "Local Markdown file or Content directory: relative to the home repo root (or mounted root when root is set), or absolute. A path that is a Map address is read as one.",
-      })),
-      address: Type.Optional(Type.String({
-        description:
-          "A Map member by address instead of a path: @<root name>//<position>, @<root_node_id>//<position>, or //<position> for your own root. Read against `map`, else the session's launch Map.",
-      })),
-      map: MAP_PARAMETER,
-      at: AT_PARAMETER,
-      depth: Type.Optional(
-        StringEnum(["name", "summary", "surface", "children", "full"] as const, {
-          description:
-            "Requested representation. Defaults to summary; children means Note headings or direct directory handles.",
-        }),
-      ),
-      contract: Type.Optional(
-        StringEnum(["foundation", "agreement"] as const, {
-          description:
-            "Explicit target frame. Otherwise the habitat prefers Agreement, then Foundation, then floor.",
-        }),
-      ),
-      root: Type.Optional(
-        Type.String({
-          description:
-            "Omit or use home for the authority root. Pass a mounted root (absolute path or basename) to read inside that mount; it remains reference-only.",
-        }),
-      ),
-      pin: Type.Optional(Type.String({ description: "Authored full commit id to read this checkout at, paired with position; never inferred from HEAD" })),
-      position: Type.Optional(Type.String({ description: "Authored repository-relative position paired with pin; must name the same target as path" })),
-    }),
+    parameters: Type.Unsafe<ToolInputs["is_look"]>(AGENT_TOOLS.tools.is_look.inputSchema),
     async execute(_id, params, signal, _onUpdate, ctx) {
       signal?.throwIfAborted();
+      const readDepth = params.depth ?? (params.post ? "full" : params.limit !== undefined || params.since || params.order ? "children" : "summary");
+      const readerArgs = lookReaderArgs(params);
+      const agreementArgs = params.agreement ? ["--agreement",params.agreement] : [];
       const rootArg = params.root?.trim();
-      const pathArg = params.path?.trim();
+      const pathArg = params.path?.trim() || (params.post ? "." : undefined);
       const address = params.address?.trim() || (isMapAddress(pathArg) ? pathArg : undefined);
       if (address) {
         if ((params.address && pathArg) || params.pin || params.position || (rootArg && rootArg !== "home")) {
@@ -1767,9 +1735,9 @@ export default function (pi: ExtensionAPI) {
           ].filter(Boolean);
           throw new Error(`An address is read on its own; drop ${extra.join(", ")}. It takes its commit from the Map: use at: pin or head.`);
         }
-        const depth = params.depth ?? "summary";
+        const depth = readDepth;
         return renderedLook(
-          [...addressArgs("look", address, params.map, params.at), "--depth", depth, ...(params.contract ? ["--contract", params.contract] : [])],
+          [...addressArgs("look", address, params.map, params.at), "--depth", depth, ...(params.contract ? ["--contract", params.contract] : []), ...agreementArgs, ...readerArgs],
           ctx.cwd,
           address,
           { address, depth, at: params.at ?? null },
@@ -1806,9 +1774,9 @@ export default function (pi: ExtensionAPI) {
         if (!params.pin || !params.position) throw new Error("A pinned look requires both authored pin and position.");
         const local = relative(readRoot, target).split(sep).join("/") || ".";
         if (local !== params.position) throw new Error("Authored position does not match the requested path.");
-        const depth = params.depth ?? "summary";
+        const depth = readDepth;
         return renderedLook(
-          ["look", params.position, "--pin", params.pin, "--depth", depth, ...(params.contract ? ["--contract", params.contract] : [])],
+          ["look", params.position, "--pin", params.pin, "--depth", depth, ...(params.contract ? ["--contract", params.contract] : []), ...agreementArgs, ...readerArgs],
           readRoot,
           target,
           { path: target, depth, pin: params.pin, position: params.position },
@@ -1829,8 +1797,8 @@ export default function (pi: ExtensionAPI) {
       const localThreadPath = relative(readRoot, target).split(sep).join("/");
       if (stats.isDirectory() && /^_threads\/[^/]+$/.test(localThreadPath)) {
         if (params.contract || params.pin || params.position) throw new Error("A Thread folder has its own Agreement and rungs; omit contract, pin and position.");
-        const depth = params.depth ?? "summary";
-        return renderedLook(["look", target, "--depth", depth], readRoot, target, { path: target, depth });
+        const depth = readDepth;
+        return renderedLook(["look", target, "--depth", depth, ...agreementArgs, ...readerArgs], readRoot, target, { path: target, depth });
       }
 
       const post = threadPost(target, readRoot);
@@ -1838,23 +1806,16 @@ export default function (pi: ExtensionAPI) {
         if (params.contract) throw new Error("Thread posts are extension payload, not Content under a contract frame; omit contract.");
         if (params.pin && !params.position || params.position && !params.pin) throw new Error("Pinned post look requires both authored pin and position.");
         if (params.position && params.position !== post.position) throw new Error("Authored position does not match the requested post.");
-        const depth = params.depth ?? "summary";
+        const depth = readDepth;
         if (depth === "children") throw new Error("Thread posts support name, summary, surface and full rungs; not children.");
-        const source = params.pin
-          ? (await runJson<{ pinned?: string; pin?: string; position?: string }>(threadArgs({ action: "open", path: post.thread, depth: "full", pin: params.pin, position: post.position }), readRoot))
-          : null;
-        if (source && !source.ok) throw new Error(source.error);
-        const body = source
-          ? pinnedView(source.data, depth, { pin: params.pin!, position: post.position })
-          : postView(readFileSync(target, "utf8"), post.position, depth);
-        const rendered = truncateLook(body, target);
-        const { content: _boundedContent, ...truncation } = rendered.truncation;
-        return { content: [{ type: "text", text: rendered.text }], details: { path: target, depth, pin: params.pin ?? null, position: post.position, truncation } };
+        if (params.post || params.limit !== undefined || params.since || params.order) throw new Error("This path already selects a post; omit paging and post options.");
+        return renderedLook(["look", target, "--depth", depth, ...agreementArgs, ...(params.pin ? ["--pin",params.pin] : [])],readRoot,target,{path:target,depth,pin:params.pin??null});
       }
       const looked = await readLookAwareness(
         target,
-        params.depth ?? "summary",
+        readDepth,
         params.contract,
+        { agreement: params.agreement, limit: params.limit, since: params.since, order: params.order, postId: params.post },
       );
       if (!looked.text) throw new Error(`Not a Content target: ${target}`);
       signal?.throwIfAborted();
@@ -1864,7 +1825,7 @@ export default function (pi: ExtensionAPI) {
         content: [{ type: "text", text: rendered.text }],
         details: {
           path: target,
-          depth: params.depth ?? "summary",
+          depth: readDepth,
           contract: looked.contractSource,
           root: looked.root,
           truncation,
@@ -1877,35 +1838,12 @@ export default function (pi: ExtensionAPI) {
     name: "is_navigate",
     label: "IS Navigate",
     description:
-      "Read a position as bounded reference focus — its selected agent context, depth-one Content tree, and skills at history placement. The target contract is reference, never caller authority. Does not change the working directory or operating frame; read/edit/bash still take explicit paths. Pass `root` to focus inside a mounted root.",
+      AGENT_TOOLS.tools.is_navigate.description,
     promptSnippet: "Read a home or mounted position as bounded reference context without changing authority",
     promptGuidelines: [
       "Treat the injected [IdeaSpaces Awareness] map as the first bounded orientation rung: use is_navigate only when focus or map depth must change, and do not reread represented contract or current-state files or follow their links unless the user's question requires deeper evidence.",
     ],
-    parameters: Type.Object({
-      path: Type.Optional(Type.String({
-        description:
-          "Target position: relative to the repo root (or the mounted root when `root` is set), or absolute. \"\" or \".\" focuses the root. A path that is a Map address is read as one.",
-      })),
-      address: Type.Optional(Type.String({
-        description:
-          "A Map member directory by address instead of a path: @<root name>//<position>, @<root_node_id>//<position>, or //<position>. Read against `map`, else the session's launch Map.",
-      })),
-      map: MAP_PARAMETER,
-      at: AT_PARAMETER,
-      root: Type.Optional(
-        Type.String({
-          description:
-            "Omit or \"home\" to focus inside the home root. Pass a mounted root (absolute path or basename) to focus inside that mount. Neither changes authority.",
-        }),
-      ),
-      depth: Type.Optional(
-        Type.Number({
-          description:
-            "One-shot map probe: render the tree this many levels deep (soft-capped 1..4) in THIS result only — a name-rung outline below level 1, more map never content. The persistent awareness block stays at depth 1.",
-        }),
-      ),
-    }),
+    parameters: Type.Unsafe<ToolInputs["is_navigate"]>(AGENT_TOOLS.tools.is_navigate.inputSchema),
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const rootArg = params.root?.trim();
       const pathArg = params.path?.trim() ?? "";
@@ -1956,38 +1894,13 @@ export default function (pi: ExtensionAPI) {
     name: "is_inspect",
     label: "IS Inspect",
     description:
-      `Inspect one local Markdown file in-process at a bounded progressive-disclosure rung: summary (default), ATX outline, or one exact section. There is no full-document mode. Output is capped at ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}; use native read only when exact evidence requires deeper content.`,
+      AGENT_TOOLS.tools.is_inspect.description,
     promptSnippet: "Inspect one Markdown file by summary, outline, or selected section without a full-body default",
     promptGuidelines: [
       "Use is_inspect only when the awareness/map summary leaves a material question: request an outline before a section, and a section before any native full-file read.",
       "Use Pi's native read instead of is_inspect only when exact full-document or implementation evidence is required; is_inspect has no full-document mode.",
     ],
-    parameters: Type.Object({
-      path: Type.String({
-        description:
-          "Local Markdown file: relative to the session working directory (or `cwd` when provided), or absolute. A leading @ is accepted.",
-      }),
-      mode: Type.Optional(
-        StringEnum(["summary", "outline", "section"] as const, {
-          description: "Inspection rung. Defaults to summary; full-document reads are intentionally absent.",
-        }),
-      ),
-      heading: Type.Optional(
-        Type.String({ description: "Exact, case-sensitive heading text required for section mode." }),
-      ),
-      occurrence: Type.Optional(
-        Type.Integer({
-          minimum: 1,
-          description: "One-based occurrence for duplicate exact headings in section mode.",
-        }),
-      ),
-      cwd: Type.Optional(
-        Type.String({
-          description:
-            "Absolute working directory for relative path resolution. Pass this when the intended cwd differs from the session start directory.",
-        }),
-      ),
-    }),
+    parameters: Type.Unsafe<ToolInputs["is_inspect"]>(AGENT_TOOLS.tools.is_inspect.inputSchema),
     async execute(_id, params, signal, _onUpdate, ctx) {
       signal?.throwIfAborted();
       const mode: MarkdownInspectionMode = params.mode ?? "summary";
@@ -2039,13 +1952,9 @@ export default function (pi: ExtensionAPI) {
     name: "is_mount",
     label: "IS Mount",
     description:
-      "Add a repo to this conversation's working set as a read-only content mount. Home stays your authority frame; a mount is reference only — its `_agent/` is never your operating contract. Surfaced as a thin handle in awareness; look inside it with is_navigate({ root }). Use when you need a second repo's context alongside home.",
+      AGENT_TOOLS.tools.is_mount.description,
     promptSnippet: "Mount another repo as read-only content in the working set (home stays authority)",
-    parameters: Type.Object({
-      path: Type.String({
-        description: "Repo to mount: relative to the home repo root, or absolute.",
-      }),
-    }),
+    parameters: Type.Unsafe<ToolInputs["is_mount"]>(AGENT_TOOLS.tools.is_mount.inputSchema),
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const homeRoot = cachedRepoRoot ?? cachedRoot ?? ctx.cwd;
       const raw = params.path.trim();
@@ -2082,13 +1991,9 @@ export default function (pi: ExtensionAPI) {
     name: "is_unmount",
     label: "IS Unmount",
     description:
-      "Remove a repo from this conversation's working set. Matches by absolute path or basename. Home is never affected.",
+      AGENT_TOOLS.tools.is_unmount.description,
     promptSnippet: "Remove a mounted repo from the working set",
-    parameters: Type.Object({
-      path: Type.String({
-        description: "Mounted root to remove: absolute path or basename, as shown in the working set.",
-      }),
-    }),
+    parameters: Type.Unsafe<ToolInputs["is_unmount"]>(AGENT_TOOLS.tools.is_unmount.inputSchema),
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const raw = params.path.trim();
       if (!raw) throw new Error("Provide a mounted root to remove.");
@@ -2108,13 +2013,9 @@ export default function (pi: ExtensionAPI) {
     name: "is_auth",
     label: "IS Auth",
     description:
-      "Manage IdeaSpaces sync credentials. Sync is opt-in; local ideaspaces work without auth.",
+      AGENT_TOOLS.tools.is_auth.description,
     promptSnippet: "Log in or out for optional IdeaSpaces remote sync",
-    parameters: Type.Object({
-      action: Type.Optional(
-        StringEnum(["login", "logout"] as const),
-      ),
-    }),
+    parameters: Type.Unsafe<ToolInputs["is_auth"]>(AGENT_TOOLS.tools.is_auth.inputSchema),
     async execute(_id, params) {
       const action = params.action ?? "login";
       switch (action) {
@@ -2142,35 +2043,9 @@ export default function (pi: ExtensionAPI) {
   roster.register({
     name: "is_threads",
     label: "IS Threads",
-    description: "List or open at five rungs: local cold reads start at the newest snapshot; children shows branches and attached child Threads; limit/order pages posts; post opens one body plus child Threads. Reply to the post you answer; a new topic replies to the post it serves (omission branches from the opening post, 'latest' explicit). Local posts accept tags. Hosted list/new use hosted=true; open/post take an x_ id (24 or 32 hex). Hosted open takes limit/cursor, not depth. Hosted post requires explicit msg_ reply_to and message. New requires name, summary and message; recipients and Map are optional. Unread uses the web counts. Agent acknowledgement is held pending a separate agent token; no feeds, child discovery or reopen. Reading never acknowledges.",
+    description: AGENT_TOOLS.tools.is_threads.description,
     promptSnippet: "Read or reply to local and hosted Threads through the CLI",
-    parameters: Type.Object({
-      action: StringEnum(["list", "open", "new", "post", "close"] as const),
-      hosted: Type.Optional(Type.Boolean({ description: "List or start a hosted Thread; omit path. x_ ids route hosted automatically." })),
-      unread: Type.Optional(Type.Boolean({ description: "Hosted list: web unread_count > 0; page using cursor" })),
-      cursor: Type.Optional(Type.String({ description: "Opaque CLI cursor for hosted list/open" })),
-      recipients: Type.Optional(Type.Array(Type.String(), { maxItems: 16, description: "Hosted new: @handles or emails; omit for solo" })),
-      post_id: Type.Optional(Type.String({ description: "Hosted new/post: msg_ id for exact resend after uncertain delivery" })),
-      path: Type.Optional(Type.String({ description: "Local Thread path or hosted x_ id; omit for combined list, use . for local-only" })),
-      depth: Type.Optional(StringEnum(["name", "summary", "children", "surface", "full"] as const)),
-      new: Type.Optional(Type.Boolean({ description: "Local open only: posts after the private local cursor" })),
-      since: Type.Optional(Type.String({ description: "Local open only: ISO date or post id; hosted reads use cursor" })),
-      post: Type.Optional(Type.String({ description: "Open only: one post by id in full plus its child Threads" })),
-      limit: Type.Optional(Type.Integer({ minimum: 1, description: "Local open or hosted list/open page size (hosted max 200)" })),
-      order: Type.Optional(StringEnum(["newer", "older"] as const)),
-      message: Type.Optional(Type.String({ description: "Body of an immutable post or closure" })),
-      reply_to: Type.Optional(Type.Array(Type.String({ description: "Post answered; a new topic branches from the post it serves, not the newest. Use latest explicitly only when intended." }))),
-      tags: Type.Optional(Type.Array(Type.String({ description: "Local post retrieval tag (e.g. friction)" }))),
-      author: Type.Optional(Type.String({ description: "Agent Agreement name if running outside its folder" })),
-      name: Type.Optional(Type.String()),
-      summary: Type.Optional(Type.String()),
-      map: Type.Optional(Type.String({ description: "Authored Map for a citation or selected pinned Thread" })),
-      member: Type.Optional(Type.Integer({ minimum: 0, description: "Zero-based authored Map member; use with map to select a Thread" })),
-      checkout: Type.Optional(Type.String({ description: "Explicit local Space root hint; CLI validates against the selected Map root" })),
-      pin: Type.Optional(Type.String({ description: "Authored commit pin for same-Space open; pair with position" })),
-      position: Type.Optional(Type.String({ description: "Authored _threads/ post position; pair with pin" })),
-      cwd: Type.Optional(Type.String({ description: "Working directory when different from session cwd" })),
-    }),
+    parameters: Type.Unsafe<ToolInputs["is_threads"]>(AGENT_TOOLS.tools.is_threads.inputSchema),
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const selected = params.member !== undefined || params.checkout !== undefined;
       if (selected && params.cwd !== undefined) throw new Error("Selected Thread uses the caller's Agreement cwd; omit cwd override.");
@@ -2202,29 +2077,9 @@ export default function (pi: ExtensionAPI) {
     name: "is_write",
     label: "IS Write",
     description:
-      "Capture primitive for Notes: create or update a Note with Layer 1 frontmatter (name, summary), stage it in git, record its full path revision for this session, and return its content sha for safe refinement. Normally use through the is-capture skill; native file tools cover code/config and ordinary edits.",
+      AGENT_TOOLS.tools.is_write.description,
     promptSnippet: "Capture primitive: create/update a markdown Note with frontmatter; stages + returns sha",
-    parameters: Type.Object({
-      path: Type.String({ description: "File path within the ideaspace" }),
-      content: Type.String({ description: "Markdown content; frontmatter is prepended automatically" }),
-      name: Type.Optional(Type.String({ description: "Note name" })),
-      summary: Type.Optional(Type.String({ description: "Dense summary for search/orientation" })),
-      tags: Type.Optional(Type.Array(Type.String())),
-      attached_to: Type.Optional(Type.String({ description: "Primary entity binding" })),
-      if_match: Type.Optional(
-        Type.String({
-          description:
-            "Content sha from a prior is_write response or is_status({ path }); refuses on mismatch unless force is true.",
-        }),
-      ),
-      force: Type.Optional(Type.Boolean({ description: "Overwrite without if_match after reconciling divergent content" })),
-      cwd: Type.Optional(
-        Type.String({
-          description:
-            "Absolute working directory for path resolution. Pass this if the intended cwd differs from the session start directory.",
-        }),
-      ),
-    }),
+    parameters: Type.Unsafe<ToolInputs["is_write"]>(AGENT_TOOLS.tools.is_write.inputSchema),
     prepareArguments(args) {
       // Older sessions may replay the previous array-of-one tool shape. Keep
       // the public schema singular while folding that one legacy form before
@@ -2255,22 +2110,9 @@ export default function (pi: ExtensionAPI) {
     name: "is_status",
     label: "IS Status",
     description:
-      "Show IdeaSpaces capture state. Without path: returns JSON for git position, staged knowledge, and this session's captured paths, then refreshes the UI. With path: returns the full worktree/index/HEAD revision plus compatibility fields for safe refinement, without refreshing the UI. The `change` field always reflects the session's own open-Change record (a Change is session-scoped, spanning repos) — it does not follow a `cwd` override.",
+      AGENT_TOOLS.tools.is_status.description,
     promptSnippet: "Inspect IdeaSpaces capture state or get a file sha for safe updates",
-    parameters: Type.Object({
-      path: Type.Optional(
-        Type.String({
-          description:
-            "Optional file path. When present, returns { exists, sha, in_index, modified, in_tracked, revision, session_owned }; use sha as is_write.if_match.",
-        }),
-      ),
-      cwd: Type.Optional(
-        Type.String({
-          description:
-            "Absolute working directory for path resolution. Pass this if the intended cwd differs from the session start directory.",
-        }),
-      ),
-    }),
+    parameters: Type.Unsafe<ToolInputs["is_status"]>(AGENT_TOOLS.tools.is_status.inputSchema),
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const cwd = params.cwd || ctx.cwd;
       const result = await runLocalStatus({ ...params, cwd }, localDependencies(ctx));
@@ -2307,29 +2149,9 @@ export default function (pi: ExtensionAPI) {
     name: "is_commit",
     label: "IS Commit",
     description:
-      "Capture primitive: commit agreed IdeaSpaces changes. Commits only explicit reviewed paths, or this Pi session's captured paths when all=true; never adopts unknown staged work. Timing: an explicit ask to save IS the agreement — act, don't re-ask; at a natural ending, commit and tell the user what was saved; with neither signal, hold and keep staging silently.",
+      AGENT_TOOLS.tools.is_commit.description,
     promptSnippet: "Capture primitive: commit explicit paths or this session's captures — an explicit save-ask is the agreement; narrate, don't re-ask",
-    parameters: Type.Object({
-      message: Type.String({ description: "Commit message — what understanding this saves, in the user's terms" }),
-      paths: Type.Optional(
-        Type.Array(Type.String({ description: "Exact path to commit; omit only when all=true" })),
-      ),
-      all: Type.Optional(
-        Type.Boolean({ description: "Commit all paths captured by this Pi extension session instead of explicit paths" }),
-      ),
-      op: Type.Optional(
-        StringEnum(
-          ["create", "update", "move", "delete", "restructure", "capture"] as const,
-          { description: "Optional Op trailer — the kind of change (the meaning lives in the message body)" },
-        ),
-      ),
-      cwd: Type.Optional(
-        Type.String({
-          description:
-            "Absolute working directory for path resolution. Pass this if the intended cwd differs from the session start directory.",
-        }),
-      ),
-    }),
+    parameters: Type.Unsafe<ToolInputs["is_commit"]>(AGENT_TOOLS.tools.is_commit.inputSchema),
     async execute(_id, params, _signal, _onUpdate, ctx) {
       // The protocol owns exact-path CAS, staging, commit membership, identity,
       // and trailer validation. Pi supplies only reviewed selection and its
@@ -2346,31 +2168,13 @@ export default function (pi: ExtensionAPI) {
     name: "is_release",
     label: "IS Release",
     description:
-      "Release one captured Note from the active window: it closes down the Map ladder to name or summary at the next compaction, its raw turns stay in the session log, and is_look re-reads it in full at any time. Refuses a Note whose content differs from HEAD — capture it first (is_write, is_commit). One Note per call; releasing is an agreement with the person: propose, then release.",
+      AGENT_TOOLS.tools.is_release.description,
     promptSnippet: "Release a captured item from the active window at the next compaction",
     promptGuidelines: [
       "Propose releases at capture seams — after is_commit lands the understanding a raw turn or file was holding — and release only what the person agrees to.",
       "A release is window management, never file removal: nothing leaves git, and is_look brings any released item back.",
     ],
-    parameters: Type.Object({
-      path: Type.String({ description: "Repository path of the Markdown Note to release" }),
-      to: Type.Optional(
-        StringEnum(["name", "summary"] as const, {
-          description: "The rung the item closes to at compaction (default summary)",
-        }),
-      ),
-      contract: Type.Optional(
-        StringEnum(["foundation", "agreement"] as const, {
-          description: "Reference frame when both resolve at the address",
-        }),
-      ),
-      cwd: Type.Optional(
-        Type.String({
-          description:
-            "Absolute working directory for path resolution. Pass this if the intended cwd differs from the session start directory.",
-        }),
-      ),
-    }),
+    parameters: Type.Unsafe<ToolInputs["is_release"]>(AGENT_TOOLS.tools.is_release.inputSchema),
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const outcome = await prepareRelease({
         path: params.path,
@@ -2391,20 +2195,9 @@ export default function (pi: ExtensionAPI) {
     name: "is_change_open",
     label: "IS Change Open",
     description:
-      "Open a Change — an idea-snapshot coordinate stamped as a Change-Id trailer on every commit of one decision, in any repo. Use when a decision will span multiple commits, files, or repos; skip it for a single ordinary commit (there it just duplicates the conversation). Pass `handle` to mint a fresh id, or `id` to continue an existing Change (e.g. recovered from its Note) across sessions.",
+      AGENT_TOOLS.tools.is_change_open.description,
     promptSnippet: "Open a Change-Id for a decision spanning multiple commits/repos",
-    parameters: Type.Object({
-      handle: Type.Optional(
-        Type.String({
-          description: "Short kebab-ish handle for a new Change, e.g. 'token-bucket'. Ignored if `id` is given.",
-        }),
-      ),
-      id: Type.Optional(
-        Type.String({
-          description: "Existing Change-Id (chg_…) to continue across sessions — reuse the id recorded in the Change's Note.",
-        }),
-      ),
-    }),
+    parameters: Type.Unsafe<ToolInputs["is_change_open"]>(AGENT_TOOLS.tools.is_change_open.inputSchema),
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const id = params.id?.trim();
       const handle = params.handle?.trim();
@@ -2427,9 +2220,9 @@ export default function (pi: ExtensionAPI) {
     name: "is_change_close",
     label: "IS Change Close",
     description:
-      "Close the active Change so later commits no longer carry its Change-Id. The decision's arc stays queryable in git history. Also clears a Change record persisted by a previous session or another surface (the one awareness surfaces) when nothing is currently armed — note this clears the shared record only, not another still-running surface's memory.",
+      AGENT_TOOLS.tools.is_change_close.description,
     promptSnippet: "Close the active Change-Id",
-    parameters: Type.Object({}),
+    parameters: Type.Unsafe<ToolInputs["is_change_close"]>(AGENT_TOOLS.tools.is_change_close.inputSchema),
     async execute(_id, _params, _signal, _onUpdate, ctx) {
       const file = changeCacheFile(ctx);
       // Resolve BEFORE branching: a same-session pi restart must re-arm here
@@ -2462,18 +2255,9 @@ export default function (pi: ExtensionAPI) {
     name: "is_pull",
     label: "IS Pull",
     description:
-      "Integrate remote IdeaSpaces changes into the local space (fetch + rebase/merge). Never pushes. Refuses to integrate while staged captures are uncommitted or the tree is dirty. Use through the is-pull skill when the user asks to pull / get the latest / update from remote.",
+      AGENT_TOOLS.tools.is_pull.description,
     promptSnippet: "Pull remote changes into the local space; dry-run before mutating when useful",
-    parameters: Type.Object({
-      dry_run: Type.Optional(Type.Boolean({ description: "Preview pull state without fetch or integrate" })),
-      rebase: Type.Optional(Type.Boolean({ description: "Use rebase when integrating remote changes (default true)" })),
-      cwd: Type.Optional(
-        Type.String({
-          description:
-            "Absolute working directory for path resolution. Pass this if the intended cwd differs from the session start directory.",
-        }),
-      ),
-    }),
+    parameters: Type.Unsafe<ToolInputs["is_pull"]>(AGENT_TOOLS.tools.is_pull.inputSchema),
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const args = ["pull"];
       if (params.dry_run) args.push("--dry-run");
@@ -2491,17 +2275,9 @@ export default function (pi: ExtensionAPI) {
     name: "is_push",
     label: "IS Push",
     description:
-      "Push committed IdeaSpaces captures to the remote. Refuses while staged captures are uncommitted, and refuses when behind the remote — pull first. Use through the is-push skill when the user asks to push / share / send.",
+      AGENT_TOOLS.tools.is_push.description,
     promptSnippet: "Push committed IdeaSpaces captures; dry-run before mutating when useful",
-    parameters: Type.Object({
-      dry_run: Type.Optional(Type.Boolean({ description: "Preview push state without fetch or push" })),
-      cwd: Type.Optional(
-        Type.String({
-          description:
-            "Absolute working directory for path resolution. Pass this if the intended cwd differs from the session start directory.",
-        }),
-      ),
-    }),
+    parameters: Type.Unsafe<ToolInputs["is_push"]>(AGENT_TOOLS.tools.is_push.inputSchema),
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const args = ["push"];
       if (params.dry_run) args.push("--dry-run");

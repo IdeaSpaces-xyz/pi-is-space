@@ -50,7 +50,7 @@ beforeAll(async () => {
     fakeCli,
     [
       'import { appendFileSync } from "node:fs";',
-      "const args = process.argv.slice(2);",
+      "const args = process.argv.slice(2).flatMap(a => a.startsWith('--') && a.includes('=') ? [a.slice(0,a.indexOf('=')),a.slice(a.indexOf('=')+1)] : [a]);",
       'if (args.includes("catalog")) { process.stdout.write(JSON.stringify({ entries: [] })); process.exit(0); }',
       `appendFileSync(${JSON.stringify(calls)}, JSON.stringify({ args, map: process.env.IDEASPACES_MAP ?? null }) + "\\n");`,
       'if (args.some((arg) => arg.startsWith("@gone//"))) { process.stderr.write("status: unreachable — No local checkout"); process.exit(1); }',

@@ -1,6 +1,6 @@
 import { relative, resolve, sep } from "node:path";
 import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
-import { parseFrontmatter, parseMap, stripFrontmatter, summarizeMarkdown } from "@ideaspaces/protocol";
+import { THREAD_KINDS, parseFrontmatter, parseMap, stripFrontmatter, summarizeMarkdown } from "@ideaspaces/protocol";
 import { parse as parseYaml } from "yaml";
 
 export type ThreadRequest = {
@@ -18,6 +18,9 @@ export type ThreadRequest = {
   limit?: number;
   order?: "newer" | "older";
   message?: string;
+  kind?: string;
+  mark?: string;
+  supersedes?: string;
   reply_to?: string[];
   tags?: string[];
   author?: string;
@@ -38,6 +41,7 @@ export function threadArgs(input: ThreadRequest): string[] {
   if (input.action === "new") throw new Error("Pi new requires hosted: true; use the CLI for local Thread creation.");
   const { action, path } = input;
   const selected = input.member !== undefined || input.checkout !== undefined;
+  if ((input.kind !== undefined || input.mark !== undefined || input.supersedes !== undefined) && action !== "post") throw new Error("kind, mark and supersedes apply only to local posts.");
   if (input.tags?.length && action !== "post") throw new Error("tags apply only to local posts.");
   if (input.reply_to?.length && action !== "post") throw new Error("reply_to applies only to posts.");
   if (selected && (action !== "open" && action !== "post" || !input.map || input.member === undefined || !Number.isSafeInteger(input.member) || input.member < 0)) {
@@ -71,11 +75,24 @@ export function threadArgs(input: ThreadRequest): string[] {
   if (input.tags?.some((tag) => !tag?.trim() || tag.includes(","))) throw new Error("tags must be non-empty and may not contain commas.");
   if (selected && (input.author || !input.reply_to?.length)) throw new Error("Selected post requires an explicit parent and the caller's Agreement author; omit author.");
   if (!input.message?.trim()) throw new Error("A post or closure needs a nonempty message.");
+  if (action === "post" && input.kind !== undefined && !input.kind.trim()) throw new Error("kind must be a non-empty string.");
+  if (action === "post" && input.kind && !THREAD_KINDS.includes(input.kind as (typeof THREAD_KINDS)[number])) {
+    throw new Error(`kind ${JSON.stringify(input.kind)} is not a kind: use ${THREAD_KINDS.join(", ")}. A label for a post goes in tags.`);
+  }
+  if (action === "post" && input.kind === "mark" && (!input.mark?.trim() || input.reply_to?.length !== 1 || input.reply_to[0] === "latest")) {
+    throw new Error("kind: mark requires mark and reply_to with exactly one explicit target post id.");
+  }
+  if (input.mark !== undefined && input.kind !== "mark") throw new Error("mark requires kind: mark.");
+  if (input.kind === "correction" && !input.supersedes?.trim()) throw new Error("kind: correction requires supersedes with the post id being corrected or retracted.");
+  if (input.supersedes !== undefined && input.kind !== "correction") throw new Error("supersedes requires kind: correction.");
   if (action === "close" && (input.reply_to?.length || input.name || input.summary || input.map || input.tags?.length)) throw new Error("Closure only accepts message and author; omit reply_to, name, summary, tags and map.");
   return ["threads", action, path, "--message", input.message,
     ...(input.author ? ["--author", input.author] : []),
     ...(action === "post" ? [
       ...(input.reply_to?.length ? ["--reply-to", input.reply_to.join(",")] : []),
+      ...(input.kind ? ["--kind",input.kind] : []),
+      ...(input.mark ? ["--mark",input.mark] : []),
+      ...(input.supersedes ? ["--supersedes",input.supersedes] : []),
       ...(input.name ? ["--name", input.name] : []),
       ...(input.summary ? ["--summary", input.summary] : []),
       ...(input.tags?.length ? ["--tags", input.tags.join(",")] : []),
@@ -195,4 +212,17 @@ export function threadsOnlyCapability(value: unknown): boolean {
 }
 export function needsHostedThreads(input: ThreadRequest): boolean {
   return !!input.hosted || /^x_[0-9a-f]+$/.test(input.path?.trim() ?? "") || input.action === "list" && !input.path?.trim();
+}
+
+export function lookReaderArgs(input: { limit?: number; since?: string; order?: "older" | "newer"; post?: string }): string[] {
+  if (input.limit !== undefined && (!Number.isSafeInteger(input.limit) || input.limit < 0)) throw new Error("limit must be a non-negative integer.");
+  if (input.since !== undefined && !input.since.trim()) throw new Error("since needs a child filename from nextCursor.");
+  if (input.post !== undefined && !input.post.trim()) throw new Error("post needs a msg_ id.");
+  if (input.post && (input.limit !== undefined || input.since || input.order)) throw new Error("post selects one id; omit limit, since and order.");
+  return [
+    ...(input.limit !== undefined ? ["--limit", String(input.limit)] : []),
+    ...(input.since ? ["--since", input.since] : []),
+    ...(input.order ? ["--order", input.order] : []),
+    ...(input.post ? ["--post", input.post] : []),
+  ];
 }

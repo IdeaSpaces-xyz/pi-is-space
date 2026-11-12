@@ -1,8 +1,8 @@
 {
   "name": "@ideaspaces/pi-is-space",
-  "version": "0.1.50",
+  "version": "0.1.51",
   "type": "module",
-  "description": "Ideaspace Protocol extension for Pi — durable awareness, deliberate capture, optional sync",
+  "description": "Ideaspace Protocol extension for Pi \u2014 durable awareness, deliberate capture, optional sync",
   "license": "MIT",
   "homepage": "https://ideaspaces.xyz",
   "repository": {
@@ -29,11 +29,13 @@
     "build:reference": "node reference.mjs",
     "lint:skills": "node scripts/lint-skills.mjs",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "generate:tools": "node scripts/generate-tools.mjs",
+    "check:tools": "node scripts/generate-tools.mjs --check"
   },
   "dependencies": {
-    "@ideaspaces/cli": "github:IdeaSpaces-xyz/cli#06ec7f81da393f8c3b0fe5b59d0d6ce9a95d2548",
-    "@ideaspaces/protocol": "github:IdeaSpaces-xyz/ideaspace-protocol#3e0364ce174b154befe389f50afff6c1c4b980be",
+    "@ideaspaces/cli": "github:IdeaSpaces-xyz/cli#5314abfd035f3e84477a7b2104af78b96b3352fa",
+    "@ideaspaces/protocol": "github:IdeaSpaces-xyz/ideaspace-protocol#916ae9ffb2733295b04b192abc29cf3fe1b736c6",
     "yaml": "2.9.0"
   },
   "peerDependencies": {
@@ -44,6 +46,7 @@
   "devDependencies": {
     "@types/node": "^25.5.2",
     "typescript": "^5.8.3",
-    "vitest": "^4.1.12"
+    "vitest": "^4.1.12",
+    "ajv": "^8.20.0"
   }
 }
